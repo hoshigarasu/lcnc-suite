@@ -30,6 +30,60 @@ The repository includes:
 - **lcnc-gateway**: Production-ready WebSocket gateway (UI-agnostic)
 - **lcnc-webui**: Reference Vue 3 web interface (optional, one possible UI)
 
+## ⚠️ Safety and Liability Disclaimer
+
+**READ THIS CAREFULLY BEFORE USING THIS SOFTWARE**
+
+This software is provided for controlling CNC machines and other potentially dangerous equipment. By using this software, you acknowledge and agree to the following:
+
+### No Warranty
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. THE SOFTWARE MAY CONTAIN BUGS, ERRORS, OR DEFECTS THAT COULD CAUSE EQUIPMENT MALFUNCTION, PROPERTY DAMAGE, PERSONAL INJURY, OR DEATH.
+
+### No Liability
+
+IN NO EVENT SHALL THE AUTHORS, COPYRIGHT HOLDERS, OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE, INCLUDING BUT NOT LIMITED TO:
+
+- Personal injury or loss of life
+- Property damage or equipment damage
+- Loss of data or work product
+- Loss of business or profits
+- Any direct, indirect, incidental, special, exemplary, or consequential damages
+
+### User Responsibility
+
+YOU ARE SOLELY RESPONSIBLE FOR:
+
+1. **Safety Measures**: Implementing appropriate safety systems, emergency stops, interlocks, guards, and protective equipment according to applicable safety standards
+2. **Testing and Validation**: Thoroughly testing this software in a safe environment before use on production equipment
+3. **Supervision**: Never leaving CNC equipment running unattended
+4. **Compliance**: Ensuring compliance with all applicable local, state, national, and international laws, regulations, and safety standards
+5. **Professional Review**: Having this software reviewed by qualified engineers or safety professionals before use in any critical application
+6. **Risk Assessment**: Understanding the risks involved in operating CNC machinery and taking appropriate precautions
+7. **Maintenance**: Keeping all equipment properly maintained and in safe operating condition
+
+### CNC-Specific Warnings
+
+CNC machines are inherently dangerous. They can:
+- Move rapidly and with great force
+- Cause severe crushing injuries
+- Generate projectiles from broken tools or workpieces
+- Create fire hazards from spindle operation
+- Cause electrical hazards
+- Produce dangerous noise levels and particulates
+
+**Do not operate CNC equipment unless you are trained and qualified to do so.**
+
+### No Support Guarantee
+
+The authors provide this software on a voluntary basis and are under no obligation to provide support, updates, bug fixes, or any assistance whatsoever.
+
+### Assumption of Risk
+
+BY USING THIS SOFTWARE, YOU EXPRESSLY ACKNOWLEDGE AND ASSUME ALL RISKS ASSOCIATED WITH ITS USE. If you do not agree to these terms, do not use this software.
+
+---
+
 ## Features
 
 ### Gateway (lcnc-gateway)
@@ -392,7 +446,32 @@ Contributions welcome! This project is designed to be extensible:
 
 ## License
 
-[Add your license here]
+MIT License with Safety Disclaimer
+
+Copyright (c) 2025 [Your Name/Organization]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+**THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.**
+
+**THIS SOFTWARE IS INTENDED FOR USE WITH POTENTIALLY DANGEROUS EQUIPMENT.
+BY USING THIS SOFTWARE, YOU ACCEPT ALL RISKS AND AGREE THAT THE AUTHORS
+BEAR NO RESPONSIBILITY FOR ANY INJURIES, DEATHS, PROPERTY DAMAGE, OR OTHER
+LOSSES THAT MAY RESULT FROM ITS USE.**
 
 ## Acknowledgments
 

@@ -836,7 +836,7 @@ defineExpose({
 .viewerWrapper {
   position: relative;
   width: 100%;
-  height: 520px;
+  height: 650px;
 }
 
 .viewerHost {

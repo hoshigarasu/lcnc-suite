@@ -28,6 +28,8 @@
             :value="workpieceSize[0]"
             @input="updateSize(0, parseFloat(($event.target as HTMLInputElement).value))"
             step="1"
+            min="0"
+            max="9999"
           />
         </div>
         <div class="inputRow">
@@ -38,6 +40,8 @@
             :value="workpieceSize[1]"
             @input="updateSize(1, parseFloat(($event.target as HTMLInputElement).value))"
             step="1"
+            min="0"
+            max="9999"
           />
         </div>
         <div class="inputRow">
@@ -48,6 +52,8 @@
             :value="workpieceSize[2]"
             @input="updateSize(2, parseFloat(($event.target as HTMLInputElement).value))"
             step="1"
+            min="0"
+            max="9999"
           />
         </div>
 
@@ -61,6 +67,8 @@
             :value="workpieceOffset[0]"
             @input="updateOffset(0, parseFloat(($event.target as HTMLInputElement).value))"
             step="1"
+            min="-9999"
+            max="9999"
           />
         </div>
         <div class="inputRow">
@@ -71,6 +79,8 @@
             :value="workpieceOffset[1]"
             @input="updateOffset(1, parseFloat(($event.target as HTMLInputElement).value))"
             step="1"
+            min="-9999"
+            max="9999"
           />
         </div>
         <div class="inputRow">
@@ -81,12 +91,22 @@
             :value="workpieceOffset[2]"
             @input="updateOffset(2, parseFloat(($event.target as HTMLInputElement).value))"
             step="1"
+            min="-9999"
+            max="9999"
           />
         </div>
       </div>
+    </div>
 
-      <div class="group">
-        <div class="groupLabel">Layers</div>
+    <!-- Right side: 3D Viewer slot with layers below -->
+    <div class="viewerColumn">
+      <div class="viewerSlot">
+        <slot />
+      </div>
+
+      <!-- Layers below viewer (horizontal) -->
+      <div class="layersBar">
+        <div class="layersLabel">Layers:</div>
         <label><input type="checkbox" v-model="local.backplot" @change="emitToggle('backplot')" /> Backplot</label>
         <label><input type="checkbox" v-model="local.toolpath" @change="emitToggle('toolpath')" /> Toolpath</label>
         <label><input type="checkbox" v-model="local.machine"  @change="emitToggle('machine')"  /> Machine</label>
@@ -94,11 +114,6 @@
         <label><input type="checkbox" v-model="local.bounds" @change="emitToggle('bounds')" /> Bounds</label>
         <label><input type="checkbox" v-model="local.hud" @change="emitToggle('hud')" /> HUD</label>
       </div>
-    </div>
-
-    <!-- Right side: 3D Viewer slot -->
-    <div class="viewerSlot">
-      <slot />
     </div>
   </div>
 </template>
@@ -137,6 +152,7 @@ function emitToggle(layer: Layer) {
 }
 
 function updateSize(axis: number, value: number) {
+  if (isNaN(value) || value < 0) return; // Skip invalid/incomplete/negative input
   const newSize: Vec3 = [...props.workpieceSize] as Vec3;
   newSize[axis] = value;
   emit("update:workpieceSize", newSize);
@@ -150,6 +166,7 @@ function updateSize(axis: number, value: number) {
 }
 
 function updateOffset(axis: number, value: number) {
+  if (isNaN(value)) return; // Skip invalid/incomplete input
   const newOffset: Vec3 = [...props.workpieceOffset] as Vec3;
   newOffset[axis] = value;
   emit("update:workpieceOffset", newOffset);
@@ -169,6 +186,14 @@ function updateOffset(axis: number, value: number) {
   flex-direction: column;
   gap: 16px;
   min-width: 120px;
+}
+
+.viewerColumn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .viewerSlot {
@@ -261,5 +286,37 @@ function updateOffset(axis: number, value: number) {
   background: var(--border);
   margin: 4px 0;
   opacity: 0.3;
+}
+
+.layersBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--panel) 50%, transparent);
+  border: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.layersLabel {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.layersBar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.layersBar input[type="checkbox"] {
+  cursor: pointer;
 }
 </style>

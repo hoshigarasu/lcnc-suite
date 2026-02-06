@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { connectWs, connected, status, send, lastReply } from "./lcncWs";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { connectWs, connected, status, send, lastReply, viewerGcode } from "./lcncWs";
 import ThreeViewer from "./ThreeViewer.vue";
 import Toolbar from "./Toolbar.vue";
 import TabPanel from "./TabPanel.vue";
 import DroPanel from "./DroPanel.vue";
 import JogPanel from "./JogPanel.vue";
 import MdiPanel from "./MdiPanel.vue";
+import GcodePanel from "./GcodePanel.vue";
 
 onMounted(() => connectWs());
 
@@ -16,6 +17,7 @@ const tabs = [
   { id: "dro", label: "Position" },
   { id: "jog", label: "Jogging" },
   { id: "mdi", label: "MDI" },
+  { id: "gcode", label: "G-code" },
 ];
 
 const leftTab = ref("viewer");
@@ -36,12 +38,14 @@ function onToggleLayerR(layer: string, on: boolean) { viewerR.value?.setLayerVis
 /** ---------- local UI state ---------- */
 const armed = ref(false);
 const mdiText = ref("G0 X0 Y0");
-const coordMode = ref<"work" | "machine">("work");
 const busy = ref(false);
 
 // Workpiece configuration
 const workpieceSize = ref<[number, number, number]>([100, 100, 20]);
 const workpieceOffset = ref<[number, number, number]>([0, 0, -20]); // Z offset = -height (zero at top)
+
+// G-code viewer
+const gcodeContent = ref<string | null>(null);
 
 /** ---------- status helpers ---------- */
 const st = computed<Record<string, any>>(() => status.value?.data ?? {});
@@ -58,10 +62,22 @@ const homedLabel = computed(() => {
 });
 
 /** DRO: work/machine */
-const pos = computed<number[]>(() => {
+const workPos = computed<number[]>(() => {
   const data = st.value ?? {};
-  const arr = coordMode.value === "work" ? data.work_pos : data.machine_pos;
-  return Array.isArray(arr) ? arr : [];
+  return Array.isArray(data.work_pos) ? data.work_pos : [];
+});
+
+const machinePos = computed<number[]>(() => {
+  const data = st.value ?? {};
+  return Array.isArray(data.machine_pos) ? data.machine_pos : [];
+});
+
+const activeFile = computed<string | null>(() => {
+  return st.value?.active_file || null;
+});
+
+const currentLine = computed<number | null>(() => {
+  return st.value?.motion_line ?? null;
 });
 
 /** ---------- permissions (arming + machine state) ---------- */
@@ -112,6 +128,19 @@ function sendMdi() {
   fire({ cmd: "mdi", text: mdiText.value });
 }
 
+function zeroAxis(axis: number) {
+  const axisNames = ['X', 'Y', 'Z'];
+  const axisName = axisNames[axis];
+  if (!axisName) return;
+
+  // G10 L20 P0 sets current work offset, axis letter followed by 0 sets that axis to zero
+  fire({ cmd: "mdi", text: `G10 L20 P0 ${axisName}0` });
+}
+
+function homeAll() {
+  fire({ cmd: "home_all" });
+}
+
 /** ---------- safety: stop jog on focus loss ---------- */
 function stopAllJog() {
   send({ cmd: "jog_stop", axis: 0 });
@@ -131,6 +160,16 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener("blur", stopAllJog);
   document.removeEventListener("visibilitychange", visHandler);
+});
+
+/** ---------- G-code content watcher ---------- */
+watch(viewerGcode, (newGcode) => {
+  console.log("viewerGcode updated:", newGcode);
+  if (newGcode?.content) {
+    gcodeContent.value = newGcode.content;
+  } else {
+    gcodeContent.value = null;
+  }
 });
 </script>
 
@@ -172,7 +211,12 @@ onUnmounted(() => {
         </template>
 
         <template #dro>
-          <DroPanel :pos="pos" :coordMode="coordMode" @update:coordMode="coordMode = $event" />
+          <DroPanel
+            :workPos="workPos"
+            :machinePos="machinePos"
+            @zeroAxis="zeroAxis"
+            @homeAll="homeAll"
+          />
         </template>
 
         <template #jog>
@@ -188,6 +232,14 @@ onUnmounted(() => {
             :status="status"
             @update:mdiText="mdiText = $event"
             @send="sendMdi"
+          />
+        </template>
+
+        <template #gcode>
+          <GcodePanel
+            :activeFile="activeFile"
+            :gcodeContent="gcodeContent"
+            :currentLine="currentLine"
           />
         </template>
       </TabPanel>
@@ -212,7 +264,12 @@ onUnmounted(() => {
         </template>
 
         <template #dro>
-          <DroPanel :pos="pos" :coordMode="coordMode" @update:coordMode="coordMode = $event" />
+          <DroPanel
+            :workPos="workPos"
+            :machinePos="machinePos"
+            @zeroAxis="zeroAxis"
+            @homeAll="homeAll"
+          />
         </template>
 
         <template #jog>
@@ -228,6 +285,14 @@ onUnmounted(() => {
             :status="status"
             @update:mdiText="mdiText = $event"
             @send="sendMdi"
+          />
+        </template>
+
+        <template #gcode>
+          <GcodePanel
+            :activeFile="activeFile"
+            :gcodeContent="gcodeContent"
+            :currentLine="currentLine"
           />
         </template>
       </TabPanel>

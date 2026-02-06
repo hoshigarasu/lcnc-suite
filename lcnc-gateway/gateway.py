@@ -427,7 +427,11 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             CMD.jog(linuxcnc.JOG_STOP, 0, axis)
             return {"ok": True}
 
-
+        if cmd == "home_all":
+            require_armed(armed)
+            set_mode(linuxcnc.MODE_MANUAL)
+            CMD.home(-1)  # -1 homes all axes
+            return {"ok": True}
 
         return {"ok": False, "error": f"Unknown cmd: {cmd}"}
 
@@ -644,6 +648,34 @@ async def ws_endpoint(ws: WebSocket):
 
     await ws_send_json(ws, {"type": "viewer_init", "data": build_viewer_init(stl_base_url)})
 
+    # Send initial G-code if a file is already loaded
+    STAT.poll()
+    initial_file = safe_get("file", None)
+    if initial_file:
+        try:
+            preview = parse_gcode_preview(initial_file)
+            # Read the raw G-code content
+            gcode_content = None
+            try:
+                with open(initial_file, "r", encoding="utf-8", errors="replace") as f:
+                    gcode_content = f.read()
+            except Exception:
+                pass
+
+            await ws_send_json(
+                ws,
+                {
+                    "type": "viewer_gcode",
+                    "data": {
+                        "file": initial_file,
+                        "feed": preview["feed"],
+                        "rapid": preview["rapid"],
+                        "content": gcode_content,
+                    },
+                },
+            )
+        except Exception as e:
+            print(f"Error loading initial G-code: {e}")
 
     last_file: Optional[str] = None
 
@@ -690,6 +722,15 @@ async def ws_endpoint(ws: WebSocket):
                     last_file = st.active_file
                     try:
                         preview = parse_gcode_preview(last_file)
+
+                        # Read the raw G-code content
+                        gcode_content = None
+                        try:
+                            with open(last_file, "r", encoding="utf-8", errors="replace") as f:
+                                gcode_content = f.read()
+                        except Exception:
+                            pass  # If we can't read it, just send None
+
                         await ws_send_json(
                             ws,
                             {
@@ -698,6 +739,7 @@ async def ws_endpoint(ws: WebSocket):
                                     "file": last_file,
                                     "feed": preview["feed"],
                                     "rapid": preview["rapid"],
+                                    "content": gcode_content,
                                 },
                             },
                         )

@@ -62,6 +62,7 @@ type ViewerState = {
 type ViewerGcode = {
   file?: string;
   feed?: number[][];
+  feed_lines?: number[];     // parallel: g-code line number per feed point
   rapid?: number[][];
 };
 
@@ -91,6 +92,12 @@ let workOrigin: THREE.Group | null = null;
 let toolMarker: THREE.Object3D | null = null;
 let feedLine: THREE.Line | null = null;
 let rapidLine: THREE.Line | null = null;
+let highlightLine: THREE.Line | null = null;
+let highlightMarker: THREE.Mesh | null = null;
+
+// Map g-code line number → { start, end } point-index range in feed arrays
+let feedPtsCache: number[][] = [];
+let feedLineMap: Map<number, { start: number; end: number }> = new Map();
 
 // ---- Backplot (live toolpath history) ----
 let backplotLine: THREE.Line | null = null;
@@ -171,6 +178,8 @@ function setLayerVisible(layer: Layer, on: boolean) {
     case "toolpath":
       if (feedLine) feedLine.visible = on;
       if (rapidLine) rapidLine.visible = on;
+      if (highlightLine) highlightLine.visible = on;
+      if (highlightMarker) highlightMarker.visible = on;
       break;
     case "machine":
       for (const m of machineMeshes) m.visible = on;
@@ -399,6 +408,8 @@ function ensureCoreGroups() {
     color: 0xff00ff,     // magenta-ish like your VTK default
     transparent: true,
     opacity: 0.55,
+    depthTest: false,
+    depthWrite: false,
   });
 
   backplotLine = new THREE.Line(backplotGeom, mat);
@@ -639,6 +650,27 @@ function applyState(init: ViewerInit, st: ViewerState) {
     const xl = groups.x.worldToLocal(w.clone());
     pushBackplotPoint([xl.x, xl.y, xl.z]);
   }
+
+  // ---- Highlight current motion line in toolpath ----
+  if (highlightLine && curLine != null) {
+    const range = feedLineMap.get(curLine);
+    if (range) {
+      const s = Math.max(0, range.start - 1);
+      highlightLine.geometry.setDrawRange(s, range.end - s + 1);
+      // Position marker sphere at the endpoint of the current segment
+      if (highlightMarker && feedPtsCache[range.end]) {
+        const p = feedPtsCache[range.end];
+        highlightMarker.position.set(p[0], p[1], p[2]);
+        highlightMarker.visible = true;
+      }
+    } else {
+      highlightLine.geometry.setDrawRange(0, 0);
+      if (highlightMarker) highlightMarker.visible = false;
+    }
+  } else {
+    if (highlightLine) highlightLine.geometry.setDrawRange(0, 0);
+    if (highlightMarker) highlightMarker.visible = false;
+  }
 }
 
 
@@ -657,18 +689,67 @@ function applyGcode(g: ViewerGcode) {
     disposeObject(rapidLine);
     rapidLine = null;
   }
+  if (highlightLine) {
+    workOrigin.remove(highlightLine);
+    disposeObject(highlightLine);
+    highlightLine = null;
+  }
+  if (highlightMarker) {
+    workOrigin.remove(highlightMarker);
+    disposeObject(highlightMarker);
+    highlightMarker = null;
+  }
+  feedPtsCache = [];
+  feedLineMap = new Map();
 
   const feedPts = g.feed ?? [];
+  const feedLines = g.feed_lines ?? [];
   const rapidPts = g.rapid ?? [];
 
-  // Feed: muted light gray; Rapid: dashed muted blue-ish
+  // Build line-number → point-index range map
+  for (let i = 0; i < feedLines.length; i++) {
+    const ln = feedLines[i];
+    const entry = feedLineMap.get(ln);
+    if (entry) {
+      entry.end = i;
+    } else {
+      feedLineMap.set(ln, { start: i, end: i });
+    }
+  }
+
+  // Feed: blue; Rapid: dashed orange
   if (feedPts.length >= 2) {
-    feedLine = makeLine(feedPts, 0xdadada, false);
+    feedLine = makeLine(feedPts, 0x5b9bd5, false);
     workOrigin.add(feedLine);
   }
   if (rapidPts.length >= 2) {
-    rapidLine = makeLine(rapidPts, 0x7aa0d6, true);
+    rapidLine = makeLine(rapidPts, 0xe0a050, true);
     workOrigin.add(rapidLine);
+  }
+
+  // Prepare highlight line (reuses feed geometry, drawn on top with bright color)
+  feedPtsCache = feedPts;
+  if (feedPts.length >= 2) {
+    const hlGeom = new THREE.BufferGeometry();
+    const flat = new Float32Array(feedPts.flat());
+    hlGeom.setAttribute("position", new THREE.BufferAttribute(flat, 3));
+    hlGeom.setDrawRange(0, 0); // hidden until motion_line updates
+    const hlMat = new THREE.LineBasicMaterial({ color: 0xff3333 });
+    hlMat.depthTest = false;
+    hlMat.depthWrite = false;
+    highlightLine = new THREE.Line(hlGeom, hlMat);
+    highlightLine.renderOrder = 11;
+    highlightLine.frustumCulled = false;
+    workOrigin.add(highlightLine);
+
+    // Bright sphere marker at current segment endpoint
+    const markerGeom = new THREE.SphereGeometry(1.5, 8, 8);
+    const markerMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
+    markerMat.depthTest = false;
+    highlightMarker = new THREE.Mesh(markerGeom, markerMat);
+    highlightMarker.renderOrder = 12;
+    highlightMarker.visible = false;
+    workOrigin.add(highlightMarker);
   }
 }
 

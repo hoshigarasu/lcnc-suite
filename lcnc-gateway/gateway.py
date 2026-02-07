@@ -691,6 +691,7 @@ def parse_gcode_preview(filename: str) -> Dict[str, Any]:
     Returns polyline point lists for feed and rapid moves.
     """
     feed: List[List[float]] = []
+    feed_lines: List[int] = []          # parallel: g-code line number for each feed point
     rapid: List[List[float]] = []
 
     # current position (work coords)
@@ -707,10 +708,11 @@ def parse_gcode_preview(filename: str) -> Dict[str, Any]:
 
     # basic safety: only read real files
     if not filename or not os.path.isfile(filename):
-        return {"feed": feed, "rapid": rapid}
+        return {"feed": feed, "feed_lines": feed_lines, "rapid": rapid}
+
 
     with open(filename, "r") as f:
-        for raw in f:
+        for lineno, raw in enumerate(f, 1):
             line = raw.strip().upper()
             if not line or line.startswith(("(", ";")):
                 continue
@@ -756,12 +758,13 @@ def parse_gcode_preview(filename: str) -> Dict[str, Any]:
 
             # linear / rapid
             if motion_mode == "G0":
-                add(rapid, nx, ny, nz)
+                add(rapid, nx, ny, nz)  # rapids: no line tracking needed
                 x, y, z = nx, ny, nz
                 continue
 
             if motion_mode == "G1":
                 add(feed, nx, ny, nz)
+                feed_lines.append(lineno)
                 x, y, z = nx, ny, nz
                 continue
 
@@ -811,10 +814,11 @@ def parse_gcode_preview(filename: str) -> Dict[str, Any]:
                     add(feed, px, fixed_axis[1], py)
                 else:
                     add(feed, fixed_axis[1], px, py)
+                feed_lines.append(lineno)
 
             x, y, z = nx, ny, nz
 
-    return {"feed": feed, "rapid": rapid}
+    return {"feed": feed, "feed_lines": feed_lines, "rapid": rapid}
 
 
 app = FastAPI()
@@ -878,6 +882,7 @@ async def ws_endpoint(ws: WebSocket):
                     "data": {
                         "file": initial_file,
                         "feed": preview["feed"],
+                        "feed_lines": preview["feed_lines"],
                         "rapid": preview["rapid"],
                         "content": gcode_content,
                     },
@@ -950,6 +955,7 @@ async def ws_endpoint(ws: WebSocket):
                                 "data": {
                                     "file": last_file,
                                     "feed": preview["feed"],
+                                    "feed_lines": preview["feed_lines"],
                                     "rapid": preview["rapid"],
                                     "content": gcode_content,
                                 },

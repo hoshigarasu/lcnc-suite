@@ -746,6 +746,26 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             CMD.spindleoverride(scale)
             return {"ok": True, "scale": scale}
 
+        if cmd == "spindle_forward":
+            require_armed(armed)
+            speed = float(msg.get("speed", 0))
+            set_mode(linuxcnc.MODE_MANUAL)
+            CMD.spindle(linuxcnc.SPINDLE_FORWARD, speed)
+            return {"ok": True}
+
+        if cmd == "spindle_reverse":
+            require_armed(armed)
+            speed = float(msg.get("speed", 0))
+            set_mode(linuxcnc.MODE_MANUAL)
+            CMD.spindle(linuxcnc.SPINDLE_REVERSE, speed)
+            return {"ok": True}
+
+        if cmd == "spindle_stop":
+            require_armed(armed)
+            set_mode(linuxcnc.MODE_MANUAL)
+            CMD.spindle(linuxcnc.SPINDLE_OFF)
+            return {"ok": True}
+
         if cmd == "set_rapid_override":
             require_armed(armed)
             scale = float(msg.get("scale", 1.0))

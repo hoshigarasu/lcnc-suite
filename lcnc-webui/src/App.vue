@@ -10,6 +10,7 @@ import MdiPanel from "./MdiPanel.vue";
 import GcodePanel from "./GcodePanel.vue";
 import OverridePanel from "./OverridePanel.vue";
 import SettingsPanel from "./SettingsPanel.vue";
+import SpindlePanel from "./SpindlePanel.vue";
 
 type Layer = "backplot" | "toolpath" | "machine" | "workpiece" | "bounds" | "workzero" | "hud";
 const ALL_LAYERS: Layer[] = ["backplot", "toolpath", "machine", "workpiece", "bounds", "workzero", "hud"];
@@ -50,6 +51,7 @@ const tabs = [
   { id: "jog", label: "Jogging" },
   { id: "mdi", label: "MDI" },
   { id: "overrides", label: "Overrides" },
+  { id: "spindle", label: "Spindle" },
   { id: "gcode", label: "G-code" },
   { id: "settings", label: "Settings" },
 ];
@@ -238,6 +240,11 @@ const rapidOverrideValue = computed(() => {
 });
 
 
+// Spindle state
+const spindleSpeed = computed(() => st.value.spindle_speed ?? null);
+const spindleActual = computed(() => st.value.spindle_speed_actual ?? null);
+const spindleDirection = computed(() => st.value.spindle_direction ?? null);
+
 /** ---------- actions ---------- */
 function arm(v: boolean) {
   armed.value = v;
@@ -318,6 +325,18 @@ function setSpindleOverride(scale: number) {
 
 function setRapidOverride(scale: number) {
   send({ cmd: "set_rapid_override", scale });
+}
+
+function spindleForward(speed: number) {
+  fire({ cmd: "spindle_forward", speed });
+}
+
+function spindleReverse(speed: number) {
+  fire({ cmd: "spindle_reverse", speed });
+}
+
+function spindleStop() {
+  fire({ cmd: "spindle_stop" });
 }
 
 /** ---------- safety: stop jog on focus loss ---------- */
@@ -457,6 +476,21 @@ watch(isHomed, (nowHomed, wasHomed) => {
           />
         </template>
 
+        <template #spindle>
+          <SpindlePanel
+            :spindleSpeed="spindleSpeed"
+            :spindleActual="spindleActual"
+            :spindleDirection="spindleDirection"
+            :spindleOverride="spindleOverrideValue"
+            :armed="armed"
+            :busy="busy"
+            @spindleForward="spindleForward"
+            @spindleReverse="spindleReverse"
+            @spindleStop="spindleStop"
+            @setSpindleOverride="setSpindleOverride"
+          />
+        </template>
+
         <template #gcode>
           <GcodePanel
             :activeFile="activeFile"
@@ -533,6 +567,21 @@ watch(isHomed, (nowHomed, wasHomed) => {
             @setFeedOverride="setFeedOverride"
             @setSpindleOverride="setSpindleOverride"
             @setRapidOverride="setRapidOverride"
+          />
+        </template>
+
+        <template #spindle>
+          <SpindlePanel
+            :spindleSpeed="spindleSpeed"
+            :spindleActual="spindleActual"
+            :spindleDirection="spindleDirection"
+            :spindleOverride="spindleOverrideValue"
+            :armed="armed"
+            :busy="busy"
+            @spindleForward="spindleForward"
+            @spindleReverse="spindleReverse"
+            @spindleStop="spindleStop"
+            @setSpindleOverride="setSpindleOverride"
           />
         </template>
 

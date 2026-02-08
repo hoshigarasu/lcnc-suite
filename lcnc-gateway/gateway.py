@@ -993,31 +993,6 @@ async def ws_endpoint(ws: WebSocket):
                         "errors": errs,
                     },
                 )
-                # Viewer: lightweight high-frequency state (you can also drive it from status on the frontend)
-                await ws_send_json(
-                    ws,
-                    {
-                        "type": "viewer_state",
-                        "data": {
-                            "ts": st.ts,
-                            "machine_pos": st.machine_pos,
-                            "g5x_offset": st.g5x_offset,
-                            "g92_offset": st.g92_offset,
-                            "active_file": st.active_file,
-                            "motion_line": st.motion_line,
-                            "tool_number": st.tool_number,
-                            "tool_diameter": st.tool_diameter,
-                            "tool_length": st.tool_length,
-                            "joint_pos": st.joint_pos,
-                            "tool_offset": st.tool_offset,
-                            "work_pos": st.work_pos,
-                            "current_vel": st.current_vel,
-                            "spindle_speed": st.spindle_speed_actual,
-                            "spindle_direction": st.spindle_direction,
-                        },
-                    },
-                )
-            
 
                 # Viewer: gcode preview only when the file changes
                 if st.active_file and st.active_file != last_file:

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 // Adjust path as needed
-import { viewerInit, viewerState, viewerGcode } from "./lcncWs";
+import { viewerInit, viewerGcode, status } from "./lcncWs";
 
 type Vec3 = [number, number, number];
 
@@ -91,6 +91,9 @@ const props = defineProps<{
   opacities?: OpacityDefaults;
   g5xLabel?: string;
 }>();
+
+// HUD data (read from status for template)
+const vst = computed(() => status.value?.data ?? null);
 
 // ---------- DOM ----------
 const host = ref<HTMLDivElement | null>(null);
@@ -261,7 +264,6 @@ function pushBackplotPoint(p: [number, number, number]) {
 
   backplotGeom.setDrawRange(0, backplotCount);
   backplotGeom.attributes.position.needsUpdate = true;
-  backplotGeom.computeBoundingSphere();
 }
 
 
@@ -831,8 +833,18 @@ function resize() {
   renderer.setSize(w, h);
 }
 
+let pendingState: any = null;
+
 function animate() {
   raf = requestAnimationFrame(animate);
+
+  // Apply pending state before render (natural frame dropping —
+  // if multiple status updates arrive between frames, only the latest is used)
+  if (pendingState && viewerInit.value) {
+    applyState(viewerInit.value as ViewerInit, pendingState as ViewerState);
+    pendingState = null;
+  }
+
   controls?.update();
   renderer?.render(scene!, camera!);
 }
@@ -903,13 +915,12 @@ watch(
   { immediate: true }
 );
 
-// Apply state as it arrives
+// Buffer latest status for rAF consumption (frame dropping)
 watch(
-  [() => viewerInit.value as ViewerInit | null, () => viewerState.value as ViewerState | null],
-  ([init, st]) => {
-    if (init && st) applyState(init, st);
+  () => status.value,
+  (msg) => {
+    if (msg?.data) pendingState = msg.data;
   },
-  { deep: true }
 );
 
 // Apply gcode preview when it arrives
@@ -918,7 +929,6 @@ watch(
   (g) => {
     if (g) applyGcode(g);
   },
-  { deep: true }
 );
 
 
@@ -956,38 +966,38 @@ defineExpose({
       <div class="hudSection">
         <div class="hudLabel">Machine Position</div>
         <div class="hudValue">
-          X: {{ formatCoord(viewerState?.machine_pos?.[0]) }}
-          Y: {{ formatCoord(viewerState?.machine_pos?.[1]) }}
-          Z: {{ formatCoord(viewerState?.machine_pos?.[2]) }}
+          X: {{ formatCoord(vst?.machine_pos?.[0]) }}
+          Y: {{ formatCoord(vst?.machine_pos?.[1]) }}
+          Z: {{ formatCoord(vst?.machine_pos?.[2]) }}
         </div>
       </div>
 
       <div class="hudSection">
         <div class="hudLabel">Work Position ({{ props.g5xLabel || '-' }})</div>
         <div class="hudValue">
-          X: {{ formatCoord(viewerState?.work_pos?.[0]) }}
-          Y: {{ formatCoord(viewerState?.work_pos?.[1]) }}
-          Z: {{ formatCoord(viewerState?.work_pos?.[2]) }}
+          X: {{ formatCoord(vst?.work_pos?.[0]) }}
+          Y: {{ formatCoord(vst?.work_pos?.[1]) }}
+          Z: {{ formatCoord(vst?.work_pos?.[2]) }}
         </div>
       </div>
 
       <div class="hudSection">
         <div class="hudLabel">Tool</div>
         <div class="hudValue">
-          T{{ viewerState?.tool_number ?? '-' }}
-          Ø{{ formatCoord(viewerState?.tool_diameter) }}
-          L{{ formatCoord(viewerState?.tool_length) }}
+          T{{ vst?.tool_number ?? '-' }}
+          Ø{{ formatCoord(vst?.tool_diameter) }}
+          L{{ formatCoord(vst?.tool_length) }}
         </div>
       </div>
 
       <div class="hudSection">
         <div class="hudLabel">Feed</div>
-        <div class="hudValue">{{ formatCoord(viewerState?.current_vel) }} u/s</div>
+        <div class="hudValue">{{ formatCoord(vst?.current_vel) }} u/s</div>
       </div>
 
       <div class="hudSection">
         <div class="hudLabel">Spindle</div>
-        <div class="hudValue">{{ formatCoord(viewerState?.spindle_speed) }} RPM</div>
+        <div class="hudValue">{{ formatCoord(vst?.spindle_speed_actual) }} RPM</div>
       </div>
     </div>
   </div>

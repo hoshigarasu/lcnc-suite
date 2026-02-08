@@ -27,7 +27,7 @@ A modern, UI-agnostic WebSocket gateway for LinuxCNC with a reference Vue 3 web 
 ```
 
 The repository includes:
-- **lcnc-gateway**: Production-ready WebSocket gateway (UI-agnostic)
+- **lcnc-gateway**: WebSocket gateway (UI-agnostic)
 - **lcnc-webui**: Reference Vue 3 web interface (optional, one possible UI)
 
 ## ⚠️ Safety and Liability Disclaimer
@@ -100,12 +100,15 @@ BY USING THIS SOFTWARE, YOU EXPRESSLY ACKNOWLEDGE AND ASSUME ALL RISKS ASSOCIATE
 
 ### Reference UI (lcnc-webui)
 
-- Modern Vue 3 + TypeScript interface
-- Real-time DRO (Digital Read Out)
-- Manual jogging controls
-- MDI command interface
-- 3D machine visualization with Three.js
-- Responsive design for tablets and desktop
+- Modern Vue 3 + TypeScript single-page interface
+- Real-time DRO with G5x work coordinate selector and DTG display
+- XY + Z jogging with diagonal support and World/Joint mode toggle
+- Spindle control panel (FWD/REV/STOP, RPM input, live actual speed)
+- Feed, spindle, and rapid override sliders with presets
+- MDI command interface with history
+- 3D machine visualization with Three.js (colorized toolpath, backplot, HUD overlay)
+- Persistent settings (colors, opacities, layers, workpiece defaults)
+- Responsive dual-panel layout for tablets and desktop
 
 ## Requirements
 
@@ -232,8 +235,12 @@ Full machine status (10 Hz):
     "dtg": [0.0, 0.0, 0.0],
     "feed_override": 1.0,
     "spindle_override": 1.0,
+    "spindle_speed": 1000.0,
+    "spindle_speed_actual": 998.5,
+    "spindle_direction": 1,
     "rapid_override": 1.0,
     "max_velocity": 100.0,
+    "current_vel": 50.0,
     "active_file": "/path/to/file.ngc",
     "motion_line": 42,
     "tool_number": 1,
@@ -323,9 +330,26 @@ Send JSON messages to control the machine:
 ```json
 {"cmd": "jog_cont", "axis": 0, "vel": 100.0}
 {"cmd": "jog_stop", "axis": 0}
+{"cmd": "jog_cont_multi", "axes": [{"axis": 0, "vel": 70.7}, {"axis": 1, "vel": 70.7}]}
+{"cmd": "jog_stop_multi", "axes": [0, 1]}
 ```
 
 **Axis mapping**: 0=X, 1=Y, 2=Z, etc.
+
+#### Homing & Mode
+```json
+{"cmd": "home_all"}
+{"cmd": "unhome_all"}
+{"cmd": "teleop_enable"}
+{"cmd": "teleop_disable"}
+```
+
+#### Spindle Control
+```json
+{"cmd": "spindle_forward", "speed": 1000}
+{"cmd": "spindle_reverse", "speed": 1000}
+{"cmd": "spindle_stop"}
+```
 
 #### Overrides
 ```json

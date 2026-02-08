@@ -152,6 +152,10 @@ const isHomed = computed(() => {
   return !!h;
 });
 
+// Motion/trajectory mode: TRAJ_MODE_FREE=1, TRAJ_MODE_COORD=2, TRAJ_MODE_TELEOP=3
+const motionMode = computed(() => st.value.motion_mode ?? 1);
+const isTeleop = computed(() => motionMode.value === 3);
+
 // LinuxCNC interpreter states: IDLE=1, READING=2, PAUSED=3, WAITING=4
 const interpState = computed(() => st.value.interp_state ?? 1);
 const isPaused = computed(() => interpState.value === 3); // INTERP_PAUSED
@@ -243,7 +247,7 @@ function arm(v: boolean) {
 /** ---------- local UI jog ---------- */
 const jogVel = ref(10);
 
-const canJog = computed(() => armed.value && !isEstop.value && isEnabled.value);
+const canJog = computed(() => armed.value && !isEstop.value && isEnabled.value && isHomed.value);
 
 
 /**
@@ -286,6 +290,10 @@ function homeAll() {
 
 function unhomeAll() {
   fire({ cmd: "unhome_all" });
+}
+
+function toggleTeleop() {
+  fire(isTeleop.value ? { cmd: "teleop_disable" } : { cmd: "teleop_enable" });
 }
 
 function cycleStart() {
@@ -349,6 +357,13 @@ watch(viewerGcode, (newGcode) => {
     gcodeContent.value = newGcode.content;
   } else {
     gcodeContent.value = null;
+  }
+});
+
+/** Auto-switch to teleop after all joints home (standard LinuxCNC UI behavior) */
+watch(isHomed, (nowHomed, wasHomed) => {
+  if (nowHomed && !wasHomed && armed.value) {
+    send({ cmd: "teleop_enable" });
   }
 });
 </script>
@@ -416,7 +431,7 @@ watch(viewerGcode, (newGcode) => {
         </template>
 
         <template #jog>
-          <JogPanel :jogVel="jogVel" :canJog="canJog" @update:jogVel="jogVel = $event" />
+          <JogPanel :jogVel="jogVel" :canJog="canJog" :isTeleop="isTeleop" :isHomed="isHomed" :armed="armed" @update:jogVel="jogVel = $event" @toggleTeleop="toggleTeleop" />
         </template>
 
         <template #mdi>
@@ -495,7 +510,7 @@ watch(viewerGcode, (newGcode) => {
         </template>
 
         <template #jog>
-          <JogPanel :jogVel="jogVel" :canJog="canJog" @update:jogVel="jogVel = $event" />
+          <JogPanel :jogVel="jogVel" :canJog="canJog" :isTeleop="isTeleop" :isHomed="isHomed" :armed="armed" @update:jogVel="jogVel = $event" @toggleTeleop="toggleTeleop" />
         </template>
 
         <template #mdi>
@@ -560,6 +575,12 @@ watch(viewerGcode, (newGcode) => {
               {{ isHomed ? "TRUE" : "FALSE" }}
             </div>
           </div>
+          <div class="statusRow">
+            <div class="k">Motion Mode</div>
+            <div class="v" :class="isTeleop ? 'okText' : ''">
+              {{ isTeleop ? "WORLD (TELEOP)" : (motionMode === 2 ? "COORD" : "JOINT (FREE)") }}
+            </div>
+          </div>
         </div>
 
         <div class="statusGroup">
@@ -584,15 +605,15 @@ watch(viewerGcode, (newGcode) => {
           <div class="groupTitle">Overrides</div>
           <div class="statusRow">
             <div class="k">Feed</div>
-            <div class="v">{{ feedOverride }}</div>
+            <div class="v" :class="{ warn: feedOverrideValue !== 1.0 }">{{ feedOverride }}</div>
           </div>
           <div class="statusRow">
             <div class="k">Spindle</div>
-            <div class="v">{{ spindleOverride }}</div>
+            <div class="v" :class="{ warn: spindleOverrideValue !== 1.0 }">{{ spindleOverride }}</div>
           </div>
           <div class="statusRow">
             <div class="k">Rapid</div>
-            <div class="v">{{ rapidOverride }}</div>
+            <div class="v" :class="{ warn: rapidOverrideValue !== 1.0 }">{{ rapidOverride }}</div>
           </div>
         </div>
       </div>
@@ -828,6 +849,16 @@ watch(viewerGcode, (newGcode) => {
 
 .v {
   font-weight: 650;
+}
+
+.v.warn {
+  color: #f5a623;
+  animation: flash-warn 1.2s ease-in-out infinite;
+}
+
+@keyframes flash-warn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .okText {

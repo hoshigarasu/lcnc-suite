@@ -90,6 +90,7 @@ class StatusPayload:
     task_mode: Optional[int]
     interp_state: Optional[int]
     state: Optional[int]
+    motion_mode: Optional[int]  # TRAJ_MODE_FREE=1, TRAJ_MODE_COORD=2, TRAJ_MODE_TELEOP=3
 
     # offsets and positions
     g5x_index: Optional[int]  # 0=G54, 1=G55, 2=G56, etc.
@@ -484,6 +485,7 @@ def poll_status() -> StatusPayload:
         task_mode=safe_get("task_mode", None),
         interp_state=safe_get("interp_state", None),
         state=safe_get("state", None),
+        motion_mode=safe_get("motion_mode", None),
         g5x_index=g5x_index,
         g5x_offset=g5x,
         g92_offset=g92,
@@ -546,6 +548,15 @@ def reject_if_auto_running() -> Optional[Dict[str, Any]]:
         }
     return None
 
+
+
+def _jog_joint_flag() -> int:
+    """Return the joint_flag for CMD.jog() based on current trajectory mode.
+    0 = Cartesian axis (TRAJ_MODE_TELEOP), 1 = joint (TRAJ_MODE_FREE, safe default)."""
+    STAT.poll()
+    if safe_get("motion_mode", None) == linuxcnc.TRAJ_MODE_TELEOP:
+        return 0
+    return 1
 
 
 def require_armed(armed: bool):
@@ -631,7 +642,8 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             axis = int(msg.get("axis"))
             vel = float(msg.get("vel", 0.0))
             set_mode(linuxcnc.MODE_MANUAL)
-            CMD.jog(linuxcnc.JOG_CONTINUOUS, 0, axis, vel)
+            jf = _jog_joint_flag()
+            CMD.jog(linuxcnc.JOG_CONTINUOUS, jf, axis, vel)
             return {"ok": True}
 
         if cmd == "jog_stop":
@@ -643,7 +655,36 @@ def handle_command(msg: Dict[str, Any], armed: bool):
 
             axis = int(msg.get("axis"))
             set_mode(linuxcnc.MODE_MANUAL)
-            CMD.jog(linuxcnc.JOG_STOP, 0, axis)
+            jf = _jog_joint_flag()
+            CMD.jog(linuxcnc.JOG_STOP, jf, axis)
+            return {"ok": True}
+
+        if cmd == "jog_cont_multi":
+            require_armed(armed)
+
+            blocked = reject_if_auto_running()
+            if blocked:
+                return blocked
+
+            axes = msg.get("axes", [])
+            set_mode(linuxcnc.MODE_MANUAL)
+            jf = _jog_joint_flag()
+            for entry in axes:
+                CMD.jog(linuxcnc.JOG_CONTINUOUS, jf, int(entry["axis"]), float(entry["vel"]))
+            return {"ok": True}
+
+        if cmd == "jog_stop_multi":
+            require_armed(armed)
+
+            blocked = reject_if_auto_running()
+            if blocked:
+                return blocked
+
+            axes = msg.get("axes", [])
+            set_mode(linuxcnc.MODE_MANUAL)
+            jf = _jog_joint_flag()
+            for a in axes:
+                CMD.jog(linuxcnc.JOG_STOP, jf, int(a))
             return {"ok": True}
 
         if cmd == "home_all":
@@ -656,6 +697,20 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             require_armed(armed)
             set_mode(linuxcnc.MODE_MANUAL)
             CMD.unhome(-1)  # -1 unhomes all axes
+            return {"ok": True}
+
+        if cmd == "teleop_enable":
+            require_armed(armed)
+            set_mode(linuxcnc.MODE_MANUAL)
+            CMD.teleop_enable(1)
+            CMD.wait_complete()
+            return {"ok": True}
+
+        if cmd == "teleop_disable":
+            require_armed(armed)
+            set_mode(linuxcnc.MODE_MANUAL)
+            CMD.teleop_enable(0)
+            CMD.wait_complete()
             return {"ok": True}
 
         if cmd == "cycle_start":

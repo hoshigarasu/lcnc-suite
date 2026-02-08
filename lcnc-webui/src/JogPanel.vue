@@ -4,10 +4,14 @@ import JogButton from "./JogButton.vue";
 const props = defineProps<{
   jogVel: number;
   canJog: boolean;
+  isTeleop: boolean;
+  isHomed: boolean;
+  armed: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "update:jogVel", vel: number): void;
+  (e: "toggleTeleop"): void;
 }>();
 
 function onInput(ev: Event) {
@@ -19,6 +23,19 @@ function onInput(ev: Event) {
 <template>
   <div>
     <div class="sub">Jogging</div>
+
+    <div class="modeRow">
+      <button
+        class="modePill"
+        :class="isTeleop ? 'teleop' : 'joint'"
+        :disabled="!armed || !isHomed"
+        @click="emit('toggleTeleop')"
+        :title="isTeleop ? 'Switch to Joint mode' : (isHomed ? 'Switch to World mode' : 'Home all axes first')"
+      >
+        {{ isTeleop ? "World" : "Joint" }}
+      </button>
+      <span class="modeHint" v-if="!isHomed">Home to enable World mode</span>
+    </div>
 
     <div class="btnrow" style="margin-bottom: 10px">
       <div class="k" style="min-width: 90px">Speed</div>
@@ -38,28 +55,28 @@ function onInput(ev: Event) {
     </div>
 
     <div class="joggrid">
-      <!-- XY -->
-      <div></div>
-      <JogButton :axis="1" :dir="1" label="Y+" :vel="jogVel" :disabled="!canJog" />
-      <div></div>
+      <!-- XY with diagonals -->
+      <JogButton :axis="0" :dir="-1" :axis2="1" :dir2="1" label="X-Y+" :vel="jogVel" :disabled="!canJog" direction="up-left" />
+      <JogButton :axis="1" :dir="1" label="Y+" :vel="jogVel" :disabled="!canJog" direction="up" />
+      <JogButton :axis="0" :dir="1" :axis2="1" :dir2="1" label="X+Y+" :vel="jogVel" :disabled="!canJog" direction="up-right" />
 
-      <JogButton :axis="0" :dir="-1" label="X-" :vel="jogVel" :disabled="!canJog" />
+      <JogButton :axis="0" :dir="-1" label="X-" :vel="jogVel" :disabled="!canJog" direction="left" />
       <div class="center">XY</div>
-      <JogButton :axis="0" :dir="1" label="X+" :vel="jogVel" :disabled="!canJog" />
+      <JogButton :axis="0" :dir="1" label="X+" :vel="jogVel" :disabled="!canJog" direction="right" />
 
-      <div></div>
-      <JogButton :axis="1" :dir="-1" label="Y-" :vel="jogVel" :disabled="!canJog" />
-      <div></div>
+      <JogButton :axis="0" :dir="-1" :axis2="1" :dir2="-1" label="X-Y-" :vel="jogVel" :disabled="!canJog" direction="down-left" />
+      <JogButton :axis="1" :dir="-1" label="Y-" :vel="jogVel" :disabled="!canJog" direction="down" />
+      <JogButton :axis="0" :dir="1" :axis2="1" :dir2="-1" label="X+Y-" :vel="jogVel" :disabled="!canJog" direction="down-right" />
 
       <!-- Z -->
       <div class="zcol">
-        <JogButton :axis="2" :dir="1" label="Z+" :vel="jogVel" :disabled="!canJog" />
-        <JogButton :axis="2" :dir="-1" label="Z-" :vel="jogVel" :disabled="!canJog" />
+        <JogButton :axis="2" :dir="1" label="Z+" :vel="jogVel" :disabled="!canJog" direction="up" />
+        <JogButton :axis="2" :dir="-1" label="Z-" :vel="jogVel" :disabled="!canJog" direction="down" />
       </div>
     </div>
 
     <div class="hint">
-      Press and hold to jog. Requires: armed + enabled + not in E-stop.
+      Press and hold to jog. {{ isTeleop ? 'World mode: coordinated Cartesian movement.' : 'Joint mode: individual axis control.' }}
     </div>
   </div>
 </template>
@@ -108,9 +125,9 @@ function onInput(ev: Event) {
 
 .joggrid {
   display: grid;
-  grid-template-columns: 90px 90px 90px;
-  grid-template-rows: 56px 56px 56px;
-  gap: 10px;
+  grid-template-columns: 80px 80px 80px;
+  grid-template-rows: 80px 80px 80px;
+  gap: 6px;
   align-items: center;
   justify-content: start;
 }
@@ -127,25 +144,58 @@ function onInput(ev: Event) {
   grid-row: 1 / span 3;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 20px;
   margin-left: 18px;
+  align-items: center;
 }
 
-.joggrid :deep(button) {
-  padding: 10px 12px;
-  border-radius: 12px;
+.zcol :deep(button) {
+  width: 80px;
+  height: 80px;
+}
+
+.modeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.modePill {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
   border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
   cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--fg);
 }
 
-.joggrid :deep(button:hover) {
-  border-color: #646cff;
+.modePill.teleop {
+  background: color-mix(in oklab, #0a7a0a 15%, var(--panel));
+  border-color: #0a7a0a40;
 }
 
-.joggrid :deep(button:disabled) {
-  opacity: 0.5;
+.modePill.joint {
+  background: color-mix(in oklab, var(--panel) 80%, transparent);
+}
+
+.modePill:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.modePill:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
+
+.modeHint {
+  font-size: 11px;
+  opacity: 0.5;
+}
+
 </style>

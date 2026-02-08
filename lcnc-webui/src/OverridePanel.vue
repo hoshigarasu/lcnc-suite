@@ -83,7 +83,7 @@ function resetAll() {
       <div class="overrideRow">
         <div class="overrideLabel">
           <span>Feed Override</span>
-          <span class="overrideValue">{{ feedSlider }}%</span>
+          <span class="overrideValue" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
         </div>
         <input
           type="range"
@@ -110,7 +110,7 @@ function resetAll() {
       <div class="overrideRow">
         <div class="overrideLabel">
           <span>Spindle Override</span>
-          <span class="overrideValue">{{ spindleSlider }}%</span>
+          <span class="overrideValue" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
         </div>
         <input
           type="range"
@@ -137,7 +137,7 @@ function resetAll() {
       <div class="overrideRow">
         <div class="overrideLabel">
           <span>Rapid Override</span>
-          <span class="overrideValue">{{ rapidSlider }}%</span>
+          <span class="overrideValue" :class="{ warn: rapidSlider !== 100 }">{{ rapidSlider }}%</span>
         </div>
         <input
           type="range"
@@ -196,6 +196,16 @@ function resetAll() {
   font-size: 14px;
   font-weight: 600;
   color: var(--fg);
+}
+
+.overrideValue.warn {
+  color: #f5a623;
+  animation: flash-warn 1.2s ease-in-out infinite;
+}
+
+@keyframes flash-warn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .slider {

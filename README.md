@@ -405,22 +405,49 @@ The gateway implements three layers of safety to handle connection loss during m
 
 **Layer 2 — Heartbeat Watchdog**: The client sends `{"cmd": "heartbeat"}` every 1 second. If the gateway doesn't receive a heartbeat from an armed client within 3 seconds (e.g., browser freeze, WiFi stall), it stops all motion and disarms the connection. The client receives an error message: `"Heartbeat timeout — disarmed for safety"`.
 
-**Layer 3 — HAL Watchdog**: The gateway spawns a `hal_watchdog.py` subprocess that creates a `webui-safety` HAL component with two pins:
+**Layer 3 — HAL Watchdog**: A standalone `hal_watchdog.py` component is loaded by LinuxCNC via the HAL config (not spawned by the gateway). It creates two HAL pins and listens on a Unix socket (`/tmp/webui-safety.sock`). The gateway connects to this socket as a client and sends pin updates.
 
 | Pin | Type | Description |
 |---|---|---|
-| `webui-safety.heartbeat` | BIT OUT | Toggles at 10 Hz while armed clients are connected |
+| `webui-safety.heartbeat` | BIT OUT | Toggles with each gateway heartbeat cycle |
 | `webui-safety.connected` | BIT OUT | True when at least one armed client is connected |
 
-If the gateway process crashes, the subprocess exits (stdin EOF), the HAL component is destroyed, and the heartbeat pin stops toggling. Wire this to a HAL `watchdog` component to trip your estop chain:
+Because the watchdog is owned by LinuxCNC, the HAL pins survive gateway restarts. If the gateway crashes or disconnects, the watchdog immediately forces both pins LOW, triggering e-stop through the safety chain.
+
+#### Setting Up the HAL Watchdog
+
+Add the following to your **POSTGUI_HALFILE** (runs after your main HAL config):
 
 ```hal
-loadrt watchdog num_inputs=1
-addf watchdog.process servo-thread
-addf watchdog.set-timeouts servo-thread
-setp watchdog.timeout-0 1.0
-net webui-wd webui-safety.heartbeat => watchdog.input-0
-net webui-wd-ok watchdog.ok-out => [your-estop-chain-input]
+# 1. Load the watchdog component (owned by LinuxCNC)
+loadusr -Wn webui-safety /path/to/lcnc-suite/lcnc-gateway/hal_watchdog.py
+
+# 2. Create an AND gate for the e-stop chain
+loadrt and2 count=1
+addf and2.0 servo-thread
+
+# 3. Break the existing e-stop loopback (adapt to your config)
+#    For sim configs this is typically:
+#      net estop-loop iocontrol.0.user-enable-out iocontrol.0.emc-enable-in
+unlinkp iocontrol.0.emc-enable-in
+
+# 4. Wire the AND gate: both conditions must be TRUE to leave e-stop
+#    - Input 0: User has not pressed e-stop
+#    - Input 1: An armed web client is connected
+net estop-loop                    => and2.0.in0
+net webui-connected webui-safety.connected => and2.0.in1
+net estop-out and2.0.out          => iocontrol.0.emc-enable-in
+```
+
+**Notes for non-sim configs**: The `unlinkp` line must match whatever pin currently drives `iocontrol.0.emc-enable-in` in your setup. Check your existing HAL files to identify the current e-stop topology before inserting the AND gate.
+
+**Startup order does not matter**: The gateway and LinuxCNC can start in any order. The gateway retries the watchdog socket connection automatically, and the watchdog defaults both pins to FALSE until the gateway connects and reports an armed client.
+
+**Monitoring**: Use `halcmd` to inspect the safety pins at runtime:
+```bash
+halcmd show pin webui-safety
+halcmd show sig webui-connected
+halcmd show sig estop-out
 ```
 
 ## Building Your Own UI
@@ -507,7 +534,7 @@ Adjust `POLL_HZ` in `gateway.py` (default: 10 Hz).
 lcnc-suite/
 ├── lcnc-gateway/          # Backend WebSocket gateway
 │   ├── gateway.py         # FastAPI application
-│   ├── hal_watchdog.py    # HAL safety subprocess
+│   ├── hal_watchdog.py    # HAL safety component (loaded by LinuxCNC)
 │   ├── requirements.txt   # Python dependencies
 │   ├── setup-venv.sh      # Virtual environment setup
 │   └── machine/           # STL machine models (Git LFS)
@@ -518,7 +545,8 @@ lcnc-suite/
 │   │   ├── ThreeViewer.vue
 │   │   └── ...
 │   └── package.json
-├── restart.sh             # Production launcher
+├── restart.sh             # Start/restart gateway + web UI
+├── kill.sh                # Stop gateway + web UI
 ├── runlogs/               # Application logs
 └── README.md
 ```

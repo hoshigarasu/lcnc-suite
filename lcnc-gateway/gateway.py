@@ -28,60 +28,60 @@ _lcnc_pid: Optional[int] = None  # tracks linuxcncsvr PID
 _clients: Dict[int, Dict[str, Any]] = {}
 _next_client_id = 0
 
-# ---- HAL watchdog subprocess ----
+# ---- HAL watchdog socket client ----
+# The watchdog is loaded by LinuxCNC HAL config (loadusr -W hal_watchdog.py).
+# Gateway connects to its Unix socket to send heartbeat/connected updates.
 import sys
-import select
+import signal
+import socket as _socket
 
-_hal_proc: Optional[subprocess.Popen] = None
+
+_HAL_SOCK_PATH = "/tmp/webui-safety.sock"
+_hal_sock: Optional[_socket.socket] = None
 _hal_last_hb = False
 
-def _start_hal_watchdog():
-    """Spawn hal_watchdog.py subprocess. Non-fatal if it fails."""
-    global _hal_proc
-    _stop_hal_watchdog()
+def _hal_connect():
+    """Connect to the HAL watchdog Unix socket. Non-fatal if unavailable."""
+    global _hal_sock
+    if _hal_sock is not None:
+        return  # already connected
     try:
-        script = os.path.join(os.path.dirname(__file__), "hal_watchdog.py")
-        _hal_proc = subprocess.Popen(
-            [sys.executable, script],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        ready, _, _ = select.select([_hal_proc.stdout], [], [], 3.0)
-        if ready:
-            line = _hal_proc.stdout.readline().strip()
-            if line == "OK":
-                print(f"HAL watchdog subprocess started (PID {_hal_proc.pid})")
-                return
-        _stop_hal_watchdog()
-        print("HAL watchdog subprocess failed to report ready")
-    except Exception as e:
-        print(f"HAL watchdog start failed (non-fatal): {e}")
-        _hal_proc = None
+        _hal_sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+        _hal_sock.connect(_HAL_SOCK_PATH)
+        print("Connected to HAL watchdog socket")
+    except Exception:
+        _hal_sock = None
 
-def _stop_hal_watchdog():
-    """Kill the HAL watchdog subprocess if running."""
-    global _hal_proc
-    if _hal_proc is not None:
+def _hal_disconnect():
+    """Disconnect from the HAL watchdog socket."""
+    global _hal_sock
+    if _hal_sock is not None:
         try:
-            _hal_proc.stdin.close()
-            _hal_proc.wait(timeout=2)
-        except Exception:
-            try:
-                _hal_proc.kill()
-            except Exception:
-                pass
-        _hal_proc = None
-
-def _hal_send(msg: dict):
-    """Send a pin-update message to the HAL subprocess."""
-    if _hal_proc is not None and _hal_proc.poll() is None:
-        try:
-            _hal_proc.stdin.write(json.dumps(msg) + "\n")
-            _hal_proc.stdin.flush()
+            _hal_sock.close()
         except Exception:
             pass
+        _hal_sock = None
+
+def _shutdown_signal_handler(signum, frame):
+    """Handle SIGTERM/SIGINT: disconnect from HAL watchdog before exit."""
+    print(f"Gateway received signal {signum}", flush=True)
+    _hal_disconnect()
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+signal.signal(signal.SIGTERM, _shutdown_signal_handler)
+signal.signal(signal.SIGINT, _shutdown_signal_handler)
+
+def _hal_send(msg: dict):
+    """Send a pin-update message to the HAL watchdog via socket."""
+    global _hal_sock
+    if _hal_sock is None:
+        _hal_connect()
+    if _hal_sock is not None:
+        try:
+            _hal_sock.sendall((json.dumps(msg) + "\n").encode())
+        except Exception:
+            _hal_sock = None  # will reconnect on next send
 
 
 def _get_lcnc_pid() -> Optional[int]:
@@ -98,11 +98,39 @@ def _get_lcnc_pid() -> Optional[int]:
     return None
 
 
+def _nml_connectable() -> bool:
+    """Test NML connectivity in a disposable subprocess.
+    Prevents the main process from touching stale/unready NML."""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "import linuxcnc; s=linuxcnc.stat(); s.poll(); print('OK')"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return result.returncode == 0 and "OK" in result.stdout
+    except Exception:
+        return False
+
+
+# ---- NML poisoning detection ----
+_reconnect_fails = 0
+_NML_POISON_THRESHOLD = 5  # consecutive probe-pass + main-fail = poisoned
+
+
+def _self_restart():
+    """Replace the current process with a fresh one. Last resort for NML poisoning."""
+    print("NML POISONED: self-restarting gateway process", flush=True)
+    _hal_disconnect()
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 def try_connect_lcnc() -> bool:
     """Attempt to connect to LinuxCNC. Returns True on success."""
     global STAT, CMD, ERR, lcnc_connected, _lcnc_pid, _nc_files_dir, _max_jog_velocity
     _nc_files_dir = None        # re-resolve on reconnect
     _max_jog_velocity = None    # re-read from INI on reconnect
+    if not _nml_connectable():
+        return False
     try:
         STAT = linuxcnc.stat()
         CMD = linuxcnc.command()
@@ -111,7 +139,8 @@ def try_connect_lcnc() -> bool:
         lcnc_connected = True
         _lcnc_pid = _get_lcnc_pid()
         return True
-    except Exception:
+    except Exception as e:
+        print(f"try_connect_lcnc failed: {e}")
         STAT = CMD = ERR = None
         lcnc_connected = False
         _lcnc_pid = None
@@ -124,13 +153,6 @@ def check_lcnc_instance() -> bool:
     pid = _get_lcnc_pid()
     if pid == _lcnc_pid:
         if pid is None and lcnc_connected:
-            # pgrep returned None — but verify NML is actually dead
-            try:
-                if STAT is not None:
-                    STAT.poll()
-                    return False  # NML still works, LinuxCNC is fine
-            except Exception:
-                pass
             lcnc_connected = False
             return True
         return False
@@ -138,14 +160,15 @@ def check_lcnc_instance() -> bool:
     _lcnc_pid = pid
     if pid is None:
         lcnc_connected = False
-        _stop_hal_watchdog()
+        _hal_disconnect()
     return True
 
 
 # Best-effort connection at startup (gateway still runs if LinuxCNC isn't up yet)
-try_connect_lcnc()
-if lcnc_connected:
-    _start_hal_watchdog()
+if _get_lcnc_pid() is not None:
+    try_connect_lcnc()
+    if lcnc_connected:
+        _hal_connect()
 
 
 # ---- NC files directory ----
@@ -672,11 +695,14 @@ def read_errors_nonblocking() -> list:
     if ERR is None:
         return []
     out = []
-    while True:
-        e = ERR.poll()
-        if not e:
-            break
-        out.append(e)
+    try:
+        while True:
+            e = ERR.poll()
+            if not e:
+                break
+            out.append(e)
+    except Exception:
+        pass  # Error buffer may be briefly invalid after reconnect
     return out
 
 
@@ -1333,24 +1359,55 @@ async def ws_endpoint(ws: WebSocket):
 
     async def status_loop():
         nonlocal last_file, armed
+        global lcnc_connected, STAT, CMD, ERR, _hal_last_hb, _reconnect_fails
         while True:
             try:
+                # If not connected to LinuxCNC, try to reconnect
+                if not lcnc_connected:
+                    pid = _get_lcnc_pid()
+                    if pid is not None and try_connect_lcnc():
+                        _reconnect_fails = 0
+                        _hal_connect()
+                        try:
+                            await ws_send_json(ws, {"type": "viewer_init", "data": build_viewer_init(stl_base_url)})
+                        except Exception:
+                            pass
+                        last_file = None
+                    else:
+                        if pid is not None:
+                            _reconnect_fails += 1
+                            if _reconnect_fails >= _NML_POISON_THRESHOLD:
+                                print(f"NML reconnect failed {_reconnect_fails} times with linuxcncsvr alive — restarting gateway")
+                                _self_restart()
+                        else:
+                            _reconnect_fails = 0
+                        try:
+                            await ws_send_json(ws, {
+                                "type": "status_error",
+                                "error": "LinuxCNC not connected",
+                                "clients": [{"ip": c["ip"], "armed": c["armed"]} for c in _clients.values()],
+                            })
+                        except Exception:
+                            break
+                        await asyncio.sleep(2.0)
+                        continue
+
                 # Process-level detection: check if linuxcncsvr PID changed
                 if check_lcnc_instance():
                     if _lcnc_pid is not None:
                         # New instance detected — reconnect
                         if try_connect_lcnc():
-                            _start_hal_watchdog()
+                            _reconnect_fails = 0
+                            _hal_connect()
                         try:
                             await ws_send_json(ws, {"type": "viewer_init", "data": build_viewer_init(stl_base_url)})
                         except Exception:
                             pass
                         last_file = None  # force re-send of gcode
                     else:
-                        # Process gone — null handles and raise
-                        global STAT, CMD, ERR
+                        # Process gone — null handles, let top-of-loop handle reconnection
                         STAT = CMD = ERR = None
-                        raise RuntimeError("LinuxCNC process exited")
+                        continue
 
                 st = poll_status()
                 errs = read_errors_nonblocking()
@@ -1365,7 +1422,6 @@ async def ws_endpoint(ws: WebSocket):
                 )
 
                 # HAL watchdog: send pin updates to subprocess
-                global _hal_last_hb
                 has_armed = any(c["armed"] for c in _clients.values())
                 _hal_last_hb = not _hal_last_hb
                 _hal_send({"heartbeat": _hal_last_hb, "connected": has_armed})
@@ -1435,20 +1491,16 @@ async def ws_endpoint(ws: WebSocket):
 
                 await asyncio.sleep(1.0 / POLL_HZ)
             except Exception as e:
-                global lcnc_connected
                 lcnc_connected = False
+                STAT = CMD = ERR = None
                 try:
-                    await ws_send_json(ws, {"type": "status_error", "error": f"{type(e).__name__}: {e}"})
+                    await ws_send_json(ws, {
+                        "type": "status_error",
+                        "error": f"{type(e).__name__}: {e}",
+                        "clients": [{"ip": c["ip"], "armed": c["armed"]} for c in _clients.values()],
+                    })
                 except Exception:
                     break  # WebSocket is dead — exit loop cleanly
-                # Try to reconnect to LinuxCNC
-                if try_connect_lcnc():
-                    _start_hal_watchdog()
-                    try:
-                        await ws_send_json(ws, {"type": "viewer_init", "data": build_viewer_init(stl_base_url)})
-                    except Exception:
-                        break
-                    last_file = None  # force re-send of gcode on reconnect
                 await asyncio.sleep(2.0)
 
     status_task = asyncio.create_task(status_loop())

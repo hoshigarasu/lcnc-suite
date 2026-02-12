@@ -38,6 +38,7 @@ export function connectWs() {
   ws.onclose = () => {
     connected.value = false;
     if (_heartbeatInterval) { clearInterval(_heartbeatInterval); _heartbeatInterval = null; }
+    setTimeout(() => connectWs(), 2000);
   };
 
   let _pendingStatus: any = null;
@@ -73,6 +74,9 @@ export function connectWs() {
       }
     } else if (msg.type === "status_error") {
       lcncError.value = msg.error;
+      if (msg.clients != null) {
+        status.value = { ...(status.value ?? {}), clients: msg.clients };
+      }
     } else if (msg.type === "reply") {
       lastReply.value = msg;
       if (msg.ok === false && msg.error) {

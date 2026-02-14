@@ -1514,11 +1514,16 @@ async def ws_endpoint(ws: WebSocket):
                         _clients[client_id]["armed"] = False
                         try:
                             if bool(safe_get("enabled", False)):
-                                set_mode(linuxcnc.MODE_MANUAL)
-                                jf = _jog_joint_flag()
-                                for ax in range(3):
-                                    CMD.jog(linuxcnc.JOG_STOP, jf, ax)
-                                CMD.abort()
+                                mode = safe_get("task_mode", None)
+                                interp = safe_get("interp_state", None)
+                                if mode == linuxcnc.MODE_AUTO and interp != linuxcnc.INTERP_IDLE:
+                                    CMD.abort()
+                                else:
+                                    set_mode(linuxcnc.MODE_MANUAL)
+                                    jf = _jog_joint_flag()
+                                    for ax in range(3):
+                                        CMD.jog(linuxcnc.JOG_STOP, jf, ax)
+                                    CMD.abort()
                         except Exception:
                             pass
                         try:
@@ -1576,11 +1581,16 @@ async def ws_endpoint(ws: WebSocket):
             try:
                 STAT.poll()
                 if bool(safe_get("enabled", False)):
-                    set_mode(linuxcnc.MODE_MANUAL)
-                    jf = _jog_joint_flag()
-                    for ax in range(3):
-                        CMD.jog(linuxcnc.JOG_STOP, jf, ax)
-                    CMD.abort()
+                    mode = safe_get("task_mode", None)
+                    interp = safe_get("interp_state", None)
+                    if mode == linuxcnc.MODE_AUTO and interp != linuxcnc.INTERP_IDLE:
+                        CMD.abort()
+                    else:
+                        set_mode(linuxcnc.MODE_MANUAL)
+                        jf = _jog_joint_flag()
+                        for ax in range(3):
+                            CMD.jog(linuxcnc.JOG_STOP, jf, ax)
+                        CMD.abort()
             except Exception:
                 pass
         status_task.cancel()

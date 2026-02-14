@@ -117,6 +117,8 @@ const props = defineProps<{
   workpieceSize: Vec3;
   workpieceOffset: Vec3;
   layerDefaults?: Record<Layer, boolean>;
+  trackingDefault?: "none" | "tool" | "workpiece";
+  pathOnTopDefault?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -129,10 +131,10 @@ const emit = defineEmits<{
   (e: "setTrackMode", mode: string): void;
 }>();
 
-const pathOnTop = ref(true);
+const pathOnTop = ref(props.pathOnTopDefault ?? true);
 
 type TrackMode = "none" | "tool" | "workpiece";
-const trackMode = ref<TrackMode>("none");
+const trackMode = ref<TrackMode>(props.trackingDefault ?? "none");
 
 function setTrack(mode: TrackMode) {
   trackMode.value = mode;

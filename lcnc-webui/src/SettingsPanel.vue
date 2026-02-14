@@ -25,12 +25,16 @@ interface OpacityDefaults {
   hud: number;
 }
 
+type TrackMode = "none" | "tool" | "workpiece";
+
 interface Defaults {
   workpieceSize: Vec3;
   workpieceOffset: Vec3;
   layers: Record<Layer, boolean>;
   colors: ColorDefaults;
   opacities: OpacityDefaults;
+  trackingMode: TrackMode;
+  pathOnTop: boolean;
 }
 
 const fallback: Defaults = {
@@ -39,6 +43,8 @@ const fallback: Defaults = {
   layers: { backplot: true, toolpath: true, machine: true, workpiece: true, bounds: true, workzero: true, hud: true },
   colors: { feed: "#22b8cf", rapid: "#f5a623", backplot: "#ff00ff", bounds: "#ffffff", workpiece: "#ffffff", tool: "#ffdd00" },
   opacities: { workpiece: 0.16, bounds: 0.10, machine: 1.0, toolpath: 1.0, backplot: 0.55, hud: 1.0 },
+  trackingMode: "none",
+  pathOnTop: true,
 };
 
 function load(): Defaults {
@@ -52,6 +58,8 @@ function load(): Defaults {
         layers: { ...fallback.layers, ...parsed.layers },
         colors: { ...fallback.colors, ...parsed.colors },
         opacities: { ...fallback.opacities, ...parsed.opacities },
+        trackingMode: parsed.trackingMode ?? fallback.trackingMode,
+        pathOnTop: parsed.pathOnTop ?? fallback.pathOnTop,
       };
     }
   } catch { /* ignore */ }
@@ -65,6 +73,8 @@ function save() {
     layers: { ...layers },
     colors: { ...colors },
     opacities: { ...opacities },
+    trackingMode: trackingMode.value,
+    pathOnTop: pathOnTop.value,
   }));
 }
 
@@ -74,6 +84,8 @@ const wpOffset = reactive<Vec3>([...saved.workpieceOffset] as Vec3);
 const layers = reactive<Record<Layer, boolean>>({ ...saved.layers });
 const colors = reactive<ColorDefaults>({ ...saved.colors });
 const opacities = reactive<OpacityDefaults>({ ...saved.opacities });
+const trackingMode = ref<TrackMode>(saved.trackingMode);
+const pathOnTop = ref(saved.pathOnTop);
 
 const subTabs = [
   { id: "viewer", label: "3D Viewer" },
@@ -205,6 +217,28 @@ const opacityFields: { key: keyof OpacityDefaults; label: string }[] = [
             </div>
           </div>
         </div>
+        <div class="section">
+          <div class="sectionTitle">Viewer Behavior</div>
+          <div class="fieldGroup">
+            <div class="inputRow">
+              <label class="inputLabel">Tracking</label>
+              <div class="btnGroup">
+                <button
+                  v-for="m in (['none', 'tool', 'workpiece'] as TrackMode[])"
+                  :key="m"
+                  class="optBtn"
+                  :class="{ active: trackingMode === m }"
+                  @click="trackingMode = m; save()"
+                >{{ m.charAt(0).toUpperCase() + m.slice(1) }}</button>
+              </div>
+            </div>
+            <label class="checkRow">
+              <input type="checkbox" v-model="pathOnTop" @change="save()" />
+              Toolpath always on top
+            </label>
+          </div>
+        </div>
+
         </div>
       </template>
 
@@ -394,6 +428,45 @@ const opacityFields: { key: keyof OpacityDefaults; label: string }[] = [
   opacity: 0.6;
   min-width: 32px;
   text-align: right;
+}
+
+.btnGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.optBtn {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--button-bg);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.optBtn:hover {
+  background: color-mix(in oklab, var(--fg) 10%, var(--button-bg));
+}
+
+.optBtn.active {
+  background: color-mix(in oklab, var(--fg) 15%, var(--button-bg));
+  font-weight: 600;
+  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkRow input[type="checkbox"] {
+  cursor: pointer;
 }
 
 .placeholder {

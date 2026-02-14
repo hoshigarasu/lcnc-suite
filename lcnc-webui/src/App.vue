@@ -24,6 +24,8 @@ function loadDefaults() {
     layers: { backplot: true, toolpath: true, machine: true, workpiece: true, bounds: true, workzero: true, hud: true } as Record<Layer, boolean>,
     colors: { feed: "#22b8cf", rapid: "#f5a623", backplot: "#ff00ff", bounds: "#ffffff", workpiece: "#ffffff", tool: "#ffdd00" },
     opacities: { workpiece: 0.16, bounds: 0.10, machine: 1.0, toolpath: 1.0, backplot: 0.55, hud: 1.0 },
+    trackingMode: "none" as "none" | "tool" | "workpiece",
+    pathOnTop: true,
   };
   try {
     const raw = localStorage.getItem("lcnc-defaults");
@@ -35,6 +37,8 @@ function loadDefaults() {
         layers: { ...fallback.layers, ...parsed.layers } as Record<Layer, boolean>,
         colors: { ...fallback.colors, ...parsed.colors },
         opacities: { ...fallback.opacities, ...parsed.opacities },
+        trackingMode: (parsed.trackingMode ?? fallback.trackingMode) as "none" | "tool" | "workpiece",
+        pathOnTop: parsed.pathOnTop ?? fallback.pathOnTop,
       };
     }
   } catch { /* ignore */ }
@@ -529,13 +533,17 @@ onMounted(() => {
   window.addEventListener("keyup", onKeyUp);
   document.addEventListener("visibilitychange", visHandler);
 
-  // Apply saved layer defaults after viewers are mounted
+  // Apply saved defaults after viewers are mounted
   nextTick(() => {
     for (const layer of ALL_LAYERS) {
       const on = defaults.layers[layer];
       for (const viewer of viewerRefs.values()) {
         viewer?.setLayerVisible?.(layer, on);
       }
+    }
+    for (const viewer of viewerRefs.values()) {
+      viewer?.setTrackingMode?.(defaults.trackingMode);
+      viewer?.setPathAlwaysOnTop?.(defaults.pathOnTop);
     }
   });
 });
@@ -698,6 +706,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
               @setPathOnTop="(on: boolean) => viewerRefs.get(panel.id)?.setPathAlwaysOnTop?.(on)"
               @setTrackMode="(m: string) => viewerRefs.get(panel.id)?.setTrackingMode?.(m)"
               :layerDefaults="defaults.layers"
+              :trackingDefault="defaults.trackingMode"
+              :pathOnTopDefault="defaults.pathOnTop"
               :workpieceSize="workpieceSize"
               :workpieceOffset="workpieceOffset"
               @update:workpieceSize="workpieceSize = $event"

@@ -189,6 +189,9 @@ let toolpathVisible = true;
 // ---- Camera tracking ----
 let trackingMode: "none" | "tool" | "workpiece" = "none";
 
+// ---- Path rendering ----
+let pathAlwaysOnTop = true; // default; overridden by setPathAlwaysOnTop()
+
 // ---- Backplot (live toolpath history) ----
 let backplotLine: THREE.Line | null = null;
 let backplotGeom: THREE.BufferGeometry | null = null;
@@ -297,6 +300,7 @@ function setLayerVisible(layer: Layer, on: boolean) {
 }
 
 function setPathAlwaysOnTop(on: boolean) {
+  pathAlwaysOnTop = on;
   const dt = !on; // depthTest: false = always on top
 
   if (backplotLine) {
@@ -435,12 +439,12 @@ function makeLine(points: number[][], colorHex: number | string, dashed = false,
       transparent: opacity < 1,
       opacity,
     });
-    mat.depthTest = true;
-    mat.depthWrite = opacity >= 1;
+    mat.depthTest = !pathAlwaysOnTop;
+    mat.depthWrite = !pathAlwaysOnTop && opacity >= 1;
   } else {
     mat = new THREE.LineBasicMaterial({ color: colorHex, transparent: opacity < 1, opacity });
-    mat.depthTest = false;
-    mat.depthWrite = false;
+    mat.depthTest = !pathAlwaysOnTop;
+    mat.depthWrite = !pathAlwaysOnTop;
   }
 
   const line = new THREE.Line(geom, mat);
@@ -503,7 +507,7 @@ function ensureCoreGroups() {
     color: bpColor,
     transparent: true,
     opacity: bpOpacity,
-    depthTest: false,
+    depthTest: !pathAlwaysOnTop,
     depthWrite: false,
   });
 
@@ -861,6 +865,14 @@ function applyGcode(g: ViewerGcode) {
     highlightMarker.visible = false;
     workOrigin.add(highlightMarker);
   }
+
+  // Apply stored toolpath visibility (may have been set before lines existed)
+  if (!toolpathVisible) {
+    if (feedLine) feedLine.visible = false;
+    if (rapidLine) rapidLine.visible = false;
+    if (highlightLine) highlightLine.visible = false;
+    if (highlightMarker) highlightMarker.visible = false;
+  }
 }
 
 // ---------- lifecycle ----------
@@ -895,7 +907,9 @@ function animate() {
     toolMarker.getWorldPosition(tmp);
     controls.target.copy(tmp);
   } else if (trackingMode === "workpiece" && workOrigin && controls) {
-    controls.target.set(0, 0, 0);
+    const tmp = new THREE.Vector3();
+    workOrigin.getWorldPosition(tmp);
+    controls.target.copy(tmp);
   }
 
   controls?.update();

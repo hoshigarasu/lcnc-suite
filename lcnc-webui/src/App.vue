@@ -290,6 +290,9 @@ const rapidOverrideValue = computed(() => {
   const val = st.value.rapid_override;
   return (val != null && Number.isFinite(val)) ? val : 1.0;
 });
+const overridesActive = computed(() =>
+  feedOverrideValue.value !== 1.0 || spindleOverrideValue.value !== 1.0 || rapidOverrideValue.value !== 1.0
+);
 
 
 // Active modal codes
@@ -583,6 +586,88 @@ watch(isHomed, (nowHomed, wasHomed) => {
       </div>
     </header>
 
+    <!-- Body: sidebar (safety+status) + main content -->
+    <div class="bodyLayout">
+
+    <!-- Machine Safety + Status -->
+    <div class="topRow">
+    <section class="card">
+      <div class="sub">Machine Safety</div>
+      <div class="btnrow">
+        <button class="btn safetyBtn" :class="{ danger: armed }" @click="arm(!armed)" :disabled="busy">
+          <span class="safetyIcon">{{ armed ? "\u{1F513}" : "\u{1F512}" }}</span>
+          <span class="safetyLabel">{{ armed ? "Disarm" : "Arm" }}</span>
+        </button>
+
+        <div class="sep"></div>
+
+        <button
+          class="btn safetyBtn"
+          :class="isEstop ? '' : 'danger'"
+          @click="fire({ cmd: isEstop ? 'estop_reset' : 'estop' })"
+          :disabled="!(isEstop ? canResetEstop : canEstop) || busy"
+        >
+          <span class="safetyIcon">&#x26A0;</span>
+          <span class="safetyLabel">{{ isEstop ? "Reset E-Stop" : "E-Stop" }}</span>
+        </button>
+
+        <div class="sep"></div>
+
+        <button
+          class="btn safetyBtn"
+          :class="{ danger: isEnabled }"
+          @click="fire({ cmd: isEnabled ? 'machine_off' : 'machine_on' })"
+          :disabled="!(isEnabled ? canMachineOff : canMachineOn) || busy"
+        >
+          <span class="safetyIcon">&#x23FB;</span>
+          <span class="safetyLabel">{{ isEnabled ? "Machine Off" : "Machine On" }}</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="card topStatus">
+      <div class="sub">Machine Status</div>
+
+      <div class="compactStatus">
+        <div class="statusChip" :class="isEstop ? 'bad' : (isEnabled && isHomed ? 'ok' : '')">
+          <span class="chipLabel">Machine</span>
+          <span class="chipValue">{{ isEstop ? 'E-STOP' : (!isEnabled ? 'OFF' : (!isHomed ? 'NOT HOMED' : 'READY')) }}</span>
+          <div class="chipPopover">
+            <div class="statusRow"><div class="k">E-Stop</div><div class="v" :class="isEstop ? 'badText' : 'okText'">{{ isEstop ? 'TRUE' : 'FALSE' }}</div></div>
+            <div class="statusRow"><div class="k">Enabled</div><div class="v" :class="isEnabled ? 'okText' : 'mutedText'">{{ isEnabled ? 'TRUE' : 'FALSE' }}</div></div>
+            <div class="statusRow"><div class="k">Homed</div><div class="v" :class="isHomed ? 'okText' : 'badText'">{{ isHomed ? 'TRUE' : 'FALSE' }}</div></div>
+            <div class="statusRow"><div class="k">Motion</div><div class="v">{{ isTeleop ? 'WORLD' : 'JOINT' }}</div></div>
+          </div>
+        </div>
+
+        <div class="statusChip" :class="isRunning ? 'ok' : (isPaused ? 'warn' : '')">
+          <span class="chipLabel">Program</span>
+          <span class="chipValue">{{ isRunning ? 'RUNNING' : (isPaused ? 'PAUSED' : 'IDLE') }}</span>
+          <div class="chipPopover">
+            <div class="statusRow"><div class="k">Task Mode</div><div class="v">{{ taskModeLabel }}</div></div>
+            <div class="statusRow"><div class="k">Interpreter</div><div class="v">{{ interpStateLabel }}</div></div>
+            <div class="statusRow"><div class="k">Work Coord</div><div class="v">{{ g5xLabel }}</div></div>
+            <div class="statusRow"><div class="k">G-codes</div><div class="v codes">{{ activeGcodes }}</div></div>
+            <div class="statusRow"><div class="k">M-codes</div><div class="v codes">{{ activeMcodes }}</div></div>
+          </div>
+        </div>
+
+        <div class="statusChip" :class="{ warn: overridesActive }">
+          <span class="chipLabel">Overrides</span>
+          <span class="chipValue">{{ overridesActive ? 'ACTIVE' : 'DEFAULT' }}</span>
+          <div class="chipPopover">
+            <div class="statusRow"><div class="k">Feed</div><div class="v" :class="{ warn: feedOverrideValue !== 1.0 }">{{ feedOverride }}</div></div>
+            <div class="statusRow"><div class="k">Spindle</div><div class="v" :class="{ warn: spindleOverrideValue !== 1.0 }">{{ spindleOverride }}</div></div>
+            <div class="statusRow"><div class="k">Rapid</div><div class="v" :class="{ warn: rapidOverrideValue !== 1.0 }">{{ rapidOverride }}</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    </div>
+
+    <!-- Main content column -->
+    <div class="mainCol">
+
     <!-- Dynamic tab panels (1–4) -->
     <div class="panels">
       <div v-for="(panel, idx) in panels" :key="panel.id" class="panel"
@@ -718,149 +803,27 @@ watch(isHomed, (nowHomed, wasHomed) => {
       >+</button>
     </div>
 
-    <!-- Pinned cards below -->
     <section class="card">
-      <div class="sub">Machine Status</div>
+      <div class="sub">Program Control</div>
 
-      <div class="statusGroups">
-        <div class="statusGroup">
-          <div class="groupTitle">Machine State</div>
-          <div class="statusRow">
-            <div class="k">E-Stop</div>
-            <div class="v" :class="isEstop ? 'badText' : 'okText'">
-              {{ isEstop ? "TRUE" : "FALSE" }}
-            </div>
-          </div>
-          <div class="statusRow">
-            <div class="k">Enabled</div>
-            <div class="v" :class="isEnabled ? 'okText' : 'mutedText'">
-              {{ isEnabled ? "TRUE" : "FALSE" }}
-            </div>
-          </div>
-          <div class="statusRow">
-            <div class="k">Homed</div>
-            <div class="v" :class="isHomed ? 'okText' : 'badText'">
-              {{ isHomed ? "TRUE" : "FALSE" }}
-            </div>
-          </div>
-          <div class="statusRow">
-            <div class="k">Motion Mode</div>
-            <div class="v" :class="isTeleop ? 'okText' : ''">
-              {{ isTeleop ? "WORLD (TELEOP)" : (motionMode === 2 ? "COORD" : "JOINT (FREE)") }}
-            </div>
-          </div>
-        </div>
+      <div class="btnrow">
+        <button class="btn primary" @click="cycleStart" :disabled="!canCycleStart || busy">
+          Cycle Start
+        </button>
 
-        <div class="statusGroup">
-          <div class="groupTitle">Program State</div>
-          <div class="statusRow">
-            <div class="k">Task Mode</div>
-            <div class="v">{{ taskModeLabel }}</div>
-          </div>
-          <div class="statusRow">
-            <div class="k">Interpreter</div>
-            <div class="v" :class="isRunning ? 'okText' : (isPaused ? 'warnText' : '')">
-              {{ interpStateLabel }}
-            </div>
-          </div>
-          <div class="statusRow">
-            <div class="k">Work Coord</div>
-            <div class="v">{{ g5xLabel }}</div>
-          </div>
-          <div class="statusRow">
-            <div class="k">G-codes</div>
-            <div class="v codes">{{ activeGcodes }}</div>
-          </div>
-          <div class="statusRow">
-            <div class="k">M-codes</div>
-            <div class="v codes">{{ activeMcodes }}</div>
-          </div>
-        </div>
+        <button class="btn" @click="cyclePause" :disabled="!canCyclePause || busy">
+          Pause
+        </button>
 
-        <div class="statusGroup">
-          <div class="groupTitle">Overrides</div>
-          <div class="statusRow">
-            <div class="k">Feed</div>
-            <div class="v" :class="{ warn: feedOverrideValue !== 1.0 }">{{ feedOverride }}</div>
-          </div>
-          <div class="statusRow">
-            <div class="k">Spindle</div>
-            <div class="v" :class="{ warn: spindleOverrideValue !== 1.0 }">{{ spindleOverride }}</div>
-          </div>
-          <div class="statusRow">
-            <div class="k">Rapid</div>
-            <div class="v" :class="{ warn: rapidOverrideValue !== 1.0 }">{{ rapidOverride }}</div>
-          </div>
-        </div>
-      </div>
-    </section>
+        <button class="btn" @click="cycleResume" :disabled="!canCycleResume || busy">
+          Resume
+        </button>
 
-    <section class="card">
-      <div class="sub">Control</div>
+        <div class="sep"></div>
 
-      <div class="controlGroups">
-        <div class="controlGroup">
-          <div class="groupTitle">Machine Safety</div>
-          <div class="btnrow">
-            <button class="btn" @click="arm(true)" :disabled="armed || busy">
-              Arm
-            </button>
-            <button class="btn" @click="arm(false)" :disabled="!armed || busy">
-              Disarm
-            </button>
-
-            <div class="sep"></div>
-
-            <button class="btn danger" @click="fire({ cmd: 'estop' })" :disabled="!canEstop || busy">
-              E-Stop
-            </button>
-
-            <button
-              class="btn"
-              @click="fire({ cmd: 'estop_reset' })"
-              :disabled="!canResetEstop || busy"
-            >
-              Reset E-Stop
-            </button>
-
-            <div class="sep"></div>
-
-            <button class="btn" @click="fire({ cmd: 'machine_on' })" :disabled="!canMachineOn || busy">
-              Machine On
-            </button>
-
-            <button class="btn" @click="fire({ cmd: 'machine_off' })" :disabled="!canMachineOff || busy">
-              Machine Off
-            </button>
-          </div>
-        </div>
-
-        <div class="controlGroup">
-          <div class="groupTitle">Program Control</div>
-          <div class="btnrow">
-            <button class="btn primary" @click="cycleStart" :disabled="!canCycleStart || busy">
-              Cycle Start
-            </button>
-
-            <button class="btn" @click="cyclePause" :disabled="!canCyclePause || busy">
-              Pause
-            </button>
-
-            <button class="btn" @click="cycleResume" :disabled="!canCycleResume || busy">
-              Resume
-            </button>
-
-            <div class="sep"></div>
-
-            <button class="btn" @click="fire({ cmd: 'abort' })" :disabled="!canAbort || busy">
-              Abort
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="hint">
-        Arm to enable controls. Cycle Start runs loaded G-code. Abort stops program execution.
+        <button class="btn" @click="fire({ cmd: 'abort' })" :disabled="!canAbort || busy">
+          Abort
+        </button>
       </div>
     </section>
 
@@ -878,6 +841,9 @@ watch(isHomed, (nowHomed, wasHomed) => {
         </div>
       </details>
     </section>
+
+    </div><!-- /mainCol -->
+    </div><!-- /bodyLayout -->
   </div>
 </template>
 
@@ -992,6 +958,28 @@ watch(isHomed, (nowHomed, wasHomed) => {
   background: color-mix(in oklab, var(--panel) 50%, transparent);
 }
 
+.bodyLayout {
+  /* default wide: normal block flow (topRow above, mainCol below) */
+}
+
+.mainCol {
+  /* default wide: block element, no special layout */
+}
+
+.topRow {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.topRow > .card {
+  margin-bottom: 0;
+}
+
+.topRow > .topStatus {
+  flex: 1;
+}
+
 .card {
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1101,6 +1089,60 @@ watch(isHomed, (nowHomed, wasHomed) => {
   opacity: 0.7;
 }
 
+.compactStatus {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.statusChip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--panel) 30%, transparent);
+  cursor: default;
+  flex: 1;
+  min-width: 100px;
+}
+
+.statusChip.ok { border-color: #0a7a0a40; background: color-mix(in oklab, #0a7a0a 8%, var(--panel)); }
+.statusChip.bad { border-color: #b0002040; background: color-mix(in oklab, #b00020 8%, var(--panel)); }
+.statusChip.warn { border-color: #b8860b40; animation: flash-chip-warn 1.2s ease-in-out infinite; }
+
+@keyframes flash-chip-warn {
+  0%, 100% { background: color-mix(in oklab, #b8860b 15%, var(--panel)); }
+  50% { background: color-mix(in oklab, #b8860b 4%, var(--panel)); }
+}
+
+.chipLabel { font-size: 10px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.5px; }
+.chipValue { font-size: 13px; font-weight: 650; }
+
+.chipPopover {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  z-index: 100;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.statusChip:hover > .chipPopover {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .btnrow {
   display: flex;
   gap: 10px;
@@ -1140,6 +1182,36 @@ watch(isHomed, (nowHomed, wasHomed) => {
   cursor: not-allowed;
 }
 
+.safetyBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 20px;
+  min-width: 80px;
+  transition: all 0.15s ease;
+}
+
+.safetyBtn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.safetyBtn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.safetyIcon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.safetyLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .hint {
   margin-top: 10px;
   font-size: 12px;
@@ -1170,6 +1242,41 @@ watch(isHomed, (nowHomed, wasHomed) => {
   .hdrRight {
     flex-wrap: wrap;
     gap: 6px;
+  }
+  .bodyLayout {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .topRow {
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 150px;
+    margin-bottom: 0;
+  }
+  .topRow .btnrow {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .topRow .safetyBtn {
+    width: 100%;
+    padding: 8px 10px;
+    min-width: 0;
+  }
+  .topRow .sep {
+    width: 100%;
+    height: 1px;
+    margin: 0;
+  }
+  .topRow .compactStatus {
+    flex-direction: column;
+  }
+  .topRow .statusChip {
+    min-width: 0;
+  }
+  .mainCol {
+    flex: 1;
+    min-width: 0;
   }
   .panels {
     flex-direction: column;

@@ -58,7 +58,7 @@ function loadFromHistory(cmd: string) {
     </div>
 
     <!-- History section -->
-    <div v-if="history.length > 0" class="historySection">
+    <div class="historySection">
       <div class="separator"></div>
       <div class="historyLabel">Command History</div>
       <div class="historyList">
@@ -80,7 +80,7 @@ function loadFromHistory(cmd: string) {
 .mdiContainer {
   display: flex;
   flex-direction: column;
-  height: 650px;
+  height: 100%;
 }
 
 .sub {
@@ -163,6 +163,7 @@ function loadFromHistory(cmd: string) {
   gap: 6px;
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
   padding: 4px;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
@@ -212,5 +213,12 @@ function loadFromHistory(cmd: string) {
 
 .historyItem:active {
   transform: scale(0.98);
+}
+
+@media (orientation: portrait) {
+  .historyList {
+    min-height: 200px;
+    max-height: 200px;
+  }
 }
 </style>

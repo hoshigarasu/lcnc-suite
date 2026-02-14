@@ -801,6 +801,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
       >+</button>
     </div>
 
+    <!-- Program Control — temporarily removed to maximize panel space
     <section class="card">
       <div class="sub">Program Control</div>
 
@@ -829,6 +830,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
         </button>
       </div>
     </section>
+    -->
 
     <!-- Debug widget -->
     <section class="card">
@@ -902,18 +904,17 @@ watch(isHomed, (nowHomed, wasHomed) => {
   background: color-mix(in oklab, var(--panel) 92%, transparent);
 }
 
+/* ---- Shared panel styles (visual, no layout) ---- */
 .panels {
   display: flex;
   gap: 12px;
   margin-bottom: 12px;
-  align-items: stretch;
-  flex: 1;
-  min-height: 0;
 }
 
 .panel {
-  flex: 0 1 auto;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   position: relative;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -922,18 +923,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   color: var(--fg);
   display: flex;
   flex-direction: column;
-}
-
-.panel-viewer {
-  flex: 1;
-}
-
-.panel-gcode {
-  flex: 0.5;
-}
-
-.mainCol > .card {
-  flex-shrink: 0;
 }
 
 .addPanel {
@@ -969,6 +958,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 86px);
+  overflow: hidden;
 }
 
 .topRow {
@@ -1264,29 +1254,21 @@ watch(isHomed, (nowHomed, wasHomed) => {
   max-height: 400px;
 }
 
-/* ---- Responsive: portrait — stack panels vertically ---- */
+/* ---- Landscape layout — panels side by side ---- */
+@media (orientation: landscape) {
+  .panels          { align-items: stretch; flex: 1; min-height: 0; }
+  .panel           { flex: 0 0 auto; }   /* width = content */
+  .panel-viewer    { flex: 1; }          /* fills remaining width */
+  .panel-gcode     { flex: 0.5; }        /* medium width priority */
+}
+
+/* ---- Portrait layout — panels stacked vertically ---- */
 @media (orientation: portrait) {
-  .mainCol {
-    height: auto;
-  }
-  .panels {
-    flex-direction: column;
-  }
-  .panel {
-    flex: none;
-  }
-  .panel :deep(.tab-content) {
-    min-height: auto;
-  }
-  .panel-viewer :deep(.tab-content),
-  .panel-gcode :deep(.tab-content) {
-    min-height: 660px;
-  }
-  .addPanel {
-    flex: 0 0 auto;
-    width: 100%;
-    height: 36px;
-  }
+  .panels          { flex-direction: column; flex: 1; min-height: 0; }
+  .panel           { flex: 0 0 auto; }   /* height = content */
+  .panel-viewer    { flex: 1; }          /* fills remaining height */
+  .panel-gcode     { flex: 0.5; }        /* medium height priority */
+  .addPanel        { flex: 0 0 auto; width: 100%; height: 36px; }
 }
 
 /* ---- Responsive: narrow — icon-only sidebar ---- */

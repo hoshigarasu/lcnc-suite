@@ -672,17 +672,13 @@ watch(isHomed, (nowHomed, wasHomed) => {
     <div class="panels">
       <div v-for="(panel, idx) in panels" :key="panel.id" class="panel"
            :style="{ minWidth: panelMinWidth(panel.tab) }">
-        <button
-          v-if="idx > 0"
-          class="panelClose"
-          @click="removePanel(panel.id)"
-        >&times;</button>
-
         <TabPanel
           :tabs="tabs"
           :modelValue="panel.tab"
           @update:modelValue="panel.tab = $event"
           :badges="tabBadges"
+          :closable="idx > 0"
+          @close="removePanel(panel.id)"
         >
           <template #viewer>
             <Toolbar
@@ -915,30 +911,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   padding: 12px;
   background: var(--panel);
   color: var(--fg);
-}
-
-.panelClose {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 10;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
-  font-size: 16px;
-  cursor: pointer;
-  opacity: 0.5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.15s;
-}
-
-.panelClose:hover {
-  opacity: 1;
 }
 
 .addPanel {

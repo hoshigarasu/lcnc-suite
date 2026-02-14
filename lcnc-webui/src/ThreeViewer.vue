@@ -998,28 +998,28 @@ defineExpose({
     <div v-show="hudVisible" class="hud" :style="{ opacity: props.opacities?.hud ?? 1 }">
       <div class="hudSection">
         <div class="hudLabel">Machine Position</div>
-        <div class="hudValue">
-          X: {{ formatCoord(vst?.machine_pos?.[0]) }}
-          Y: {{ formatCoord(vst?.machine_pos?.[1]) }}
-          Z: {{ formatCoord(vst?.machine_pos?.[2]) }}
+        <div class="hudCoords">
+          <div class="hudCoord"><span class="hudAxis">X</span> {{ formatCoord(vst?.machine_pos?.[0]) }}</div>
+          <div class="hudCoord"><span class="hudAxis">Y</span> {{ formatCoord(vst?.machine_pos?.[1]) }}</div>
+          <div class="hudCoord"><span class="hudAxis">Z</span> {{ formatCoord(vst?.machine_pos?.[2]) }}</div>
         </div>
       </div>
 
       <div class="hudSection">
         <div class="hudLabel">Work Position ({{ props.g5xLabel || '-' }})</div>
-        <div class="hudValue">
-          X: {{ formatCoord(vst?.work_pos?.[0]) }}
-          Y: {{ formatCoord(vst?.work_pos?.[1]) }}
-          Z: {{ formatCoord(vst?.work_pos?.[2]) }}
+        <div class="hudCoords">
+          <div class="hudCoord"><span class="hudAxis">X</span> {{ formatCoord(vst?.work_pos?.[0]) }}</div>
+          <div class="hudCoord"><span class="hudAxis">Y</span> {{ formatCoord(vst?.work_pos?.[1]) }}</div>
+          <div class="hudCoord"><span class="hudAxis">Z</span> {{ formatCoord(vst?.work_pos?.[2]) }}</div>
         </div>
       </div>
 
       <div class="hudSection">
         <div class="hudLabel">Tool</div>
-        <div class="hudValue">
-          T{{ vst?.tool_number ?? '-' }}
-          Ø{{ formatCoord(vst?.tool_diameter) }} {{ props.linearUnit || 'mm' }}
-          L{{ formatCoord(vst?.tool_length) }} {{ props.linearUnit || 'mm' }}
+        <div class="hudCoords">
+          <div class="hudCoord"><span class="hudAxis">T</span> {{ vst?.tool_number ?? '-' }}</div>
+          <div class="hudCoord"><span class="hudAxis">Ø</span> {{ formatCoord(vst?.tool_diameter) }} {{ props.linearUnit || 'mm' }}</div>
+          <div class="hudCoord"><span class="hudAxis">L</span> {{ formatCoord(vst?.tool_length) }} {{ props.linearUnit || 'mm' }}</div>
         </div>
       </div>
 
@@ -1085,7 +1085,20 @@ defineExpose({
 .hudValue {
   color: #00ff88;
   font-weight: 500;
-  white-space: nowrap;
+}
+
+.hudCoords {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hudCoord {
+  color: #00ff88;
+  font-weight: 500;
+}
+.hudAxis {
+  color: color-mix(in oklab, #fff 50%, transparent);
+  margin-right: 4px;
 }
 </style>
 

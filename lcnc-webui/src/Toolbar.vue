@@ -1,120 +1,87 @@
 <template>
   <div class="viewerContainer">
-    <!-- Left side: All controls (vertical) -->
-    <div class="leftSidebar">
-      <div class="group">
-        <div class="groupLabel">Camera View</div>
-        <button class="viewBtn" @click="$emit('setView', 'top')">Top</button>
-        <button class="viewBtn" @click="$emit('setView', 'front')">Front</button>
-        <button class="viewBtn" @click="$emit('setView', 'back')">Back</button>
-        <button class="viewBtn" @click="$emit('setView', 'left')">Left</button>
-        <button class="viewBtn" @click="$emit('setView', 'right')">Right</button>
-        <button class="viewBtn" @click="$emit('setView', 'dimetric')">Dimetric</button>
-        <button class="viewBtn" @click="$emit('setView', 'reset')">Reset View</button>
-      </div>
-
-      <div class="group">
-        <div class="groupLabel">Backplot</div>
-        <button class="viewBtn" @click="$emit('resetBackplot')">Reset Backplot</button>
-      </div>
-
-      <div class="group">
-        <div class="groupLabel">Workpiece</div>
-        <div class="inputRow">
-          <label class="inputLabel">Size X</label>
-          <input
-            type="number"
-            class="numInput"
-            :value="workpieceSize[0]"
-            @input="updateSize(0, parseFloat(($event.target as HTMLInputElement).value))"
-            step="1"
-            min="0"
-            max="9999"
-          />
-        </div>
-        <div class="inputRow">
-          <label class="inputLabel">Size Y</label>
-          <input
-            type="number"
-            class="numInput"
-            :value="workpieceSize[1]"
-            @input="updateSize(1, parseFloat(($event.target as HTMLInputElement).value))"
-            step="1"
-            min="0"
-            max="9999"
-          />
-        </div>
-        <div class="inputRow">
-          <label class="inputLabel">Size Z</label>
-          <input
-            type="number"
-            class="numInput"
-            :value="workpieceSize[2]"
-            @input="updateSize(2, parseFloat(($event.target as HTMLInputElement).value))"
-            step="1"
-            min="0"
-            max="9999"
-          />
-        </div>
-
-        <div class="separator"></div>
-
-        <div class="inputRow">
-          <label class="inputLabel">Offset X</label>
-          <input
-            type="number"
-            class="numInput"
-            :value="workpieceOffset[0]"
-            @input="updateOffset(0, parseFloat(($event.target as HTMLInputElement).value))"
-            step="1"
-            min="-9999"
-            max="9999"
-          />
-        </div>
-        <div class="inputRow">
-          <label class="inputLabel">Offset Y</label>
-          <input
-            type="number"
-            class="numInput"
-            :value="workpieceOffset[1]"
-            @input="updateOffset(1, parseFloat(($event.target as HTMLInputElement).value))"
-            step="1"
-            min="-9999"
-            max="9999"
-          />
-        </div>
-        <div class="inputRow">
-          <label class="inputLabel">Offset Z</label>
-          <input
-            type="number"
-            class="numInput"
-            :value="workpieceOffset[2]"
-            @input="updateOffset(2, parseFloat(($event.target as HTMLInputElement).value))"
-            step="1"
-            min="-9999"
-            max="9999"
-          />
-        </div>
-      </div>
+    <div class="viewerSlot">
+      <slot />
     </div>
 
-    <!-- Right side: 3D Viewer slot with layers below -->
-    <div class="viewerColumn">
-      <div class="viewerSlot">
-        <slot />
+    <!-- Floating toolbar overlay (bottom-left) -->
+    <div class="floatingBar">
+
+      <!-- Views pill -->
+      <div class="toolPill">
+        <span class="pillLabel">Views</span>
+        <div class="pillPopover">
+          <div class="viewGrid">
+            <button class="viewBtn" @click="$emit('setView', 'top')">Top</button>
+            <button class="viewBtn" @click="$emit('setView', 'front')">Front</button>
+            <button class="viewBtn" @click="$emit('setView', 'back')">Back</button>
+            <button class="viewBtn" @click="$emit('setView', 'left')">Left</button>
+            <button class="viewBtn" @click="$emit('setView', 'right')">Right</button>
+            <button class="viewBtn" @click="$emit('setView', 'dimetric')">Dimetric</button>
+            <button class="viewBtn" @click="$emit('setView', 'reset')">Reset</button>
+            <button class="viewBtn" @click="$emit('resetBackplot')">Backplot</button>
+          </div>
+        </div>
       </div>
 
-      <!-- Layers below viewer (horizontal) -->
-      <div class="layersBar">
-        <div class="layersLabel">Layers:</div>
-        <label><input type="checkbox" v-model="local.backplot" @change="emitToggle('backplot')" /> Backplot</label>
-        <label><input type="checkbox" v-model="local.toolpath" @change="emitToggle('toolpath')" /> Toolpath</label>
-        <label><input type="checkbox" v-model="local.machine"  @change="emitToggle('machine')"  /> Machine</label>
-        <label><input type="checkbox" v-model="local.workpiece" @change="emitToggle('workpiece')" /> Workpiece</label>
-        <label><input type="checkbox" v-model="local.bounds" @change="emitToggle('bounds')" /> Bounds</label>
-        <label><input type="checkbox" v-model="local.workzero" @change="emitToggle('workzero')" /> Work Zero</label>
-        <label><input type="checkbox" v-model="local.hud" @change="emitToggle('hud')" /> HUD</label>
+      <!-- Layers pill -->
+      <div class="toolPill">
+        <span class="pillLabel">Layers</span>
+        <div class="pillPopover">
+          <label><input type="checkbox" v-model="local.backplot" @change="emitToggle('backplot')" /> Backplot</label>
+          <label><input type="checkbox" v-model="local.toolpath" @change="emitToggle('toolpath')" /> Toolpath</label>
+          <label><input type="checkbox" v-model="local.machine"  @change="emitToggle('machine')"  /> Machine</label>
+          <label><input type="checkbox" v-model="local.workpiece" @change="emitToggle('workpiece')" /> Workpiece</label>
+          <label><input type="checkbox" v-model="local.bounds" @change="emitToggle('bounds')" /> Bounds</label>
+          <label><input type="checkbox" v-model="local.workzero" @change="emitToggle('workzero')" /> Work Zero</label>
+          <label><input type="checkbox" v-model="local.hud" @change="emitToggle('hud')" /> HUD</label>
+        </div>
       </div>
+
+      <!-- Workpiece pill -->
+      <div class="toolPill">
+        <span class="pillLabel">Workpiece</span>
+        <div class="pillPopover wpPopover">
+          <div class="inputRow">
+            <label class="inputLabel">Size X</label>
+            <input type="number" class="numInput" :value="workpieceSize[0]"
+              @input="updateSize(0, parseFloat(($event.target as HTMLInputElement).value))"
+              step="1" min="0" max="9999" />
+          </div>
+          <div class="inputRow">
+            <label class="inputLabel">Size Y</label>
+            <input type="number" class="numInput" :value="workpieceSize[1]"
+              @input="updateSize(1, parseFloat(($event.target as HTMLInputElement).value))"
+              step="1" min="0" max="9999" />
+          </div>
+          <div class="inputRow">
+            <label class="inputLabel">Size Z</label>
+            <input type="number" class="numInput" :value="workpieceSize[2]"
+              @input="updateSize(2, parseFloat(($event.target as HTMLInputElement).value))"
+              step="1" min="0" max="9999" />
+          </div>
+          <div class="popSep"></div>
+          <div class="inputRow">
+            <label class="inputLabel">Offset X</label>
+            <input type="number" class="numInput" :value="workpieceOffset[0]"
+              @input="updateOffset(0, parseFloat(($event.target as HTMLInputElement).value))"
+              step="1" min="-9999" max="9999" />
+          </div>
+          <div class="inputRow">
+            <label class="inputLabel">Offset Y</label>
+            <input type="number" class="numInput" :value="workpieceOffset[1]"
+              @input="updateOffset(1, parseFloat(($event.target as HTMLInputElement).value))"
+              step="1" min="-9999" max="9999" />
+          </div>
+          <div class="inputRow">
+            <label class="inputLabel">Offset Z</label>
+            <input type="number" class="numInput" :value="workpieceOffset[2]"
+              @input="updateOffset(2, parseFloat(($event.target as HTMLInputElement).value))"
+              step="1" min="-9999" max="9999" />
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
@@ -178,80 +145,128 @@ function updateOffset(axis: number, value: number) {
 
 <style scoped>
 .viewerContainer {
-  display: flex;
-  gap: 12px;
-  align-items: stretch;
+  position: relative;
   width: 100%;
-}
-
-.leftSidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 120px;
-}
-
-.viewerColumn {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  height: 100%;
 }
 
 .viewerSlot {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+  height: 100%;
 }
 
-.group {
+/* ---- Floating toolbar ---- */
+.floatingBar {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
   display: flex;
-  flex-direction: column;
   gap: 6px;
+  z-index: 20;
 }
 
-.groupLabel {
+.toolPill {
+  position: relative;
+  cursor: default;
+}
+
+.pillLabel {
+  display: block;
+  padding: 5px 10px;
   font-size: 11px;
   font-weight: 600;
-  opacity: 0.6;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 2px;
+  border-radius: 6px;
+  background: color-mix(in oklab, #000 75%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #ccc;
+  border: 1px solid rgba(255,255,255,0.08);
+  user-select: none;
+}
+
+.toolPill:hover > .pillLabel {
+  color: #fff;
+  background: color-mix(in oklab, #000 85%, transparent);
+}
+
+/* ---- Popovers ---- */
+.pillPopover {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  padding: 8px 8px 14px 8px;
+  border-radius: 8px;
+  background: color-mix(in oklab, #000 80%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  z-index: 30;
+  min-width: 140px;
+}
+
+.toolPill:hover > .pillPopover {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ---- View buttons grid ---- */
+.viewGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
 }
 
 .viewBtn {
-  padding: 8px 12px;
-  font-size: 13px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.06);
+  color: #ddd;
   cursor: pointer;
-  transition: all 0.15s ease;
-  text-align: left;
   white-space: nowrap;
+  transition: background 0.12s;
 }
 
 .viewBtn:hover {
-  background: color-mix(in oklab, var(--button-bg) 85%, var(--fg));
+  background: rgba(255,255,255,0.15);
+  color: #fff;
 }
 
 .viewBtn:active {
-  transform: scale(0.98);
+  transform: scale(0.96);
 }
 
-.leftSidebar label {
+/* ---- Layer checkboxes ---- */
+.pillPopover label {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: 12px;
+  color: #ccc;
   cursor: pointer;
   user-select: none;
-  padding: 4px 0;
+  padding: 3px 4px;
+  border-radius: 4px;
 }
 
-.leftSidebar input[type="checkbox"] {
+.pillPopover label:hover {
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+}
+
+.pillPopover input[type="checkbox"] {
   cursor: pointer;
+}
+
+/* ---- Workpiece inputs ---- */
+.wpPopover {
+  min-width: 180px;
 }
 
 .inputRow {
@@ -262,87 +277,32 @@ function updateOffset(axis: number, value: number) {
 }
 
 .inputLabel {
-  font-size: 12px;
-  opacity: 0.8;
-  min-width: 60px;
+  font-size: 11px;
+  color: #999;
+  min-width: 52px;
 }
 
 .numInput {
   flex: 1;
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: 4px 6px;
+  font-size: 11px;
   border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.06);
+  color: #ddd;
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-  max-width: 80px;
+  max-width: 72px;
 }
 
 .numInput:focus {
   outline: none;
-  border-color: color-mix(in oklab, var(--fg) 40%, var(--border));
+  border-color: rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.1);
 }
 
-.separator {
+.popSep {
   height: 1px;
-  background: var(--border);
+  background: rgba(255,255,255,0.08);
   margin: 4px 0;
-  opacity: 0.3;
-}
-
-.layersBar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: color-mix(in oklab, var(--panel) 50%, transparent);
-  border: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-
-.layersLabel {
-  font-size: 11px;
-  font-weight: 600;
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.layersBar label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.layersBar input[type="checkbox"] {
-  cursor: pointer;
-}
-
-/* ---- Responsive: collapse sidebar to horizontal on narrow screens ---- */
-@media (max-width: 767px) {
-  .viewerContainer {
-    flex-direction: column;
-  }
-  .leftSidebar {
-    flex-direction: row;
-    flex-wrap: wrap;
-    min-width: unset;
-    gap: 8px;
-  }
-  .group {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-  }
-  .groupLabel {
-    margin-bottom: 0;
-    margin-right: 4px;
-  }
 }
 </style>

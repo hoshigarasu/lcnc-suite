@@ -4,6 +4,7 @@ import json
 import time
 import os
 import subprocess
+from pathlib import Path
 import linuxcnc
 
 from dataclasses import asdict, dataclass
@@ -12,10 +13,13 @@ from fastapi.staticfiles import StaticFiles
 import tempfile
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 # ---- Config ----
 POLL_HZ = 10  # status update rate
+BASE_DIR = Path(__file__).resolve().parent
+MACHINE_DIR = BASE_DIR / "machine"
 
 # ---- LinuxCNC handles (nullable for auto-reconnect) ----
 STAT: Optional[linuxcnc.stat] = None
@@ -1062,10 +1066,11 @@ def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
         },
         "parts": [
             # these translations are from your vismach model (machine.py)
-            {"id": "frame",  "file": "frame.stl",  "parent": None, "t": [-760, -122, -294]},
-            {"id": "x_axis", "file": "x_axis.stl", "parent": "x",  "t": [319, 398, -244]},
-            {"id": "y_axis", "file": "y_axis.stl", "parent": "y",  "t": [-140, 0, 21]},
-            {"id": "z_axis", "file": "z_axis.stl", "parent": "z",  "t": [0, 0, 0]},
+            # ?v=<mtime> enables immutable browser caching with automatic invalidation on file change
+            {"id": "frame",  "file": f"frame.stl?v={int(( MACHINE_DIR / 'frame.stl').stat().st_mtime) if (MACHINE_DIR / 'frame.stl').exists() else 0}",  "parent": None, "t": [-760, -122, -294]},
+            {"id": "x_axis", "file": f"x_axis.stl?v={int((MACHINE_DIR / 'x_axis.stl').stat().st_mtime) if (MACHINE_DIR / 'x_axis.stl').exists() else 0}", "parent": "x",  "t": [319, 398, -244]},
+            {"id": "y_axis", "file": f"y_axis.stl?v={int((MACHINE_DIR / 'y_axis.stl').stat().st_mtime) if (MACHINE_DIR / 'y_axis.stl').exists() else 0}", "parent": "y",  "t": [-140, 0, 21]},
+            {"id": "z_axis", "file": f"z_axis.stl?v={int((MACHINE_DIR / 'z_axis.stl').stat().st_mtime) if (MACHINE_DIR / 'z_axis.stl').exists() else 0}", "parent": "z",  "t": [0, 0, 0]},
         ],
         # match your joint sign usage (X inverted in your model)
         "kinematics": {
@@ -1222,15 +1227,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class CacheStaticAssets(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
+app.add_middleware(CacheStaticAssets)
 
-
-from pathlib import Path
 
 # Serve static machine assets (STLs etc.)
 # Always resolve relative to THIS FILE, not cwd
-BASE_DIR = Path(__file__).resolve().parent
-MACHINE_DIR = BASE_DIR / "machine"
 
 app.mount("/assets", StaticFiles(directory=str(MACHINE_DIR), html=False), name="assets")
 

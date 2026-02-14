@@ -38,6 +38,26 @@
         </div>
       </div>
 
+      <!-- Toolpath pill -->
+      <div class="toolPill">
+        <span class="pillLabel">Toolpath</span>
+        <div class="pillPopover">
+          <button class="viewBtn" @click="$emit('resetBackplot')">Clear Backplot</button>
+          <div class="popSep"></div>
+          <label><input type="checkbox" v-model="pathOnTop" @change="$emit('setPathOnTop', pathOnTop)" /> Always on top</label>
+        </div>
+      </div>
+
+      <!-- Tracking pill -->
+      <div class="toolPill">
+        <span class="pillLabel">Tracking</span>
+        <div class="pillPopover">
+          <button class="viewBtn" :class="{ active: trackMode === 'none' }" @click="setTrack('none')">None</button>
+          <button class="viewBtn" :class="{ active: trackMode === 'tool' }" @click="setTrack('tool')">Tool</button>
+          <button class="viewBtn" :class="{ active: trackMode === 'workpiece' }" @click="setTrack('workpiece')">Workpiece</button>
+        </div>
+      </div>
+
       <!-- Workpiece pill -->
       <div class="toolPill">
         <span class="pillLabel">Workpiece</span>
@@ -87,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from "vue";
+import { reactive, ref } from "vue";
 
 type ViewPreset = "top" | "left" | "right" | "front" | "back" | "iso" | "dimetric" | "reset";
 type Layer = "backplot" | "toolpath" | "machine" | "workpiece" | "bounds" | "workzero" | "hud";
@@ -105,7 +125,19 @@ const emit = defineEmits<{
   (e: "toggleLayer", layer: Layer, on: boolean): void;
   (e: "update:workpieceSize", value: Vec3): void;
   (e: "update:workpieceOffset", value: Vec3): void;
+  (e: "setPathOnTop", on: boolean): void;
+  (e: "setTrackMode", mode: string): void;
 }>();
+
+const pathOnTop = ref(true);
+
+type TrackMode = "none" | "tool" | "workpiece";
+const trackMode = ref<TrackMode>("none");
+
+function setTrack(mode: TrackMode) {
+  trackMode.value = mode;
+  emit("setTrackMode", mode);
+}
 
 const local = reactive<Record<Layer, boolean>>({
   backplot: props.layerDefaults?.backplot ?? true,
@@ -236,6 +268,12 @@ function updateOffset(axis: number, value: number) {
 
 .viewBtn:active {
   transform: scale(0.96);
+}
+
+.viewBtn.active {
+  background: color-mix(in oklab, var(--fg) 15%, var(--button-bg));
+  font-weight: 600;
+  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
 }
 
 /* ---- Layer checkboxes ---- */

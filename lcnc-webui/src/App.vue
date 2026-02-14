@@ -695,6 +695,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
               @resetBackplot="viewerRefs.get(panel.id)?.resetBackplot?.()"
               @setView="(p: any) => viewerRefs.get(panel.id)?.setView?.(p)"
               @toggleLayer="(l: string, on: boolean) => viewerRefs.get(panel.id)?.setLayerVisible?.(l, on)"
+              @setPathOnTop="(on: boolean) => viewerRefs.get(panel.id)?.setPathAlwaysOnTop?.(on)"
+              @setTrackMode="(m: string) => viewerRefs.get(panel.id)?.setTrackingMode?.(m)"
               :layerDefaults="defaults.layers"
               :workpieceSize="workpieceSize"
               :workpieceOffset="workpieceOffset"

@@ -1,9 +1,67 @@
+<script lang="ts">
+import { ref as _ref } from "vue";
+import * as THREE from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+
+// ---- Central asset cache (shared across ALL ThreeViewer instances) ----
+const _geometryCache = new Map<string, THREE.BufferGeometry>();
+let _loadPromise: Promise<void> | null = null;
+let _loadedInitJson: string | null = null;
+export const machineReady = _ref(false);
+
+async function fetchAndParseStl(url: string): Promise<THREE.BufferGeometry> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const head = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 200)).toLowerCase();
+  if (head.includes("<!doctype") || head.includes("<html")) throw new Error(`Not an STL from ${url}`);
+  const loader = new STLLoader();
+  const looksAscii = head.startsWith("solid") && head.includes("facet");
+  if (looksAscii) return loader.parse(new TextDecoder().decode(bytes));
+  if (buf.byteLength >= 84) {
+    const dv = new DataView(buf);
+    const triCount = dv.getUint32(80, true);
+    if (84 + triCount * 50 <= buf.byteLength && triCount < 50_000_000) return loader.parse(buf);
+    return loader.parse(new TextDecoder().decode(bytes));
+  }
+  throw new Error(`STL too small / invalid: ${url}`);
+}
+
+export function loadMachineAssets(init: any): Promise<void> {
+  const json = JSON.stringify({ base: init.stl_base_url, parts: init.parts });
+  if (_loadPromise && json === _loadedInitJson) return _loadPromise;
+
+  _loadedInitJson = json;
+  machineReady.value = false;
+
+  _loadPromise = (async () => {
+    const base = init.stl_base_url;
+    for (const p of init.parts ?? []) {
+      if (_geometryCache.has(p.id)) continue;
+      const url = base.endsWith("/") ? `${base}${p.file}` : `${base}/${p.file}`;
+      console.log(`[loader] fetching ${p.id}: ${url}`);
+      const geom = await fetchAndParseStl(url);
+      geom.computeVertexNormals();
+      geom.userData._shared = true;
+      _geometryCache.set(p.id, geom);
+    }
+    machineReady.value = true;
+    console.log(`[loader] all assets ready (${_geometryCache.size} geometries)`);
+  })();
+
+  return _loadPromise;
+}
+
+export function getCachedGeometry(id: string): THREE.BufferGeometry | undefined {
+  return _geometryCache.get(id);
+}
+</script>
+
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
-import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 // Adjust path as needed
 import { viewerInit, viewerGcode, status } from "./lcncWs";
@@ -128,6 +186,9 @@ let feedLineMap: Map<number, { start: number; end: number }> = new Map();
 let pendingLayers: Map<Layer, boolean> | null = new Map();
 let toolpathVisible = true;
 
+// ---- Camera tracking ----
+let trackingMode: "none" | "tool" | "workpiece" = "none";
+
 // ---- Backplot (live toolpath history) ----
 let backplotLine: THREE.Line | null = null;
 let backplotGeom: THREE.BufferGeometry | null = null;
@@ -235,6 +296,34 @@ function setLayerVisible(layer: Layer, on: boolean) {
   }
 }
 
+function setPathAlwaysOnTop(on: boolean) {
+  const dt = !on; // depthTest: false = always on top
+
+  if (backplotLine) {
+    const m = backplotLine.material as THREE.LineBasicMaterial;
+    m.depthTest = dt;
+    m.depthWrite = false; // backplot is transparent, never write depth
+    m.needsUpdate = true;
+  }
+  if (feedLine) {
+    const m = feedLine.material as THREE.LineBasicMaterial;
+    m.depthTest = dt;
+    m.depthWrite = dt;
+    m.needsUpdate = true;
+  }
+  if (rapidLine) {
+    const m = rapidLine.material as THREE.LineDashedMaterial;
+    m.depthTest = dt;
+    m.depthWrite = dt;
+    m.needsUpdate = true;
+  }
+  // highlight line + marker stay always-on-top regardless (UI indicators)
+}
+
+function setTrackingMode(mode: "none" | "tool" | "workpiece") {
+  trackingMode = mode;
+}
+
 function pushBackplotPoint(p: [number, number, number]) {
   if (!backplotGeom || !backplotPos || !backplotLine) return;
 
@@ -305,8 +394,9 @@ function applyMachineOpacity(op: number) {
 // ---------- helpers ----------
 function disposeObject(obj: THREE.Object3D) {
   obj.traverse((child: any) => {
-    if (child.geometry) child.geometry.dispose?.();
-    // IMPORTANT: don’t dispose shared MAT.* materials
+    // Skip shared geometries from the central cache — they're reused across viewers
+    if (child.geometry && !child.geometry.userData?._shared) child.geometry.dispose?.();
+    // IMPORTANT: don't dispose shared MAT.* materials
     // so we intentionally skip disposing child.material here.
   });
 }
@@ -363,51 +453,6 @@ function makeLine(points: number[][], colorHex: number | string, dashed = false,
   return line;
 }
 
-
-/**
- * Robust STL fetch + parse
- * - avoids CORS surprises (already fixed on your backend)
- * - avoids binary header trash on HTML/spa responses
- */
-async function loadStl(url: string) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-
-  const buf = await res.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-
-  const head200 = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 200)).toLowerCase();
-
-  // reject HTML
-  if (head200.includes("<!doctype") || head200.includes("<html")) {
-    throw new Error(`Not an STL (got HTML) from ${url}`);
-  }
-
-  const loader = new STLLoader();
-
-  const looksAscii = head200.startsWith("solid") && head200.includes("facet");
-  if (looksAscii) {
-    const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-    return loader.parse(text);
-  }
-
-  // binary sanity check
-  if (buf.byteLength >= 84) {
-    const dv = new DataView(buf);
-    const triCount = dv.getUint32(80, true);
-    const expected = 84 + triCount * 50;
-
-    if (expected <= buf.byteLength && triCount < 50_000_000) {
-      return loader.parse(buf);
-    }
-
-    // fallback: try ASCII
-    const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
-    return loader.parse(text);
-  }
-
-  throw new Error(`STL too small / invalid: ${url}`);
-}
 
 function ensureCoreGroups() {
   if (!scene) return;
@@ -577,40 +622,30 @@ async function buildFromInit(init: ViewerInit) {
     console.warn("No machine_bounds in viewer_init; bounds box will remain default");
   }
 
+  // Load all STL assets via the central cache (first caller fetches, others await same Promise)
+  await loadMachineAssets(init);
+  if (myToken !== buildToken) return;
 
-  const base = init.stl_base_url;
   const parts = init.parts ?? [];
-
-  // Load STLs
   for (const p of parts) {
-    if (myToken !== buildToken) return;
+    const geom = getCachedGeometry(p.id);
+    if (!geom) { console.warn(`No cached geometry for ${p.id}`); continue; }
 
-    const url = base.endsWith("/") ? `${base}${p.file}` : `${base}/${p.file}`;
+    let mat = MAT.frame;
+    if (p.parent === "x") mat = MAT.axisX;
+    else if (p.parent === "y") mat = MAT.axisY;
+    else if (p.parent === "z") mat = MAT.axisZ;
 
-    try {
-      const geom = await loadStl(url);
-      geom.computeVertexNormals();
+    const mesh = new THREE.Mesh(geom, mat);  // shares GPU geometry, no copy
+    if (p.t) mesh.position.set(p.t[0], p.t[1], p.t[2]);
+    if (p.r) mesh.rotation.set(p.r[0], p.r[1], p.r[2]);
 
-      // choose material by parent group
-      let mat = MAT.frame;
-      if (p.parent === "x") mat = MAT.axisX;
-      else if (p.parent === "y") mat = MAT.axisY;
-      else if (p.parent === "z") mat = MAT.axisZ;
-
-      const mesh = new THREE.Mesh(geom, mat);
-
-      if (p.t) mesh.position.set(p.t[0], p.t[1], p.t[2]);
-      if (p.r) mesh.rotation.set(p.r[0], p.r[1], p.r[2]);
-
-      const parent = (p.parent ? groups[p.parent] : groups.root) ?? groups.root;
-      parent.add(mesh);
-      machineMeshes.push(mesh);
-    } catch (e) {
-      console.error("Failed STL:", p.id, url, e);
-    }
+    const parent = (p.parent ? groups[p.parent] : groups.root) ?? groups.root;
+    parent.add(mesh);
+    machineMeshes.push(mesh);
   }
 
-  // Auto-frame camera to model (makes it impossible to “miss” the machine)
+  // Auto-frame camera to model (makes it impossible to "miss" the machine)
   if (camera && controls) {
     const box = new THREE.Box3().setFromObject(groups.root);
     const size = new THREE.Vector3();
@@ -854,6 +889,15 @@ function animate() {
     pendingState = null;
   }
 
+  // Camera tracking
+  if (trackingMode === "tool" && toolMarker && controls) {
+    const tmp = new THREE.Vector3();
+    toolMarker.getWorldPosition(tmp);
+    controls.target.copy(tmp);
+  } else if (trackingMode === "workpiece" && workOrigin && controls) {
+    controls.target.set(0, 0, 0);
+  }
+
   controls?.update();
   renderer?.render(scene!, camera!);
 }
@@ -985,6 +1029,8 @@ defineExpose({
   resetBackplot,
   setView,
   setLayerVisible,
+  setPathAlwaysOnTop,
+  setTrackingMode,
 });
 
 

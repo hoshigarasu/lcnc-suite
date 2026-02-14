@@ -872,6 +872,35 @@ def handle_command(msg: Dict[str, Any], armed: bool):
                 CMD.jog(linuxcnc.JOG_STOP, jf, int(a))
             return {"ok": True}
 
+        if cmd == "jog_incr":
+            require_armed(armed)
+
+            blocked = reject_if_auto_running()
+            if blocked:
+                return blocked
+
+            axis = int(msg.get("axis"))
+            vel = float(msg.get("vel", 0.0))
+            dist = float(msg.get("distance", 0.0))
+            set_mode(linuxcnc.MODE_MANUAL)
+            jf = _jog_joint_flag()
+            CMD.jog(linuxcnc.JOG_INCREMENT, jf, axis, vel, dist)
+            return {"ok": True}
+
+        if cmd == "jog_incr_multi":
+            require_armed(armed)
+
+            blocked = reject_if_auto_running()
+            if blocked:
+                return blocked
+
+            axes = msg.get("axes", [])
+            set_mode(linuxcnc.MODE_MANUAL)
+            jf = _jog_joint_flag()
+            for entry in axes:
+                CMD.jog(linuxcnc.JOG_INCREMENT, jf, int(entry["axis"]), float(entry["vel"]), float(entry["distance"]))
+            return {"ok": True}
+
         if cmd == "home_all":
             require_armed(armed)
             set_mode(linuxcnc.MODE_MANUAL)

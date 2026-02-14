@@ -10,6 +10,8 @@ const props = defineProps<{
   label: string;         // e.g. "X+"
   vel: number;           // jog velocity (units/sec)
   disabled?: boolean;    // safety gate from parent
+  active?: boolean;      // externally active (e.g. keyboard jog)
+  jogIncrement?: number; // 0 = continuous, >0 = step distance
   direction: Direction;
   axis2?: number;        // optional second axis for diagonal jog
   dir2?: 1 | -1;         // direction for second axis
@@ -48,21 +50,33 @@ function startJog(e: PointerEvent) {
   // Scale velocity by 1/sqrt(2) for diagonal so resultant speed matches
   const v = isDiagonal.value ? props.vel * 0.7071 : props.vel;
 
-  if (isDiagonal.value) {
-    // Atomic: both axes in one command so they start simultaneously
-    send({
-      cmd: "jog_cont_multi",
-      axes: [
-        { axis: props.axis, vel: v * props.dir },
-        { axis: props.axis2!, vel: v * props.dir2! },
-      ],
-    });
+  if (props.jogIncrement && props.jogIncrement > 0) {
+    // Incremental jog
+    if (isDiagonal.value) {
+      const dist = props.jogIncrement * 0.7071;
+      send({
+        cmd: "jog_incr_multi",
+        axes: [
+          { axis: props.axis, vel: v * props.dir, distance: dist * props.dir },
+          { axis: props.axis2!, vel: v * props.dir2!, distance: dist * props.dir2! },
+        ],
+      });
+    } else {
+      send({ cmd: "jog_incr", axis: props.axis, vel: v * props.dir, distance: props.jogIncrement * props.dir });
+    }
   } else {
-    send({
-      cmd: "jog_cont",
-      axis: props.axis,
-      vel: v * props.dir,
-    });
+    // Continuous jog
+    if (isDiagonal.value) {
+      send({
+        cmd: "jog_cont_multi",
+        axes: [
+          { axis: props.axis, vel: v * props.dir },
+          { axis: props.axis2!, vel: v * props.dir2! },
+        ],
+      });
+    } else {
+      send({ cmd: "jog_cont", axis: props.axis, vel: v * props.dir });
+    }
   }
 }
 
@@ -70,10 +84,13 @@ function stopJog(e?: PointerEvent) {
   if (!jogging) return;
   jogging = false;
 
-  if (isDiagonal.value) {
-    send({ cmd: "jog_stop_multi", axes: [props.axis, props.axis2!] });
-  } else {
-    send({ cmd: "jog_stop", axis: props.axis });
+  if (!props.jogIncrement || props.jogIncrement <= 0) {
+    // Only send stop for continuous mode
+    if (isDiagonal.value) {
+      send({ cmd: "jog_stop_multi", axes: [props.axis, props.axis2!] });
+    } else {
+      send({ cmd: "jog_stop", axis: props.axis });
+    }
   }
 
   if (e) {
@@ -87,7 +104,7 @@ function stopJog(e?: PointerEvent) {
 <template>
   <button
     class="jbtn"
-    :class="[direction, { disabled: isDisabled }]"
+    :class="[direction, { disabled: isDisabled, active: active }]"
     :disabled="isDisabled"
     @pointerdown.prevent="startJog"
     @pointerup.prevent="stopJog"
@@ -119,8 +136,13 @@ function stopJog(e?: PointerEvent) {
   transition: opacity 0.15s ease;
 }
 
-.jbtn:active:not(:disabled) {
+.jbtn:active:not(:disabled),
+.jbtn.active:not(:disabled) {
   opacity: 0.7;
+}
+
+.jbtn.active:not(:disabled) .tri polygon {
+  fill: color-mix(in oklab, var(--fg) 20%, var(--button-bg));
 }
 
 .jbtn:disabled {

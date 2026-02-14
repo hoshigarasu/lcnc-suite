@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { connectWs, connected, status, send, lastReply, viewerGcode, lcncError, messages, unreadCount, dismissMessage, clearAllMessages, markMessagesRead } from "./lcncWs";
 import ThreeViewer from "./ThreeViewer.vue";
 import Toolbar from "./Toolbar.vue";
@@ -343,6 +343,7 @@ function arm(v: boolean) {
 
 /** ---------- local UI jog ---------- */
 const jogVel = ref(10);
+const jogIncrement = ref(0); // 0 = continuous, >0 = increment distance in machine units
 
 const canJog = computed(() => armed.value && !isEstop.value && isEnabled.value && isHomed.value && isIdle.value);
 
@@ -446,7 +447,7 @@ const JOG_KEY_MAP: Record<string, { axis: number; dir: 1 | -1 }> = {
   PageUp:     { axis: 2, dir:  1 },
   PageDown:   { axis: 2, dir: -1 },
 };
-const _jogKeys = new Set<string>();
+const jogKeys = reactive(new Set<string>());
 
 function isInputFocused(): boolean {
   const tag = document.activeElement?.tagName;
@@ -465,14 +466,19 @@ function onKeyDown(e: KeyboardEvent) {
   // Everything else skipped when typing in inputs
   if (isInputFocused()) return;
 
-  // Jog keys (hold-to-jog)
+  // Jog keys (hold-to-jog or increment)
   const jog = JOG_KEY_MAP[e.key];
   if (jog) {
     e.preventDefault();
-    if (e.repeat || _jogKeys.has(e.key)) return;
+    if (e.repeat || jogKeys.has(e.key)) return;
     if (!canJog.value) return;
-    _jogKeys.add(e.key);
-    send({ cmd: "jog_cont", axis: jog.axis, vel: jogVel.value * jog.dir });
+    jogKeys.add(e.key);
+    const v = jogVel.value * jog.dir;
+    if (jogIncrement.value > 0) {
+      send({ cmd: "jog_incr", axis: jog.axis, vel: v, distance: jogIncrement.value * jog.dir });
+    } else {
+      send({ cmd: "jog_cont", axis: jog.axis, vel: v });
+    }
     return;
   }
 
@@ -495,15 +501,17 @@ function onKeyDown(e: KeyboardEvent) {
 
 function onKeyUp(e: KeyboardEvent) {
   const jog = JOG_KEY_MAP[e.key];
-  if (jog && _jogKeys.has(e.key)) {
-    _jogKeys.delete(e.key);
-    send({ cmd: "jog_stop", axis: jog.axis });
+  if (jog && jogKeys.has(e.key)) {
+    jogKeys.delete(e.key);
+    if (jogIncrement.value <= 0) {
+      send({ cmd: "jog_stop", axis: jog.axis });
+    }
   }
 }
 
 /** ---------- safety: stop jog on focus loss ---------- */
 function stopAllJog() {
-  _jogKeys.clear();
+  jogKeys.clear();
   if (!canJog.value) return; // no jog possible unless armed + enabled + homed
   if (isRunning.value || isPaused.value) return; // no jog during program execution
   send({ cmd: "jog_stop", axis: 0 });
@@ -725,7 +733,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           </template>
 
           <template #jog>
-            <JogPanel :jogVel="jogVel" :canJog="canJog" :isTeleop="isTeleop" :isHomed="isHomed" :armed="armed" :linearUnit="linearUnit" :maxJogVel="maxJogVel" @update:jogVel="jogVel = $event" @toggleTeleop="toggleTeleop" />
+            <JogPanel :jogVel="jogVel" :canJog="canJog" :isTeleop="isTeleop" :isHomed="isHomed" :armed="armed" :linearUnit="linearUnit" :maxJogVel="maxJogVel" :activeJogKeys="jogKeys" :jogIncrement="jogIncrement" @update:jogVel="jogVel = $event" @update:jogIncrement="jogIncrement = $event" @toggleTeleop="toggleTeleop" />
           </template>
 
           <template #mdi>

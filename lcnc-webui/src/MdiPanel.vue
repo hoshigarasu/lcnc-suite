@@ -107,15 +107,6 @@ function loadFromHistory(cmd: string) {
   min-width: 260px;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-}
-
-.inp:focus {
-  outline: none;
-  border-color: color-mix(in oklab, var(--fg) 40%, var(--border));
 }
 
 .pre {
@@ -183,12 +174,7 @@ function loadFromHistory(cmd: string) {
   font-size: 12px;
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
-  cursor: pointer;
   text-align: left;
-  transition: all 0.15s ease;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

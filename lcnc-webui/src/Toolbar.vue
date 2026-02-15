@@ -286,10 +286,6 @@ function updateOffset(axis: number, value: number) {
   background: color-mix(in oklab, var(--fg) 10%, var(--button-bg));
 }
 
-.pillPopover input[type="checkbox"] {
-  cursor: pointer;
-}
-
 /* ---- Workpiece inputs ---- */
 .wpPopover {
   min-width: 180px;
@@ -314,17 +310,7 @@ function updateOffset(axis: number, value: number) {
   padding: 4px 6px;
   font-size: 11px;
   border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   max-width: 72px;
-}
-
-.numInput:focus {
-  outline: none;
-  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
-  background: color-mix(in oklab, var(--fg) 10%, var(--button-bg));
 }
 
 .popSep {

@@ -123,26 +123,13 @@ const totalBadge = computed(() => {
   padding: 6px 10px;
   font-size: 12px;
   border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
-  cursor: pointer;
   white-space: nowrap;
   text-align: left;
-  transition: background 0.12s;
-}
-
-.tabOption:hover {
-  background: color-mix(in oklab, var(--fg) 15%, var(--button-bg));
 }
 
 .tabOption.active {
   background: color-mix(in oklab, var(--fg) 15%, var(--button-bg));
   font-weight: 600;
-}
-
-.tabOption:active {
-  transform: scale(0.97);
 }
 
 /* ---- Close button ---- */
@@ -155,16 +142,10 @@ const totalBadge = computed(() => {
   color: var(--fg);
   font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.15s;
   margin-left: auto;
-}
-
-.panelClose:hover {
-  opacity: 0.8;
 }
 
 /* ---- Content ---- */

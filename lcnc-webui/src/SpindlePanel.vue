@@ -229,17 +229,9 @@ function formatRpm(val: number | null): string {
   flex: 1;
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
   font-size: 14px;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   font-weight: 600;
   max-width: 160px;
-}
-
-.rpmInput:disabled {
-  opacity: 0.4;
 }
 
 .actualGroup {

@@ -932,7 +932,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   background: transparent;
   color: var(--fg);
   font-size: 22px;
-  cursor: pointer;
   opacity: 0.4;
   transition: opacity 0.15s, background 0.15s;
 }

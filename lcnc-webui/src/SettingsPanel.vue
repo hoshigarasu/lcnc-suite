@@ -350,16 +350,7 @@ const opacityFields: { key: keyof OpacityDefaults; label: string }[] = [
   padding: 4px 8px;
   font-size: 12px;
   border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   width: 80px;
-}
-
-.numInput:focus {
-  outline: none;
-  border-color: color-mix(in oklab, var(--fg) 40%, var(--border));
 }
 
 .layerGrid {
@@ -375,10 +366,6 @@ const opacityFields: { key: keyof OpacityDefaults; label: string }[] = [
   font-size: 13px;
   cursor: pointer;
   user-select: none;
-}
-
-.layerGrid input[type="checkbox"] {
-  cursor: pointer;
 }
 
 .colorGrid {
@@ -471,10 +458,6 @@ const opacityFields: { key: keyof OpacityDefaults; label: string }[] = [
   font-size: 13px;
   cursor: pointer;
   user-select: none;
-}
-
-.checkRow input[type="checkbox"] {
-  cursor: pointer;
 }
 
 .placeholder {

@@ -285,7 +285,7 @@ function formatSize(bytes: number): string {
     <!-- Error banner -->
     <div v-if="uploadError" class="errorBanner">
       <span>{{ uploadError }}</span>
-      <button class="errorClose" @click="uploadError = null">&times;</button>
+      <button class="btn-icon" @click="uploadError = null">&times;</button>
     </div>
 
     <!-- File browser (collapsible) -->
@@ -505,20 +505,6 @@ function formatSize(bytes: number): string {
   color: #ff6b6b;
 }
 
-.errorClose {
-  background: none;
-  border: none;
-  color: inherit;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 0 4px;
-  opacity: 0.7;
-}
-
-.errorClose:hover {
-  opacity: 1;
-}
-
 /* File browser */
 .fileBrowser {
   border: 1px solid var(--border);
@@ -543,10 +529,6 @@ function formatSize(bytes: number): string {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
-  cursor: pointer;
   font-family: monospace;
 }
 

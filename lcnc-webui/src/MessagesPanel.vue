@@ -57,7 +57,7 @@ function formatTime(ts: number): string {
           </div>
           <div class="msgText">{{ msg.text }}</div>
         </div>
-        <button class="dismissBtn" @click="emit('dismiss', msg.id)">&times;</button>
+        <button class="btn-icon dismissBtn" @click="emit('dismiss', msg.id)">&times;</button>
       </div>
     </div>
   </div>
@@ -83,21 +83,7 @@ function formatTime(ts: number): string {
 
 .clearBtn {
   padding: 6px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
   font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.clearBtn:hover {
-  opacity: 0.8;
-}
-
-.clearBtn:active {
-  transform: scale(0.95);
 }
 
 .emptyState {
@@ -194,21 +180,8 @@ function formatTime(ts: number): string {
 
 .dismissBtn {
   align-self: flex-start;
-  background: none;
-  border: none;
-  color: var(--fg);
-  opacity: 0.4;
-  cursor: pointer;
   font-size: 18px;
   line-height: 1;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all 0.15s ease;
   flex-shrink: 0;
-}
-
-.dismissBtn:hover {
-  opacity: 0.8;
-  background: color-mix(in oklab, var(--fg) 10%, transparent);
 }
 </style>

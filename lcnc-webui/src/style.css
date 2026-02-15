@@ -124,6 +124,64 @@ input[type="range"]::-moz-range-thumb:hover {
   transform: scale(1.2);
 }
 
+input[type="number"],
+input[type="text"] {
+  border: 1px solid var(--border);
+  background: var(--button-bg);
+  color: var(--fg);
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  outline: none;
+}
+
+input[type="number"]:focus,
+input[type="text"]:focus {
+  border-color: color-mix(in oklab, var(--fg) 40%, var(--border));
+}
+
+input[type="number"]:disabled,
+input[type="text"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+input[type="checkbox"] {
+  cursor: pointer;
+}
+
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  font-size: inherit;
+  color: inherit;
+  opacity: 0.5;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.btn-icon:hover:not(:disabled) {
+  opacity: 0.8;
+  background: color-mix(in oklab, var(--fg) 10%, transparent);
+}
+
+.btn-icon:active:not(:disabled) {
+  opacity: 1;
+}
+
+.btn-icon:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 .card {
   padding: 2em;
   background: var(--panel);

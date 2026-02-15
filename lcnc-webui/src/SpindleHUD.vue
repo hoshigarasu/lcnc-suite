@@ -161,17 +161,9 @@ function formatRpm(val: number | null): string {
   flex: 1;
   padding: 3px 6px;
   font-size: 11px;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   font-weight: 600;
   border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  color: var(--fg);
   max-width: 90px;
-}
-
-.rpmInput:disabled {
-  opacity: 0.35;
 }
 
 /* Info row */

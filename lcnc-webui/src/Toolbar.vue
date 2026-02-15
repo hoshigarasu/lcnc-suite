@@ -10,7 +10,7 @@
       <!-- Views pill -->
       <div class="toolPill">
         <span class="pillLabel">Views</span>
-        <div class="pillPopover">
+        <div class="popover pillPopover">
           <div class="viewGrid">
             <button class="viewBtn" @click="$emit('setView', 'top')">Top</button>
             <button class="viewBtn" @click="$emit('setView', 'bottom')">Bottom</button>
@@ -27,7 +27,7 @@
       <!-- Layers pill -->
       <div class="toolPill">
         <span class="pillLabel">Layers</span>
-        <div class="pillPopover">
+        <div class="popover pillPopover">
           <label><input type="checkbox" v-model="local.backplot" @change="emitToggle('backplot')" /> Backplot</label>
           <label><input type="checkbox" v-model="local.toolpath" @change="emitToggle('toolpath')" /> Toolpath</label>
           <label><input type="checkbox" v-model="local.machine"  @change="emitToggle('machine')"  /> Machine</label>
@@ -41,9 +41,9 @@
       <!-- Toolpath pill -->
       <div class="toolPill">
         <span class="pillLabel">Toolpath</span>
-        <div class="pillPopover">
+        <div class="popover pillPopover">
           <button class="viewBtn" @click="$emit('resetBackplot')">Clear Backplot</button>
-          <div class="popSep"></div>
+          <div class="sep"></div>
           <label><input type="checkbox" v-model="pathOnTop" @change="$emit('setPathOnTop', pathOnTop)" /> Always on top</label>
         </div>
       </div>
@@ -51,7 +51,7 @@
       <!-- Tracking pill -->
       <div class="toolPill">
         <span class="pillLabel">Tracking</span>
-        <div class="pillPopover">
+        <div class="popover pillPopover">
           <button class="viewBtn" :class="{ active: trackMode === 'none' }" @click="setTrack('none')">None</button>
           <button class="viewBtn" :class="{ active: trackMode === 'tool' }" @click="setTrack('tool')">Tool</button>
           <button class="viewBtn" :class="{ active: trackMode === 'workpiece' }" @click="setTrack('workpiece')">Workpiece</button>
@@ -61,7 +61,7 @@
       <!-- Workpiece pill -->
       <div class="toolPill">
         <span class="pillLabel">Workpiece</span>
-        <div class="pillPopover wpPopover">
+        <div class="popover pillPopover wpPopover">
           <div class="inputRow">
             <label class="inputLabel">Size X</label>
             <input type="number" class="numInput" :value="workpieceSize[0]"
@@ -80,7 +80,7 @@
               @input="updateSize(2, parseFloat(($event.target as HTMLInputElement).value))"
               step="1" min="0" max="9999" />
           </div>
-          <div class="popSep"></div>
+          <div class="sep"></div>
           <div class="inputRow">
             <label class="inputLabel">Offset X</label>
             <input type="number" class="numInput" :value="workpieceOffset[0]"
@@ -226,17 +226,9 @@ function updateOffset(axis: number, value: number) {
 
 /* ---- Popovers ---- */
 .pillPopover {
-  display: none;
-  position: absolute;
   bottom: 100%;
   left: 0;
   padding: 8px 8px 14px 8px;
-  border-radius: 8px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  z-index: 30;
-  min-width: 140px;
 }
 
 .toolPill:hover > .pillPopover {
@@ -313,9 +305,7 @@ function updateOffset(axis: number, value: number) {
   max-width: 72px;
 }
 
-.popSep {
-  height: 1px;
-  background: var(--border);
+.sep {
   margin: 4px 0;
 }
 </style>

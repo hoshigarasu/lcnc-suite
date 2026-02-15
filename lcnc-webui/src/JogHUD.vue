@@ -155,7 +155,7 @@ function onVelInput(ev: Event) {
 </script>
 
 <template>
-  <div class="jogHud">
+  <div class="jogHud hud-panel">
     <!-- Increment row -->
     <div class="incRow">
       <button
@@ -225,12 +225,6 @@ function onVelInput(ev: Event) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: color-mix(in oklab, var(--panel) 85%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 
 /* Increment row */
@@ -333,7 +327,7 @@ function onVelInput(ev: Event) {
   text-anchor: middle;
   dominant-baseline: central;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   fill: var(--fg);
   pointer-events: none;
   user-select: none;

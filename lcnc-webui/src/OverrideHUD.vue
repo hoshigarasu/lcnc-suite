@@ -47,7 +47,7 @@ function resetAll() {
 </script>
 
 <template>
-  <div class="overrideHud">
+  <div class="overrideHud hud-panel">
     <!-- Feed -->
     <div class="ovRow">
       <span class="ovLabel">Feed</span>
@@ -94,12 +94,6 @@ function resetAll() {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: color-mix(in oklab, var(--panel) 85%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   min-width: 200px;
 }
 
@@ -114,7 +108,7 @@ function resetAll() {
   opacity: 0.6;
   min-width: 42px;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
 }
 
 .ovSlider {
@@ -132,7 +126,7 @@ function resetAll() {
 }
 
 .ovValue.warn {
-  color: #f5a623;
+  color: var(--warn);
   opacity: 1;
 }
 

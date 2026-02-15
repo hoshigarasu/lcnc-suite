@@ -233,7 +233,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
           v-for="s in sectors"
           :key="s.id"
           class="sector"
-          :class="{ active: isSectorActive(s.id), disabled: !canJog }"
+          :class="{ active: isSectorActive(s.id), disabled: !can.jog }"
           :d="s.path"
           @pointerdown.prevent="startJog(s, $event)"
           @pointerup.prevent="stopJog(s, $event)"
@@ -269,12 +269,6 @@ function stopJog(s: Sector, e?: PointerEvent) {
 </template>
 
 <style scoped>
-.sub {
-  font-size: 12px;
-  opacity: 0.65;
-  margin-bottom: 8px;
-}
-
 .btnrow {
   display: flex;
   gap: 10px;
@@ -368,7 +362,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
   text-anchor: middle;
   dominant-baseline: central;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   fill: var(--fg);
   pointer-events: none;
   user-select: none;
@@ -411,8 +405,8 @@ function stopJog(s: Sector, e?: PointerEvent) {
 }
 
 .modePill.teleop {
-  background: color-mix(in oklab, #0a7a0a 15%, var(--panel));
-  border-color: #0a7a0a40;
+  background: color-mix(in oklab, var(--ok) 15%, var(--panel));
+  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
 }
 
 .modePill.joint {

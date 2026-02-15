@@ -57,7 +57,7 @@ function fmt(n: any) {
       </div>
     </div>
 
-    <div class="separator"></div>
+    <div class="sep"></div>
 
     <div class="section">
       <div class="sub">Machine Position [{{ linearUnit }}]</div>
@@ -83,12 +83,6 @@ function fmt(n: any) {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.sub {
-  font-size: 12px;
-  opacity: 0.65;
-  margin-bottom: 8px;
 }
 
 .grid {
@@ -174,9 +168,4 @@ function fmt(n: any) {
   border-color: var(--fg);
 }
 
-.separator {
-  height: 1px;
-  background: var(--border);
-  opacity: 0.3;
-}
 </style>

@@ -21,7 +21,7 @@ const zeroDisabled = computed(() => !can.value.idle);
 </script>
 
 <template>
-  <div class="setupHud">
+  <div class="setupHud hud-panel">
     <!-- Homing -->
     <div class="row">
       <button
@@ -57,12 +57,6 @@ const zeroDisabled = computed(() => !can.value.idle);
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background: color-mix(in oklab, var(--panel) 85%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 
 .row {
@@ -79,11 +73,11 @@ const zeroDisabled = computed(() => !can.value.idle);
 }
 
 .btn.primary {
-  background: color-mix(in oklab, #4caf50 20%, var(--button-bg));
+  background: color-mix(in oklab, var(--ok) 20%, var(--button-bg));
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: color-mix(in oklab, #4caf50 35%, var(--button-bg));
+  background: color-mix(in oklab, var(--ok) 35%, var(--button-bg));
 }
 
 .btn.wide {

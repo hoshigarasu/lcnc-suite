@@ -77,8 +77,7 @@ function formatTime(ts: number): string {
 }
 
 .sub {
-  font-size: 12px;
-  opacity: 0.65;
+  margin-bottom: 0;
 }
 
 .clearBtn {
@@ -118,7 +117,7 @@ function formatTime(ts: number): string {
 }
 
 .messageItem.error .indicator {
-  background: #b00020;
+  background: var(--err);
 }
 
 .messageItem.info .indicator {
@@ -151,7 +150,7 @@ function formatTime(ts: number): string {
 }
 
 .typeBadge.error {
-  background: color-mix(in oklab, #b00020 20%, var(--panel));
+  background: color-mix(in oklab, var(--err) 20%, var(--panel));
   color: #e05555;
 }
 

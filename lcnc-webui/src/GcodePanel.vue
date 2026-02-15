@@ -302,7 +302,7 @@ function formatSize(bytes: number): string {
           <span class="fileEntryName">{{ entry.name }}</span>
           <span v-if="entry.size != null" class="fileSize">{{ formatSize(entry.size) }}</span>
         </div>
-        <div v-if="files.length === 0 && !loading" class="emptyBrowser">No G-code files found</div>
+        <div v-if="files.length === 0 && !loading" class="emptyBrowser">No program files found</div>
         <div v-if="loading" class="emptyBrowser">Loading...</div>
       </div>
     </div>
@@ -316,7 +316,7 @@ function formatSize(bytes: number): string {
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
-        <div class="dropText">Drop G-code file to upload</div>
+        <div class="dropText">Drop program file to upload</div>
       </div>
 
       <!-- Code viewer (virtual scroll) -->
@@ -347,7 +347,7 @@ function formatSize(bytes: number): string {
           <polyline points="17 8 12 3 7 8"/>
           <line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <div class="emptyText">No G-code file loaded</div>
+        <div class="emptyText">No program loaded</div>
         <div class="emptyHint">Drag &amp; drop a file here, or use Upload / Browse above</div>
       </div>
     </div>
@@ -391,13 +391,13 @@ function formatSize(bytes: number): string {
 }
 
 .ctrlBtn.primary {
-  background: color-mix(in oklab, #1a9a1a 25%, var(--button-bg));
-  border-color: #1a9a1a80;
+  background: color-mix(in oklab, var(--ok) 25%, var(--button-bg));
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
 }
 
 .ctrlBtn.danger {
-  background: color-mix(in oklab, #cc3333 25%, var(--button-bg));
-  border-color: #cc333380;
+  background: color-mix(in oklab, var(--danger) 25%, var(--button-bg));
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
 }
 
 .ctrlIcon {
@@ -421,7 +421,7 @@ function formatSize(bytes: number): string {
 .progressFill {
   height: 100%;
   border-radius: 3px;
-  background: #569cd6;
+  background: var(--info);
   transition: width 0.3s ease;
 }
 
@@ -482,7 +482,14 @@ function formatSize(bytes: number): string {
 }
 
 .uploadBtn {
+  display: inline-block;
+  border: 1px solid var(--border);
+  background-color: var(--button-bg);
+  color: var(--fg);
+  font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, opacity 0.15s;
 }
 
 .uploadBtn.disabled {
@@ -498,8 +505,8 @@ function formatSize(bytes: number): string {
   justify-content: space-between;
   gap: 8px;
   padding: 6px 10px;
-  background: color-mix(in oklab, #b00020 15%, var(--panel));
-  border: 1px solid #b0002040;
+  background: color-mix(in oklab, var(--err) 15%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--err) 25%, transparent);
   border-radius: 6px;
   font-size: 12px;
   color: #ff6b6b;
@@ -529,7 +536,7 @@ function formatSize(bytes: number): string {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  font-family: monospace;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
 }
 
 .backBtn:hover {
@@ -561,7 +568,7 @@ function formatSize(bytes: number): string {
 }
 
 .fileItem.activeItem {
-  background: color-mix(in oklab, #569cd6 15%, var(--panel));
+  background: color-mix(in oklab, var(--info) 15%, var(--panel));
 }
 
 .fileItem.directory .fileEntryName {
@@ -569,7 +576,7 @@ function formatSize(bytes: number): string {
 }
 
 .fileIcon {
-  font-family: monospace;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   opacity: 0.5;
   width: 10px;
   text-align: center;
@@ -613,23 +620,23 @@ function formatSize(bytes: number): string {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  border: 2px dashed #569cd6;
+  border: 2px dashed var(--info);
   border-radius: 8px;
-  background: color-mix(in oklab, #569cd6 10%, var(--panel) 90%);
+  background: color-mix(in oklab, var(--info) 10%, var(--panel) 90%);
   pointer-events: none;
 }
 
 .dropIcon {
   width: 48px;
   height: 48px;
-  color: #569cd6;
+  color: var(--info);
   opacity: 0.8;
 }
 
 .dropText {
   font-size: 14px;
   font-weight: 600;
-  color: #569cd6;
+  color: var(--info);
   opacity: 0.9;
 }
 
@@ -694,8 +701,8 @@ function formatSize(bytes: number): string {
 }
 
 .emptyState.dragOver {
-  border-color: #569cd6;
-  background: color-mix(in oklab, #569cd6 8%, var(--panel));
+  border-color: var(--info);
+  background: color-mix(in oklab, var(--info) 8%, var(--panel));
   opacity: 1;
 }
 
@@ -715,31 +722,4 @@ function formatSize(bytes: number): string {
   opacity: 0.7;
 }
 
-/* Syntax highlighting tokens */
-.token-gcode {
-  color: #569cd6; /* Blue for G-codes */
-  font-weight: 600;
-}
-
-.token-mcode {
-  color: #c586c0; /* Purple for M-codes */
-  font-weight: 600;
-}
-
-.token-coord {
-  color: #4ec9b0; /* Teal for coordinates */
-}
-
-.token-param {
-  color: #9cdcfe; /* Light blue for parameters */
-}
-
-.token-comment {
-  color: #6a9955; /* Green for comments */
-  opacity: 0.8;
-}
-
-.token-text {
-  color: var(--fg);
-}
 </style>

@@ -58,7 +58,7 @@ const tabs = [
   { id: "mdi", label: "MDI" },
   { id: "overrides", label: "Overrides" },
   { id: "spindle", label: "Spindle" },
-  { id: "gcode", label: "G-code" },
+  { id: "gcode", label: "Program" },
   { id: "messages", label: "Messages" },
   { id: "settings", label: "Settings" },
 ];
@@ -612,7 +612,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <span class="safetyLabel">{{ armed ? "Disarm" : "Arm" }}</span>
         </button>
 
-        <div class="sep"></div>
+        <div class="vsep"></div>
 
         <button
           class="btn safetyBtn"
@@ -624,7 +624,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <span class="safetyLabel">{{ isEstop ? "Reset E-Stop" : "E-Stop" }}</span>
         </button>
 
-        <div class="sep"></div>
+        <div class="vsep"></div>
 
         <button
           class="btn safetyBtn"
@@ -646,7 +646,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <span class="chipIcon">&#x2699;</span>
           <span class="chipLabel">Machine</span>
           <span class="chipValue">{{ isEstop ? 'E-STOP' : (!isEnabled ? 'OFF' : (!isHomed ? 'NOT HOMED' : 'READY')) }}</span>
-          <div class="chipPopover">
+          <div class="popover chipPopover">
             <div class="statusRow"><div class="k">E-Stop</div><div class="v" :class="isEstop ? 'badText' : 'okText'">{{ isEstop ? 'TRUE' : 'FALSE' }}</div></div>
             <div class="statusRow"><div class="k">Enabled</div><div class="v" :class="isEnabled ? 'okText' : 'mutedText'">{{ isEnabled ? 'TRUE' : 'FALSE' }}</div></div>
             <div class="statusRow"><div class="k">Homed</div><div class="v" :class="isHomed ? 'okText' : 'badText'">{{ isHomed ? 'TRUE' : 'FALSE' }}</div></div>
@@ -658,7 +658,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <span class="chipIcon">&#x25B6;</span>
           <span class="chipLabel">Program</span>
           <span class="chipValue">{{ isRunning ? 'RUNNING' : (isPaused ? 'PAUSED' : 'IDLE') }}</span>
-          <div class="chipPopover">
+          <div class="popover chipPopover">
             <div class="statusRow"><div class="k">Task Mode</div><div class="v">{{ taskModeLabel }}</div></div>
             <div class="statusRow"><div class="k">Interpreter</div><div class="v">{{ interpStateLabel }}</div></div>
             <div class="statusRow"><div class="k">Work Coord</div><div class="v">{{ g5xLabel }}</div></div>
@@ -671,7 +671,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <span class="chipIcon">%</span>
           <span class="chipLabel">Overrides</span>
           <span class="chipValue">{{ overridesActive ? 'ACTIVE' : 'DEFAULT' }}</span>
-          <div class="chipPopover">
+          <div class="popover chipPopover">
             <div class="statusRow"><div class="k">Feed</div><div class="v" :class="{ warn: feedOverrideValue !== 1.0 }">{{ feedOverride }}</div></div>
             <div class="statusRow"><div class="k">Spindle</div><div class="v" :class="{ warn: spindleOverrideValue !== 1.0 }">{{ spindleOverride }}</div></div>
             <div class="statusRow"><div class="k">Rapid</div><div class="v" :class="{ warn: rapidOverrideValue !== 1.0 }">{{ rapidOverride }}</div></div>
@@ -890,11 +890,11 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .pill.bad {
-  background: color-mix(in oklab, #cc3333 25%, var(--panel));
+  background: color-mix(in oklab, var(--danger) 25%, var(--panel));
 }
 
 .pill.armed {
-  background: color-mix(in oklab, #1a9a1a 25%, var(--panel));
+  background: color-mix(in oklab, var(--ok) 25%, var(--panel));
 }
 
 .pill.disarmed {
@@ -965,7 +965,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   margin-bottom: 0;
   position: sticky;
   top: 8px;
-  z-index: 20;
+  z-index: 50;
 }
 
 .topRow > .card {
@@ -983,7 +983,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   min-width: 0;
 }
 
-.topRow .sep {
+.topRow .vsep {
   width: 100%;
   height: 1px;
   margin: 0;
@@ -1004,12 +1004,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   margin-bottom: 12px;
   background: var(--panel);
   color: var(--fg);
-}
-
-.sub {
-  font-size: 12px;
-  opacity: 0.65;
-  margin-bottom: 8px;
 }
 
 .controlGroups {
@@ -1072,7 +1066,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .v {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .v.codes {
@@ -1081,7 +1075,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .v.warn {
-  color: #f5a623;
+  color: var(--warn);
   animation: flash-warn 1.2s ease-in-out infinite;
 }
 
@@ -1091,11 +1085,11 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .okText {
-  color: #0a7a0a;
+  color: var(--ok);
 }
 
 .badText {
-  color: #b00020;
+  color: var(--err);
 }
 
 .warnText {
@@ -1127,8 +1121,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
   min-width: 100px;
 }
 
-.statusChip.ok { border-color: #1a9a1a80; background: color-mix(in oklab, #1a9a1a 20%, var(--panel)); }
-.statusChip.bad { border-color: #cc333380; background: color-mix(in oklab, #cc3333 20%, var(--panel)); }
+.statusChip.ok { border-color: color-mix(in srgb, var(--ok) 50%, transparent); background: color-mix(in oklab, var(--ok) 20%, var(--panel)); }
+.statusChip.bad { border-color: color-mix(in srgb, var(--danger) 50%, transparent); background: color-mix(in oklab, var(--danger) 20%, var(--panel)); }
 .statusChip.warn { border-color: #b8860b80; animation: flash-chip-warn 1.2s ease-in-out infinite; }
 
 @keyframes flash-chip-warn {
@@ -1138,21 +1132,13 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 .chipIcon { display: none; font-size: 16px; }
 .chipLabel { font-size: 10px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.5px; }
-.chipValue { font-size: 13px; font-weight: 650; }
+.chipValue { font-size: 13px; font-weight: 600; }
 
 .chipPopover {
-  display: none;
-  position: absolute;
   top: 0;
   left: 100%;
   margin-left: 6px;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  z-index: 100;
   min-width: 200px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
 .statusChip:hover > .chipPopover {
@@ -1168,7 +1154,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   align-items: center;
 }
 
-.sep {
+.vsep {
   width: 1px;
   height: 26px;
   background: var(--border);
@@ -1181,13 +1167,13 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .btn.danger {
-  border-color: #cc333380;
-  background: color-mix(in oklab, #cc3333 25%, var(--button-bg));
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+  background: color-mix(in oklab, var(--danger) 25%, var(--button-bg));
 }
 
 .btn.primary {
-  border-color: #1a9a1a80;
-  background: color-mix(in oklab, #1a9a1a 25%, var(--button-bg));
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+  background: color-mix(in oklab, var(--ok) 25%, var(--button-bg));
   font-weight: 600;
 }
 

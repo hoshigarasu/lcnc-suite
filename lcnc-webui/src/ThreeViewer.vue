@@ -1148,7 +1148,7 @@ defineExpose({
     <div class="hudOverlay">
       <div class="hudPills">
         <button class="hudPill" :class="{ active: activeHudPanel === 'jog' }" @click="toggleHud('jog')">Jog</button>
-        <button class="hudPill" :class="{ active: activeHudPanel === 'gcode' }" @click="toggleHud('gcode')">Gcode</button>
+        <button class="hudPill" :class="{ active: activeHudPanel === 'gcode' }" @click="toggleHud('gcode')">Program</button>
         <button class="hudPill" :class="{ active: activeHudPanel === 'setup' }" @click="toggleHud('setup')">Setup</button>
         <button class="hudPill" :class="{ active: activeHudPanel === 'spindle' }" @click="toggleHud('spindle')">Spindle</button>
         <button class="hudPill" :class="{ active: activeHudPanel === 'overrides', warn: overridesActive }" @click="toggleHud('overrides')">Overrides</button>

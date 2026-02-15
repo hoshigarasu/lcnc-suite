@@ -40,7 +40,7 @@ function formatRpm(val: number | null): string {
 </script>
 
 <template>
-  <div class="spindleHud">
+  <div class="spindleHud hud-panel">
     <!-- Direction buttons -->
     <div class="dirRow">
       <button
@@ -109,12 +109,6 @@ function formatRpm(val: number | null): string {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: color-mix(in oklab, var(--panel) 85%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   min-width: 200px;
 }
 
@@ -133,13 +127,13 @@ function formatRpm(val: number | null): string {
 }
 
 .dirBtn.active {
-  background: color-mix(in oklab, #4caf50 25%, var(--button-bg));
-  border-color: color-mix(in oklab, #4caf50 40%, var(--border));
+  background: color-mix(in oklab, var(--ok) 25%, var(--button-bg));
+  border-color: color-mix(in oklab, var(--ok) 40%, var(--border));
 }
 
 .dirBtn.stop.active {
-  background: color-mix(in oklab, #f44336 25%, var(--button-bg));
-  border-color: color-mix(in oklab, #f44336 40%, var(--border));
+  background: color-mix(in oklab, var(--danger) 25%, var(--button-bg));
+  border-color: color-mix(in oklab, var(--danger) 40%, var(--border));
 }
 
 /* RPM input */
@@ -154,7 +148,7 @@ function formatRpm(val: number | null): string {
   opacity: 0.6;
   min-width: 42px;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
 }
 
 .rpmInput {
@@ -201,7 +195,7 @@ function formatRpm(val: number | null): string {
 }
 
 .overrideLabel.warn {
-  color: #f5a623;
+  color: var(--warn);
   opacity: 1;
 }
 </style>

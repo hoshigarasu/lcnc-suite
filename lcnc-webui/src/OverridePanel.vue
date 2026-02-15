@@ -78,7 +78,7 @@ function resetAll() {
       <button class="resetAllBtn" @click="resetAll" :disabled="!can.override">Reset All Overrides</button>
     </div>
 
-    <div class="separator"></div>
+    <div class="sep"></div>
 
     <div class="overrideGroup">
       <div class="overrideRow">
@@ -105,7 +105,7 @@ function resetAll() {
       </div>
     </div>
 
-    <div class="separator"></div>
+    <div class="sep"></div>
 
     <div class="overrideGroup">
       <div class="overrideRow">
@@ -132,7 +132,7 @@ function resetAll() {
       </div>
     </div>
 
-    <div class="separator"></div>
+    <div class="sep"></div>
 
     <div class="overrideGroup">
       <div class="overrideRow">
@@ -200,7 +200,7 @@ function resetAll() {
 }
 
 .overrideValue.warn {
-  color: #f5a623;
+  color: var(--warn);
   animation: flash-warn 1.2s ease-in-out infinite;
 }
 
@@ -224,12 +224,6 @@ function resetAll() {
   font-size: 11px;
   border-radius: 4px;
   white-space: nowrap;
-}
-
-.separator {
-  height: 1px;
-  background: var(--border);
-  opacity: 0.3;
 }
 
 .resetAllRow {

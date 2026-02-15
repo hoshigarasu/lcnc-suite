@@ -61,7 +61,7 @@ function formatRpm(val: number | null): string {
         title="Spindle Reverse (CCW)"
       >
         <span class="dirIcon">&#x21BA;</span>
-        <span class="dirLabel">REV</span>
+        <span class="dirLabel">Rev</span>
       </button>
 
       <button
@@ -72,7 +72,7 @@ function formatRpm(val: number | null): string {
         title="Spindle Stop"
       >
         <span class="stopIcon">&#x25A0;</span>
-        <span class="dirLabel">STOP</span>
+        <span class="dirLabel">Stop</span>
       </button>
 
       <button
@@ -83,11 +83,11 @@ function formatRpm(val: number | null): string {
         title="Spindle Forward (CW)"
       >
         <span class="dirIcon">&#x21BB;</span>
-        <span class="dirLabel">FWD</span>
+        <span class="dirLabel">Fwd</span>
       </button>
     </div>
 
-    <div class="separator"></div>
+    <div class="sep"></div>
 
     <!-- RPM input -->
     <div class="rpmRow">
@@ -103,7 +103,7 @@ function formatRpm(val: number | null): string {
       />
     </div>
 
-    <div class="separator"></div>
+    <div class="sep"></div>
 
     <!-- Actual speed display -->
     <div class="actualGroup">
@@ -123,7 +123,7 @@ function formatRpm(val: number | null): string {
       </div>
     </div>
 
-    <div class="separator"></div>
+    <div class="sep"></div>
 
     <!-- Speed override slider -->
     <div class="overrideGroup">
@@ -175,18 +175,18 @@ function formatRpm(val: number | null): string {
 }
 
 .dirBtn.fwd.active {
-  background: color-mix(in oklab, #1a9a1a 30%, var(--panel));
-  border-color: #1a9a1a80;
+  background: color-mix(in oklab, var(--ok) 30%, var(--panel));
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
 }
 
 .dirBtn.rev.active {
-  background: color-mix(in oklab, #1a9a1a 30%, var(--panel));
-  border-color: #1a9a1a80;
+  background: color-mix(in oklab, var(--ok) 30%, var(--panel));
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
 }
 
 .dirBtn.stop.active {
-  background: color-mix(in oklab, #cc3333 30%, var(--panel));
-  border-color: #cc333380;
+  background: color-mix(in oklab, var(--danger) 30%, var(--panel));
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
 }
 
 .dirIcon {
@@ -204,12 +204,6 @@ function formatRpm(val: number | null): string {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-.separator {
-  height: 1px;
-  background: var(--border);
-  opacity: 0.3;
 }
 
 .rpmRow {
@@ -274,12 +268,12 @@ function formatRpm(val: number | null): string {
 }
 
 .fwdText {
-  color: #0a7a0a;
+  color: var(--ok);
   opacity: 1;
 }
 
 .revText {
-  color: #0a7a0a;
+  color: var(--ok);
   opacity: 1;
 }
 
@@ -309,7 +303,7 @@ function formatRpm(val: number | null): string {
 }
 
 .overrideValue.warn {
-  color: #f5a623;
+  color: var(--warn);
   animation: flash-warn 1.2s ease-in-out infinite;
 }
 

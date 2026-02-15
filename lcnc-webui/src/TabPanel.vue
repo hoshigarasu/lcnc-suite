@@ -28,7 +28,7 @@ const totalBadge = computed(() => {
           {{ tabs.find(t => t.id === modelValue)?.label || 'Tab' }}
           <span v-if="totalBadge" class="pillBadge">{{ totalBadge > 99 ? '99+' : totalBadge }}</span>
         </span>
-        <div class="pillPopover">
+        <div class="popover pillPopover">
           <button
             v-for="tab in tabs"
             :key="tab.id"
@@ -99,17 +99,9 @@ const totalBadge = computed(() => {
 
 /* ---- Popover (opens downward) ---- */
 .pillPopover {
-  display: none;
-  position: absolute;
   top: 100%;
   left: 0;
   padding: 14px 8px 8px 8px;
-  border-radius: 8px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  z-index: 9999;
-  min-width: 140px;
   flex-direction: column;
   gap: 2px;
 }
@@ -137,8 +129,8 @@ const totalBadge = computed(() => {
   flex-shrink: 0;
   padding: 5px 10px;
   border-radius: 6px;
-  border: 1px solid #cc333380;
-  background: color-mix(in oklab, #cc3333 25%, var(--button-bg));
+  border: 1px solid color-mix(in srgb, var(--danger) 50%, transparent);
+  background: color-mix(in oklab, var(--danger) 25%, var(--button-bg));
   color: var(--fg);
   font-size: 14px;
   font-weight: 600;
@@ -171,7 +163,7 @@ const totalBadge = computed(() => {
   border-radius: 8px;
   font-size: 9px;
   font-weight: 700;
-  background: #b00020;
+  background: var(--err);
   color: #fff;
   line-height: 1;
 }
@@ -187,7 +179,7 @@ const totalBadge = computed(() => {
   border-radius: 9px;
   font-size: 10px;
   font-weight: 700;
-  background: #b00020;
+  background: var(--err);
   color: #fff;
   line-height: 1;
 }

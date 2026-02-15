@@ -87,7 +87,7 @@ function tokenizeCode(code: string, tokens: Token[]) {
 </script>
 
 <template>
-  <div class="gcodeHud">
+  <div class="gcodeHud hud-panel">
     <!-- Program controls -->
     <div class="ctrlRow">
       <button class="ctrlBtn primary" :disabled="!can.ready || !gcodeContent" @click="emit('cycleStart')">&#9654;</button>
@@ -131,12 +131,6 @@ function tokenizeCode(code: string, tokens: Token[]) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: color-mix(in oklab, var(--panel) 85%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   min-width: 240px;
 }
 
@@ -154,19 +148,19 @@ function tokenizeCode(code: string, tokens: Token[]) {
 }
 
 .ctrlBtn.primary {
-  background: color-mix(in oklab, #4caf50 20%, var(--button-bg));
+  background: color-mix(in oklab, var(--ok) 20%, var(--button-bg));
 }
 
 .ctrlBtn.primary:hover:not(:disabled) {
-  background: color-mix(in oklab, #4caf50 35%, var(--button-bg));
+  background: color-mix(in oklab, var(--ok) 35%, var(--button-bg));
 }
 
 .ctrlBtn.danger {
-  background: color-mix(in oklab, #f44336 20%, var(--button-bg));
+  background: color-mix(in oklab, var(--danger) 20%, var(--button-bg));
 }
 
 .ctrlBtn.danger:hover:not(:disabled) {
-  background: color-mix(in oklab, #f44336 35%, var(--button-bg));
+  background: color-mix(in oklab, var(--danger) 35%, var(--button-bg));
 }
 
 /* Progress */
@@ -186,7 +180,7 @@ function tokenizeCode(code: string, tokens: Token[]) {
 
 .progressFill {
   height: 100%;
-  background: #569cd6;
+  background: var(--info);
   transition: width 0.3s ease;
 }
 
@@ -233,11 +227,4 @@ function tokenizeCode(code: string, tokens: Token[]) {
   text-overflow: ellipsis;
 }
 
-/* Syntax colors (same as GcodePanel) */
-.tok-gcode { color: #569cd6; font-weight: 600; }
-.tok-mcode { color: #c586c0; font-weight: 600; }
-.tok-coord { color: #4ec9b0; }
-.tok-param { color: #9cdcfe; }
-.tok-comment { color: #6a9955; opacity: 0.8; }
-.tok-text { color: var(--fg); }
 </style>

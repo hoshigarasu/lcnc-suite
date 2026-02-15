@@ -60,9 +60,9 @@ function loadFromHistory(cmd: string) {
 
     <!-- History section -->
     <div class="historySection">
-      <div class="separator"></div>
-      <div class="historyLabel">Command History</div>
-      <div class="historyList">
+      <div class="sep"></div>
+      <div class="sub">Command History</div>
+      <div class="historyList scroll-thin">
         <button
           v-for="(cmd, index) in history"
           :key="index"
@@ -82,12 +82,6 @@ function loadFromHistory(cmd: string) {
   display: flex;
   flex-direction: column;
   height: 100%;
-}
-
-.sub {
-  font-size: 12px;
-  opacity: 0.65;
-  margin-bottom: 8px;
 }
 
 .btnrow {
@@ -117,10 +111,7 @@ function loadFromHistory(cmd: string) {
   font-size: 11px;
 }
 
-.separator {
-  height: 1px;
-  background: var(--border);
-  opacity: 0.3;
+.sep {
   margin: 12px 0;
 }
 
@@ -131,15 +122,6 @@ function loadFromHistory(cmd: string) {
   min-height: 0;
 }
 
-.historyLabel {
-  font-size: 11px;
-  font-weight: 600;
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
-}
-
 .historyList {
   display: flex;
   flex-direction: column;
@@ -148,25 +130,6 @@ function loadFromHistory(cmd: string) {
   overflow-y: auto;
   min-height: 0;
   padding: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-
-.historyList::-webkit-scrollbar {
-  width: 8px;
-}
-
-.historyList::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.historyList::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
-
-.historyList::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklab, var(--border) 80%, var(--fg));
 }
 
 .historyItem {

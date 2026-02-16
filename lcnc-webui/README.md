@@ -63,3 +63,33 @@ const can = usePermissions();
 ```
 
 `usePermissions()` returns a `ComputedRef<Permissions>` — auto-unwraps in templates, use `.value` in script.
+
+## Panel Layout
+
+Viewport-locked layout: `html { overflow: auto }`, `body { overflow: hidden; min-width: 760px; min-height: 600px }`. Browser scrollbar appears only when the window is smaller than the minimums. Inside the app, `.panels` scrolls one axis per orientation — horizontal in landscape, vertical in portrait. All `.panel` elements use `box-sizing: border-box` (sizes include padding + border).
+
+### Landscape (side by side, `overflow-x: auto`)
+
+| Panel | Width | Height |
+|-------|-------|--------|
+| viewer | `flex: 1`, `min-width: 560px` | stretch, `min-height: 400px` |
+| dro | `flex: 0 0 auto`, `min-width: 560px` | stretch, `min-height: 400px` |
+| gcode | `flex: 0.5`, `min-width: 320px` | stretch, `min-height: 400px` |
+| settings | `flex: 0 0 auto`, `min-width: 320px` | stretch, `min-height: 400px` |
+| mdi | `flex: 0 0 auto`, `min-width: 320px` | stretch, `min-height: 400px` |
+| messages | `flex: 0 0 auto`, `min-width: 320px` | stretch, `min-height: 400px` |
+
+Viewer fills remaining width. Gcode grows at half rate (`flex: 0.5`). All others stay at their min-width. Height is uniform — all panels stretch to `.panels` container height.
+
+### Portrait (stacked, `overflow-y: auto`)
+
+| Panel | Width | Height |
+|-------|-------|--------|
+| viewer | stretch, `min-width: 560px` | `flex: 1`, `min-height: 500px` |
+| dro | stretch, `min-width: 560px` | `flex: 0 0 350px` |
+| gcode | stretch, `min-width: 560px` | `flex: 0 0 350px` |
+| settings | stretch, `min-width: 560px` | `flex: 0 0 350px` |
+| mdi | stretch, `min-width: 560px` | `flex: 0 0 350px` |
+| messages | stretch, `min-width: 560px` | `flex: 0 0 350px` |
+
+Viewer fills remaining height. All others get fixed 350px. Width is uniform — all panels stretch to `.panels` width with a shared `min-width: 560px`.

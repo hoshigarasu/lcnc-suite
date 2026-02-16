@@ -67,6 +67,7 @@ function formatTime(ts: number): string {
 .container {
   display: flex;
   flex-direction: column;
+  height: 100%;
   gap: 12px;
 }
 
@@ -96,7 +97,8 @@ function formatTime(ts: number): string {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 600px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 

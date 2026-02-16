@@ -63,11 +63,6 @@ function removePanel(panelId: number) {
   viewerRefs.delete(panelId);
 }
 
-function panelMinWidth(tab: string): string {
-  if (tab === "viewer" || tab === "dro") return "560px";
-  return "320px";
-}
-
 
 const tabBadges = computed((): Record<string, number> =>
   unreadCount.value > 0 ? { messages: unreadCount.value } : {}
@@ -632,8 +627,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
     <!-- Dynamic tab panels (1–4) -->
     <div class="panels">
       <div v-for="(panel, idx) in panels" :key="panel.id" class="panel"
-           :class="'panel-' + panel.tab"
-           :style="{ minWidth: panelMinWidth(panel.tab) }">
+           :class="'panel-' + panel.tab">
         <TabPanel
           :tabs="tabs"
           :modelValue="panel.tab"
@@ -1165,19 +1159,17 @@ watch(isHomed, (nowHomed, wasHomed) => {
 /* ---- Landscape layout — panels side by side ---- */
 @media (orientation: landscape) {
   .panels          { align-items: stretch; flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; }
-  .panel           { flex: 0 0 auto; min-height: 400px; }   /* width = content, can't crush vertically */
-  .panel-viewer    { flex: 1; overflow: hidden; } /* fills remaining width */
-  .panel-gcode     { flex: 0.5; }        /* medium width priority */
+  .panel           { flex: 0 0 auto; min-height: 400px; min-width: 320px; }
+  .panel-viewer    { flex: 1; min-width: 560px; overflow: hidden; }
+  .panel-dro       { min-width: 560px; }
+  .panel-gcode     { flex: 0.5; }
 }
 
 /* ---- Portrait layout — panels stacked vertically ---- */
 @media (orientation: portrait) {
   .panels          { flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
-  .panel           { flex: 0 0 auto; }   /* height = content */
-  .panel-viewer    { flex: 1; min-height: 500px; overflow: hidden; } /* fills remaining height, can't be crushed */
-  .panel-gcode     { flex: 0 0 350px; }  /* fixed height, includes program control row */
-  .panel-settings  { flex: 0 0 350px; }  /* fixed height, content scrolls */
-  .panel-mdi       { flex: 0 0 350px; }  /* fixed height, history scrolls */
+  .panel           { flex: 0 0 350px; min-width: 560px; }
+  .panel-viewer    { flex: 1; min-height: 500px; overflow: hidden; }
   .addPanel        { flex: 0 0 auto; width: 100%; height: 36px; }
 }
 

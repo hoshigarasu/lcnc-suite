@@ -359,7 +359,6 @@ function formatSize(bytes: number): string {
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-height: 600px;
   gap: 8px;
 }
 
@@ -688,7 +687,6 @@ function formatSize(bytes: number): string {
 
 .emptyState {
   flex: 1;
-  min-height: 200px;
   display: flex;
   flex-direction: column;
   align-items: center;

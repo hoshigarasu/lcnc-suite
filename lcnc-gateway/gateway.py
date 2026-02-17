@@ -1573,6 +1573,7 @@ async def ws_endpoint(ws: WebSocket):
             if msg.get("cmd") == "heartbeat":
                 if client_id in _clients:
                     _clients[client_id]["last_hb"] = time.time()
+                await ws_send_json(ws, {"type": "pong"})
                 continue
 
             if msg.get("cmd") == "arm":

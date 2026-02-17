@@ -15,7 +15,8 @@ export const lcncError = ref<string | null>(null);
 export const messages = ref<LcncMessage[]>([]);
 export const unreadCount = ref(0);
 
-export const latency = ref<number | null>(null);
+export const latency = ref<number | null>(null);        // round-trip: heartbeat → next status
+export const networkLatency = ref<number | null>(null);  // pure network: heartbeat → pong
 
 export const viewerInit = ref<any>(null);
 export const viewerGcode = ref<any>(null);
@@ -25,7 +26,8 @@ let _nextMsgId = 1;
 
 let ws: WebSocket | null = null;
 let _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-let _heartbeatSentAt = 0;
+let _heartbeatSentAt = 0;   // used for network latency (pong)
+let _rtSentAt = 0;           // used for round-trip latency (next status)
 
 export function connectWs() {
   // Close previous connection if any (prevents leaks during HMR)
@@ -43,7 +45,7 @@ export function connectWs() {
     connected.value = true;
     _heartbeatInterval = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        _heartbeatSentAt = performance.now();
+        _heartbeatSentAt = _rtSentAt = performance.now();
         ws.send('{"cmd":"heartbeat"}');
       }
     }, 1000);
@@ -52,7 +54,8 @@ export function connectWs() {
   ws.onclose = () => {
     connected.value = false;
     latency.value = null;
-    _heartbeatSentAt = 0;
+    networkLatency.value = null;
+    _heartbeatSentAt = _rtSentAt = 0;
     if (_heartbeatInterval) { clearInterval(_heartbeatInterval); _heartbeatInterval = null; }
     setTimeout(() => connectWs(), 2000);
   };
@@ -69,11 +72,20 @@ export function connectWs() {
       return;
     }
 
-    if (msg.type === "status") {
-      // Measure heartbeat round-trip latency
+    if (msg.type === "pong") {
+      // Pure network latency: heartbeat → immediate pong reply
       if (_heartbeatSentAt > 0) {
-        latency.value = Math.round(performance.now() - _heartbeatSentAt);
+        networkLatency.value = Math.round(performance.now() - _heartbeatSentAt);
         _heartbeatSentAt = 0;
+      }
+      return;
+    }
+
+    if (msg.type === "status") {
+      // Round-trip latency: heartbeat → next status (includes poll wait)
+      if (_rtSentAt > 0) {
+        latency.value = Math.round(performance.now() - _rtSentAt);
+        _rtSentAt = 0;
       }
 
       // Extract errors BEFORE rAF buffer to prevent message loss when
@@ -144,4 +156,12 @@ export function clearAllMessages() {
 
 export function markMessagesRead() {
   unreadCount.value = 0;
+}
+
+// Clean up WebSocket on Vite HMR to prevent ghost clients
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (ws) { ws.onclose = null; ws.close(); ws = null; }
+    if (_heartbeatInterval) { clearInterval(_heartbeatInterval); _heartbeatInterval = null; }
+  });
 }

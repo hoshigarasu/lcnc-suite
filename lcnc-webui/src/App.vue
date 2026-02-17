@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, provide, reactive, ref, watch } from "vue";
 import { evaluatePermissions, PERMISSIONS_KEY } from "./permissions";
-import { connectWs, connected, status, send, lastReply, viewerGcode, lcncError, latency, messages, unreadCount, dismissMessage, clearAllMessages, markMessagesRead } from "./lcncWs";
+import { connectWs, connected, status, send, lastReply, viewerGcode, lcncError, latency, networkLatency, messages, unreadCount, dismissMessage, clearAllMessages, markMessagesRead } from "./lcncWs";
 import ThreeViewer from "./ThreeViewer.vue";
 import Toolbar from "./Toolbar.vue";
 import TabPanel from "./TabPanel.vue";
@@ -525,8 +525,11 @@ watch(isHomed, (nowHomed, wasHomed) => {
           {{ connected ? "WS connected" : "WS disconnected" }}
         </div>
 
+        <div v-if="connected && networkLatency != null" class="pill">
+          Net {{ networkLatency }}ms
+        </div>
         <div v-if="connected && latency != null" class="pill">
-          {{ latency }}ms
+          RT {{ latency }}ms
         </div>
 
         <div class="pill" :class="lcncError ? 'bad' : (configName ? 'ok' : '')">

@@ -1162,8 +1162,10 @@ watch(isHomed, (nowHomed, wasHomed) => {
   .panel           { flex: 0 0 var(--panel-min-w); min-height: var(--panel-min-h); }
   .panel-viewer    { flex: 1; min-width: var(--panel-min-w-wide); overflow: hidden; }
   .panel-dro       { min-width: var(--panel-min-w-wide); }
-  .panel-gcode     { flex: 0.5; }
-  .panel-messages  { flex: 0.5; }
+  .panel-gcode,
+  .panel-messages,
+  .panel-settings,
+  .panel-mdi       { flex: 0.5; }
 }
 
 /* ---- Portrait layout — panels stacked vertically ---- */

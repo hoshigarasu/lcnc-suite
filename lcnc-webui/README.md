@@ -76,13 +76,13 @@ Viewport-locked layout: `html { overflow: auto }`, `body { overflow: hidden; min
 | dro | `flex: 0 0 320px`, `min-width: 560px` | stretch, `min-height: 400px` |
 | gcode | `flex: 0.5`, `min-width: 320px` | stretch, `min-height: 400px` |
 | messages | `flex: 0.5`, `min-width: 320px` | stretch, `min-height: 400px` |
+| settings | `flex: 0.5`, `min-width: 320px` | stretch, `min-height: 400px` |
+| mdi | `flex: 0.5`, `min-width: 320px` | stretch, `min-height: 400px` |
 | jog | `flex: 0 0 320px` | stretch, `min-height: 400px` |
 | overrides | `flex: 0 0 320px` | stretch, `min-height: 400px` |
 | spindle | `flex: 0 0 320px` | stretch, `min-height: 400px` |
-| settings | `flex: 0 0 320px` | stretch, `min-height: 400px` |
-| mdi | `flex: 0 0 320px` | stretch, `min-height: 400px` |
 
-Viewer fills remaining width. Gcode and messages grow at half rate (`flex: 0.5`). All other panels stay fixed at 320px. DRO gets a wider `min-width: 560px` override. Height is uniform — all panels stretch to `.panels` container height.
+Viewer fills remaining width. Gcode, messages, settings, and mdi grow at half rate (`flex: 0.5`). Jog, overrides, spindle stay fixed at 320px. DRO gets a wider `min-width: 560px` override. Height is uniform — all panels stretch to `.panels` container height.
 
 ### Portrait (stacked, `overflow-y: auto`)
 

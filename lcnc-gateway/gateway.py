@@ -157,19 +157,21 @@ def try_connect_lcnc() -> bool:
 
 def check_lcnc_instance() -> bool:
     """Check if linuxcncsvr PID changed. Returns True if reconnect needed."""
-    global _lcnc_pid, lcnc_connected, _tool_tbl_path
+    global _lcnc_pid, lcnc_connected, _tool_tbl_path, _tool_tbl_ini
     pid = _get_lcnc_pid()
     if pid == _lcnc_pid:
         if pid is None and lcnc_connected:
             print(f"[VINIT] check_lcnc_instance: PID=None but was connected, resetting", flush=True)
             lcnc_connected = False
             _tool_tbl_path = None  # re-resolve on next connection
+            _tool_tbl_ini = None
             return True
         return False
     # PID changed (appeared, disappeared, or different instance)
     old_pid = _lcnc_pid
     _lcnc_pid = pid
     _tool_tbl_path = None  # config may have changed, re-resolve from INI
+    _tool_tbl_ini = None
     if pid is None:
         print(f"[VINIT] check_lcnc_instance: PID gone (was {old_pid}), disconnecting", flush=True)
         lcnc_connected = False
@@ -246,6 +248,7 @@ def get_nc_files_dir() -> str:
 # ---- Tool Table ----
 TOOL_LIBRARY_PATH = BASE_DIR / "tool_library.json"
 _tool_tbl_path: Optional[str] = None
+_tool_tbl_ini: Optional[str] = None
 
 _TOOL_LINE_RE = re.compile(
     r"T(\d+)\s+P(\d+)"
@@ -259,9 +262,15 @@ _TOOL_LINE_RE = re.compile(
 
 def get_tool_tbl_path() -> Optional[str]:
     """Resolve the tool table file path from the LinuxCNC INI."""
-    global _tool_tbl_path
+    global _tool_tbl_path, _tool_tbl_ini
+    # Invalidate cache if INI changed (user switched config)
     if _tool_tbl_path is not None:
-        return _tool_tbl_path
+        current_ini = getattr(STAT, "ini_filename", None) if STAT else None
+        if current_ini != _tool_tbl_ini:
+            _tool_tbl_path = None
+            _tool_tbl_ini = None
+        else:
+            return _tool_tbl_path
     if STAT is None:
         return None
     try:
@@ -278,6 +287,7 @@ def get_tool_tbl_path() -> Optional[str]:
         tbl = os.path.realpath(tbl)
         if os.path.isfile(tbl):
             _tool_tbl_path = tbl
+            _tool_tbl_ini = ini_path
             return _tool_tbl_path
     except Exception:
         pass
@@ -334,8 +344,15 @@ def write_tool_table(path: str, tools: list):
         raise
 
 
-def load_tool_library() -> dict:
-    """Load extended tool metadata from tool_library.json."""
+def _current_ini_path() -> str:
+    """Return the current INI file path, or 'default' if unavailable."""
+    if STAT and getattr(STAT, "ini_filename", None):
+        return STAT.ini_filename
+    return "default"
+
+
+def _load_tool_library_all() -> dict:
+    """Load the full tool_library.json (all configs)."""
     if TOOL_LIBRARY_PATH.exists():
         try:
             with open(TOOL_LIBRARY_PATH, "r") as f:
@@ -345,12 +362,12 @@ def load_tool_library() -> dict:
     return {}
 
 
-def save_tool_library(library: dict):
+def _save_tool_library_all(all_data: dict):
     """Write tool_library.json atomically."""
     fd, tmp = tempfile.mkstemp(dir=str(TOOL_LIBRARY_PATH.parent), suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
-            json.dump(library, f, indent=2)
+            json.dump(all_data, f, indent=2)
         os.rename(tmp, str(TOOL_LIBRARY_PATH))
     except Exception:
         try:
@@ -358,6 +375,24 @@ def save_tool_library(library: dict):
         except Exception:
             pass
         raise
+
+
+def load_tool_library() -> dict:
+    """Load extended tool metadata for the current INI config."""
+    all_data = _load_tool_library_all()
+    ini = _current_ini_path()
+    # Migration: if top-level keys look like tool numbers (old format), wrap them
+    if all_data and not any(k.startswith("/") for k in all_data) and any(k.isdigit() for k in all_data):
+        all_data = {ini: all_data}
+        _save_tool_library_all(all_data)
+    return all_data.get(ini, {})
+
+
+def save_tool_library(library: dict):
+    """Write tool metadata for the current INI config."""
+    all_data = _load_tool_library_all()
+    all_data[_current_ini_path()] = library
+    _save_tool_library_all(all_data)
 
 
 def _merge_tool_data(tbl_tools: list, library: dict) -> list:
@@ -378,7 +413,6 @@ def _merge_tool_data(tbl_tools: list, library: dict) -> list:
             "oal": meta.get("oal"),
             "flute_length": meta.get("flute_length"),
             "corner_radius": meta.get("corner_radius"),
-            "unit": meta.get("unit", "mm"),
         })
     return merged
 
@@ -928,7 +962,7 @@ def handle_command(msg: Dict[str, Any], armed: bool):
                     current_tool = int(raw) if raw is not None else None
             except Exception:
                 pass
-            return {"ok": True, "tools": merged, "current_tool": current_tool}
+            return {"ok": True, "tools": merged, "current_tool": current_tool, "units": get_machine_units()}
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
@@ -1339,6 +1373,18 @@ def handle_command(msg: Dict[str, Any], armed: bool):
 # Viewer support (Web 3D)
 # -----------------------------
 
+def get_machine_units() -> str:
+    """Return 'in' or 'mm' based on INI [TRAJ]LINEAR_UNITS."""
+    if not STAT or not getattr(STAT, "ini_filename", None):
+        return "mm"
+    try:
+        ini = linuxcnc.ini(STAT.ini_filename)
+        lu = (ini.find("TRAJ", "LINEAR_UNITS") or "mm").strip().lower()
+        return "in" if lu in ("inch", "in", "imperial") else "mm"
+    except Exception:
+        return "mm"
+
+
 def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
     """Build viewer init payload. Works with or without STAT — parts/kinematics are static."""
     print(f"[VINIT] build_viewer_init called, STAT={'OK' if STAT else 'None'}, lcnc_connected={lcnc_connected}", flush=True)
@@ -1350,10 +1396,7 @@ def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
     else:
         bounds_origin, bounds_size = [0, 0, 0], [0, 0, 0]
 
-    # Read machine linear units from INI ([TRAJ]LINEAR_UNITS = inch | mm)
-    _ini_obj = linuxcnc.ini(STAT.ini_filename) if STAT and getattr(STAT, "ini_filename", None) else None
-    _lu = (_ini_obj.find("TRAJ", "LINEAR_UNITS") or "mm").strip().lower() if _ini_obj else "mm"
-    units = "in" if _lu in ("inch", "in", "imperial") else "mm"
+    units = get_machine_units()
 
     return {
         "units": units,
@@ -1379,21 +1422,38 @@ def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
     }
 
 
-def parse_gcode_preview(filename: str) -> Dict[str, Any]:
+def parse_gcode_preview(filename: str, machine_units: str = "mm") -> Dict[str, Any]:
     """
     Preview-grade modal parser (work coords) inspired by vtk_vismach.GCodePath.
-    Returns polyline point lists for feed and rapid moves.
+    Returns polyline point lists in machine units for feed and rapid moves.
     """
     feed: List[List[float]] = []
     feed_lines: List[int] = []          # parallel: g-code line number for each feed point
     rapid: List[List[float]] = []
 
-    # current position (work coords)
+    # current position (work coords, in machine units)
     x = y = z = 0.0
 
     # modal state
     motion_mode: Optional[str] = None   # G0 / G1 / G2 / G3
     plane = "G17"                       # G17=XY, G18=XZ, G19=YZ
+
+    # Unit scaling: convert gcode coords to machine units.
+    # Default gcode unit mode matches machine (G20 for inch, G21 for mm).
+    _machine_is_inch = machine_units in ("in", "inch")
+    _gcode_inch = _machine_is_inch      # tracks G20/G21 modal state
+    _scale = 1.0                        # updated on G20/G21 change
+
+    def _update_scale():
+        nonlocal _scale
+        if _gcode_inch == _machine_is_inch:
+            _scale = 1.0
+        elif _gcode_inch:
+            _scale = 25.4   # gcode inch → machine mm
+        else:
+            _scale = 1.0 / 25.4  # gcode mm → machine inch
+
+    _update_scale()
 
     import math
 
@@ -1425,6 +1485,12 @@ def parse_gcode_preview(filename: str) -> Dict[str, Any]:
                     motion_mode = "G3"
                 elif w in ("G17", "G18", "G19"):
                     plane = w
+                elif w in ("G20", "G70"):
+                    _gcode_inch = True
+                    _update_scale()
+                elif w in ("G21", "G71"):
+                    _gcode_inch = False
+                    _update_scale()
 
             if motion_mode not in ("G0", "G1", "G2", "G3"):
                 continue
@@ -1436,17 +1502,17 @@ def parse_gcode_preview(filename: str) -> Dict[str, Any]:
             for w in words:
                 try:
                     if w.startswith("X"):
-                        nx = float(w[1:])
+                        nx = float(w[1:]) * _scale
                     elif w.startswith("Y"):
-                        ny = float(w[1:])
+                        ny = float(w[1:]) * _scale
                     elif w.startswith("Z"):
-                        nz = float(w[1:])
+                        nz = float(w[1:]) * _scale
                     elif w.startswith("I"):
-                        i = float(w[1:])
+                        i = float(w[1:]) * _scale
                     elif w.startswith("J"):
-                        j = float(w[1:])
+                        j = float(w[1:]) * _scale
                     elif w.startswith("K"):
-                        k = float(w[1:])
+                        k = float(w[1:]) * _scale
                 except ValueError:
                     pass
 
@@ -1685,7 +1751,7 @@ async def ws_endpoint(ws: WebSocket):
             STAT.poll()
         initial_file = safe_get("file", None)
         if initial_file:
-            preview = parse_gcode_preview(initial_file)
+            preview = parse_gcode_preview(initial_file, get_machine_units())
             # Read the raw G-code content
             gcode_content = None
             try:
@@ -1810,7 +1876,7 @@ async def ws_endpoint(ws: WebSocket):
                     last_file = st.active_file
                     try:
                         def _load_gcode(filepath):
-                            p = parse_gcode_preview(filepath)
+                            p = parse_gcode_preview(filepath, get_machine_units())
                             c = None
                             try:
                                 with open(filepath, "r", encoding="utf-8", errors="replace") as f:

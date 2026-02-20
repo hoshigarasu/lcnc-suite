@@ -23,8 +23,15 @@ import {
 } from "./lcnc";
 
 const _vd = loadViewerDefaults();
+const needsRefresh = ref(false);
 
 onMounted(() => connectWs());
+
+watch(lcncError, (newVal, oldVal) => {
+  if (oldVal && !newVal) needsRefresh.value = true;
+});
+
+function reloadPage() { location.reload(); }
 
 /** ---------- tab definitions ---------- */
 const tabs = [
@@ -546,6 +553,11 @@ watch(isHomed, (nowHomed, wasHomed) => {
       </div>
     </header>
 
+    <div v-if="needsRefresh" class="refreshBanner">
+      LinuxCNC reconnected
+      <button class="btn" @click="reloadPage">Refresh</button>
+    </div>
+
     <!-- Body: sidebar (safety+status) + main content -->
     <div class="bodyLayout">
 
@@ -894,6 +906,19 @@ watch(isHomed, (nowHomed, wasHomed) => {
 .addPanel:hover {
   opacity: 0.8;
   background: color-mix(in oklab, var(--panel) 50%, transparent);
+}
+
+.refreshBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: color-mix(in oklab, #ffdd00 20%, var(--panel));
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
 .bodyLayout {

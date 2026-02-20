@@ -8,7 +8,6 @@ import TabPanel from "./TabPanel.vue";
 import ManualPanel from "./ManualPanel.vue";
 import GcodePanel from "./GcodePanel.vue";
 import SettingsPanel from "./SettingsPanel.vue";
-import SpindlePanel from "./SpindlePanel.vue";
 import MessagesPanel from "./MessagesPanel.vue";
 import ToolTablePanel from "./ToolTablePanel.vue";
 
@@ -17,6 +16,7 @@ import {
   INTERP_IDLE, INTERP_READING, INTERP_PAUSED, INTERP_WAITING,
   TRAJ_MODE_FREE, TRAJ_MODE_TELEOP,
   TASK_MODE_MANUAL, TASK_MODE_AUTO, TASK_MODE_MDI,
+  SPINDLE_FORWARD, SPINDLE_REVERSE,
 } from "./lcnc";
 
 const _vd = loadViewerDefaults();
@@ -34,7 +34,6 @@ function reloadPage() { location.reload(); }
 const tabs = [
   { id: "viewer", label: "3D Viewer" },
   { id: "manual", label: "Manual" },
-  { id: "spindle", label: "Spindle" },
   { id: "gcode", label: "Program" },
   { id: "tools", label: "Tools" },
   { id: "messages", label: "Messages" },
@@ -282,7 +281,7 @@ function resetAllOverrides() {
 
 function onDocClick(e: MouseEvent) {
   if (!openChip.value) return;
-  const el = document.querySelector('.compactStatus');
+  const el = document.querySelector('.topRow');
   if (el && !el.contains(e.target as Node)) openChip.value = null;
 }
 
@@ -325,6 +324,28 @@ const maxJogVel = computed(() => {
 const spindleSpeed = computed(() => st.value.spindle_speed ?? null);
 const spindleActual = computed(() => st.value.spindle_speed_actual ?? null);
 const spindleDirection = computed(() => st.value.spindle_direction ?? null);
+
+// Spindle popover state
+const rpmInput = ref(1000);
+const isForward = computed(() => spindleDirection.value === SPINDLE_FORWARD);
+const isReverse = computed(() => spindleDirection.value === SPINDLE_REVERSE);
+const isSpinning = computed(() => isForward.value || isReverse.value);
+
+// Spindle override slider (synced from status)
+const spindleOvrSlider = ref(100);
+watch(spindleOverrideValue, (val) => {
+  if (Number.isFinite(val)) spindleOvrSlider.value = Math.round(val * 100);
+});
+function onSpindleOvrChange() { setSpindleOverride(spindleOvrSlider.value / 100); }
+function setSpindleOvrPreset(percent: number) {
+  spindleOvrSlider.value = percent;
+  onSpindleOvrChange();
+}
+
+function formatRpm(val: number | null): string {
+  if (val == null || !Number.isFinite(val)) return "\u2014";
+  return Math.round(val).toLocaleString();
+}
 
 /** ---------- actions ---------- */
 function arm(v: boolean) {
@@ -686,6 +707,110 @@ watch(isHomed, (nowHomed, wasHomed) => {
         </div>
       </div>
     </section>
+
+    <section class="card">
+      <div class="sub">Controls</div>
+      <div class="controlBtns">
+        <button
+          class="btn controlBtn"
+          :class="{ active: isSpinning }"
+          @click.stop="toggleChip('spindle')"
+        >
+          <span class="controlIcon">&#x2699;</span>
+          <span class="controlLabel">Spindle</span>
+          <span class="controlStatus">{{ isSpinning ? ((isForward ? '+' : '-') + Math.round(Math.abs(spindleActual ?? 0)) + ' RPM') : 'OFF' }}</span>
+        </button>
+        <div class="popover spindlePopover" :class="{ open: openChip === 'spindle' }" @click.stop>
+          <!-- Direction controls -->
+          <div class="spDirRow">
+            <button
+              class="btn spDirBtn"
+              :class="{ active: isReverse }"
+              :disabled="!permissions.ready"
+              @click="spindleReverse(rpmInput)"
+              title="Spindle Reverse (CCW)"
+            >
+              <span class="spDirIcon">&#x21BA;</span>
+              <span class="spDirLabel">Rev</span>
+            </button>
+            <button
+              class="btn spDirBtn spStopBtn"
+              :class="{ active: isSpinning }"
+              :disabled="!permissions.ready"
+              @click="spindleStop()"
+              title="Spindle Stop"
+            >
+              <span class="spStopIcon">&#x25A0;</span>
+              <span class="spDirLabel">Stop</span>
+            </button>
+            <button
+              class="btn spDirBtn"
+              :class="{ active: isForward }"
+              :disabled="!permissions.ready"
+              @click="spindleForward(rpmInput)"
+              title="Spindle Forward (CW)"
+            >
+              <span class="spDirIcon">&#x21BB;</span>
+              <span class="spDirLabel">Fwd</span>
+            </button>
+          </div>
+
+          <!-- RPM input -->
+          <div class="spRpmRow">
+            <span class="spFieldLabel">Speed</span>
+            <input
+              type="number"
+              class="spRpmInput"
+              v-model.number="rpmInput"
+              min="0"
+              max="99999"
+              step="100"
+              :disabled="!permissions.ready"
+            />
+            <span class="spUnit">RPM</span>
+          </div>
+
+          <!-- Actual speed display -->
+          <div class="spActualGroup">
+            <div class="spActualRow">
+              <span class="spFieldLabel">Actual</span>
+              <span class="spActualValue">{{ formatRpm(spindleActual) }} <span class="spUnit">RPM</span></span>
+            </div>
+            <div class="spActualRow">
+              <span class="spFieldLabel">Commanded</span>
+              <span class="spCommandedValue">{{ formatRpm(spindleSpeed) }} <span class="spUnit">RPM</span></span>
+            </div>
+            <div class="spActualRow">
+              <span class="spFieldLabel">Direction</span>
+              <span class="spDirValue" :class="{ okText: isSpinning }">
+                {{ isForward ? "FWD (CW)" : isReverse ? "REV (CCW)" : "STOPPED" }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Speed override slider -->
+          <div class="spOvrGroup">
+            <div class="spOvrHeader">
+              <span>Speed Override</span>
+              <span class="spOvrValue" :class="{ warn: spindleOvrSlider !== 100 }">{{ spindleOvrSlider }}%</span>
+            </div>
+            <input
+              type="range"
+              class="spOvrSlider"
+              v-model.number="spindleOvrSlider"
+              @change="onSpindleOvrChange"
+              min="50"
+              max="200"
+              step="5"
+              :disabled="!permissions.override"
+            />
+            <div class="spOvrPresets">
+              <button v-for="p in [50, 100, 150, 200]" :key="'sp'+p" class="ovrPresetBtn" :disabled="!permissions.override" @click="setSpindleOvrPreset(p)">{{ p }}%</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     </div>
 
     <!-- Main content column -->
@@ -775,18 +900,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
             />
           </template>
 
-          <template #spindle>
-            <SpindlePanel
-              :spindleSpeed="spindleSpeed"
-              :spindleActual="spindleActual"
-              :spindleDirection="spindleDirection"
-              :spindleOverride="spindleOverrideValue"
-              @spindleForward="spindleForward"
-              @spindleReverse="spindleReverse"
-              @spindleStop="spindleStop"
-              @setSpindleOverride="setSpindleOverride"
-            />
-          </template>
 
           <template #gcode>
             <GcodePanel
@@ -1210,6 +1323,161 @@ watch(isHomed, (nowHomed, wasHomed) => {
   font-weight: 600;
   border-radius: 6px;
   width: 100%;
+}
+
+/* ---- Controls section (Spindle button + popover) ---- */
+.controlBtns { position: relative; }
+
+.controlBtn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+}
+
+.controlBtn.active {
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+  background: color-mix(in oklab, var(--ok) 20%, var(--button-bg));
+}
+
+.controlIcon { font-size: 20px; }
+.controlLabel { font-size: 10px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.5px; }
+.controlStatus { font-size: 12px; font-weight: 600; }
+
+.spindlePopover {
+  top: 0;
+  left: 100%;
+  margin-left: 6px;
+  min-width: 280px;
+}
+
+.spindlePopover.open {
+  display: flex !important;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.spDirRow {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.spDirBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  min-width: 64px;
+}
+
+.spDirBtn.active {
+  background: color-mix(in oklab, var(--ok) 30%, var(--panel));
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+}
+
+.spStopBtn.active {
+  background: color-mix(in oklab, var(--danger) 30%, var(--panel));
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+}
+
+.spDirIcon { font-size: 22px; line-height: 1; }
+.spStopIcon { font-size: 16px; line-height: 1.4; }
+.spDirLabel { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+.spRpmRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spFieldLabel {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+  min-width: 72px;
+}
+
+.spRpmInput {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 120px;
+}
+
+.spUnit {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+.spActualGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.spActualRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.spActualValue {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.spCommandedValue {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.spDirValue {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.spOvrGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.spOvrHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.spOvrHeader span:first-child {
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.spOvrValue {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.spOvrSlider { width: 100%; }
+
+.spOvrPresets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 
 .btnrow {

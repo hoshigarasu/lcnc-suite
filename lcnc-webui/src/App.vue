@@ -95,7 +95,10 @@ const workpieceOffset = ref<[number, number, number]>(_vd.workpieceOffset);
 const gcodeContent = ref<string | null>(null);
 
 /** ---------- status helpers ---------- */
-const st = computed<Record<string, any>>(() => status.value?.data ?? {});
+const st = computed<Record<string, any>>(() => {
+  if (lcncError.value) return {};  // LinuxCNC disconnected — show safe defaults
+  return status.value?.data ?? {};
+});
 const connectedClients = computed<{ip: string, armed: boolean}[]>(() => status.value?.clients ?? []);
 
 // LinuxCNC config name from INI path (e.g. "/home/cnc/.../my-mill/my-mill.ini" → "my-mill")
@@ -307,6 +310,10 @@ watch(connected, (isConnected) => {
 // 2. Sync when the gateway explicitly sends armed:true/false (arm replies, heartbeat timeout).
 watch(lastReply, (reply) => {
   if (reply?.armed !== undefined) armed.value = Boolean(reply.armed);
+});
+// 3. Disarm when LinuxCNC connection is lost (WS stays up, gateway sends status_error).
+watch(lcncError, (err) => {
+  if (err) armed.value = false;
 });
 
 /** ---------- local UI jog ---------- */

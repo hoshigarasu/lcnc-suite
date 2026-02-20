@@ -39,7 +39,7 @@ export function loadMachineAssets(init: any, onProgress?: (msg: string) => void)
 
   _loadPromise = (async () => {
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(new DOMException("STL fetch timed out after 30s", "TimeoutError")), 30_000);
+    const timer = setTimeout(() => abort.abort(new DOMException("STL fetch timed out after 120s", "TimeoutError")), 120_000);
     try {
       const base = init.stl_base_url;
       const toFetch = (init.parts ?? []).filter((p: any) => !_geometryCache.has(p.id));
@@ -79,7 +79,7 @@ export function getCachedGeometry(id: string): THREE.BufferGeometry | undefined 
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -195,17 +195,6 @@ const overridesActive = computed(() =>
   (props.spindleOverride != null && props.spindleOverride !== 1.0) ||
   (props.rapidOverride != null && props.rapidOverride !== 1.0)
 );
-
-// ---------- Loading state ----------
-const isLoading = ref(false);
-const loadingLog = ref<string[]>([]);
-const loadingLogEl = ref<HTMLDivElement | null>(null);
-function _log(msg: string) {
-  loadingLog.value = [...loadingLog.value, msg];
-  nextTick(() => {
-    if (loadingLogEl.value) loadingLogEl.value.scrollTop = loadingLogEl.value.scrollHeight;
-  });
-}
 
 // ---------- DOM ----------
 const host = ref<HTMLDivElement | null>(null);
@@ -731,10 +720,7 @@ async function buildFromInit(init: ViewerInit) {
   const myToken = buildToken;
 
   clearScene();
-
-  isLoading.value = true;
-  loadingLog.value = [];
-  _log(`Units: ${init.units ?? 'mm'}`);
+  (window as any).__viewerDiag = { ready: false };
 
   try {
     _unitScale = (init.units === "in" || init.units === "inch") ? 1 / 25.4 : 1;
@@ -758,12 +744,10 @@ async function buildFromInit(init: ViewerInit) {
     }
 
     // Load all STL assets via the central cache (first caller fetches, others await same Promise)
-    _log(`Loading ${(init.parts ?? []).length} STL model(s)…`);
-    await loadMachineAssets(init, _log);
+    await loadMachineAssets(init);
     if (myToken !== buildToken) return;
 
     const parts = init.parts ?? [];
-    _log(`Building scene…`);
     for (const p of parts) {
       const geom = getCachedGeometry(p.id);
       if (!geom) { console.warn(`No cached geometry for ${p.id}`); continue; }
@@ -798,6 +782,13 @@ async function buildFromInit(init: ViewerInit) {
         for (const m of machineMeshes) autoBox.expandByObject(m);
       }
       frameToBounds(autoBox);
+
+      (window as any).__viewerDiag = {
+        ready: true,
+        meshCount: machineMeshes.length,
+        boundsValid: !autoBox.isEmpty(),
+        timestamp: Date.now(),
+      };
     }
 
     // Apply any layer visibility that was requested before objects existed
@@ -809,12 +800,8 @@ async function buildFromInit(init: ViewerInit) {
     }
 
   } catch (err) {
-    _log(`Error: ${(err as Error).message ?? err}`);
     console.error("buildFromInit failed:", err);
-  } finally {
-    // Only clear if we're still the active build — stale earlier calls must not clear
-    // the overlay that was set by a later call that is still in progress.
-    if (myToken === buildToken) isLoading.value = false;
+    (window as any).__viewerDiag = { ready: false, error: (err as Error).message };
   }
 }
 
@@ -1200,14 +1187,6 @@ defineExpose({
   <div class="viewerWrapper">
     <div ref="host" class="viewerHost" />
 
-    <!-- Loading overlay — visible during buildFromInit, clears after first rendered frame -->
-    <div v-if="isLoading" class="loadingOverlay">
-      <div class="loadingTitle">Loading machine model</div>
-      <div ref="loadingLogEl" class="loadingLog" @wheel.stop>
-        <div v-for="(msg, i) in loadingLog" :key="i" class="loadingLogEntry">{{ msg }}</div>
-      </div>
-    </div>
-
     <!-- HUD Overlay -->
     <div v-show="hudVisible" class="hud" :style="{ opacity: viewerDefaults.opacities.hud ?? 1 }">
       <div class="hudSection">
@@ -1437,40 +1416,5 @@ defineExpose({
   margin-right: 4px;
 }
 
-.loadingOverlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.72);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 20;
-  pointer-events: auto;
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-}
-.loadingTitle {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--fg);
-  opacity: 0.7;
-  margin-bottom: 10px;
-}
-.loadingLog {
-  font-size: 11px;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-  color: var(--fg);
-  opacity: 0.5;
-  text-align: left;
-  max-width: 360px;
-  max-height: 160px;
-  overflow-y: auto;
-}
-.loadingLogEntry {
-  padding: 1px 0;
-}
 </style>
 

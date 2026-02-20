@@ -1717,13 +1717,19 @@ async def ws_endpoint(ws: WebSocket):
     async def status_loop():
         nonlocal last_file, armed, viewer_init_sent, _poll_fails
         global lcnc_connected, STAT, CMD, ERR, _hal_last_hb, _reconnect_fails
+        loop = asyncio.get_event_loop()
         while True:
             try:
                 # If not connected to LinuxCNC, try to reconnect
                 if not lcnc_connected:
                     viewer_init_sent = False
-                    pid = _get_lcnc_pid()
-                    if pid is not None and try_connect_lcnc():
+                    # Disarm — gateway can't execute commands without LinuxCNC
+                    if armed:
+                        armed = False
+                        if client_id in _clients:
+                            _clients[client_id]["armed"] = False
+                    pid = await loop.run_in_executor(None, _get_lcnc_pid)
+                    if pid is not None and await loop.run_in_executor(None, try_connect_lcnc):
                         _reconnect_fails = 0
                         _hal_connect()
                         last_file = None
@@ -1748,21 +1754,25 @@ async def ws_endpoint(ws: WebSocket):
                         continue
 
                 # Process-level detection: check if linuxcncsvr PID changed
-                if check_lcnc_instance():
+                if await loop.run_in_executor(None, check_lcnc_instance):
                     if _lcnc_pid is not None:
                         # New instance detected — reconnect
-                        if try_connect_lcnc():
+                        if await loop.run_in_executor(None, try_connect_lcnc):
                             _reconnect_fails = 0
                             _hal_connect()
                         viewer_init_sent = False
                         last_file = None  # force re-send of gcode
                         # viewer_init will be sent after first successful poll_status()
                     else:
-                        # Process gone — null handles, let top-of-loop handle reconnection
+                        # Process gone — null handles, disarm, let top-of-loop handle reconnection
                         STAT = CMD = ERR = None
+                        if armed:
+                            armed = False
+                            if client_id in _clients:
+                                _clients[client_id]["armed"] = False
                         continue
 
-                st = poll_status()
+                st = await loop.run_in_executor(None, poll_status)
                 _poll_fails = 0  # reset on success
 
                 # Send viewer_init AFTER a successful poll (STAT confirmed working)
@@ -1775,7 +1785,7 @@ async def ws_endpoint(ws: WebSocket):
                     except Exception as e:
                         print(f"[VINIT] client#{client_id} viewer_init FAILED: {e}", flush=True)
 
-                errs = read_errors_nonblocking()
+                errs = await loop.run_in_executor(None, read_errors_nonblocking)
                 await ws_send_json(
                     ws,
                     {
@@ -1789,21 +1799,24 @@ async def ws_endpoint(ws: WebSocket):
                 # HAL watchdog: send pin updates to subprocess
                 has_armed = any(c["armed"] for c in _clients.values())
                 _hal_last_hb = not _hal_last_hb
-                _hal_send({"heartbeat": _hal_last_hb, "connected": has_armed})
+                hal_msg = {"heartbeat": _hal_last_hb, "connected": has_armed}
+                await loop.run_in_executor(None, _hal_send, hal_msg)
 
                 # Viewer: gcode preview only when the file changes
                 if st.active_file and st.active_file != last_file:
                     last_file = st.active_file
                     try:
-                        preview = parse_gcode_preview(last_file)
+                        def _load_gcode(filepath):
+                            p = parse_gcode_preview(filepath)
+                            c = None
+                            try:
+                                with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                                    c = f.read()
+                            except Exception:
+                                pass
+                            return p, c
 
-                        # Read the raw G-code content
-                        gcode_content = None
-                        try:
-                            with open(last_file, "r", encoding="utf-8", errors="replace") as f:
-                                gcode_content = f.read()
-                        except Exception:
-                            pass  # If we can't read it, just send None
+                        preview, gcode_content = await loop.run_in_executor(None, _load_gcode, last_file)
 
                         await ws_send_json(
                             ws,
@@ -1864,11 +1877,15 @@ async def ws_endpoint(ws: WebSocket):
                 _poll_fails += 1
                 print(f"[VINIT] client#{client_id} status_loop EXCEPTION ({_poll_fails}): {type(e).__name__}: {e}", flush=True)
                 if _poll_fails >= 5:
-                    # Persistent failure — disconnect and let reconnect logic handle it
+                    # Persistent failure — disconnect, disarm, let reconnect logic handle it
                     lcnc_connected = False
                     STAT = CMD = ERR = None
                     _poll_fails = 0
                     viewer_init_sent = False
+                    if armed:
+                        armed = False
+                        if client_id in _clients:
+                            _clients[client_id]["armed"] = False
                     try:
                         await ws_send_json(ws, {
                             "type": "status_error",

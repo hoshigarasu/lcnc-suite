@@ -28,6 +28,7 @@ let ws: WebSocket | null = null;
 let _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let _heartbeatSentAt = 0;   // used for network latency (pong)
 let _rtSentAt = 0;           // used for round-trip latency (next status)
+let _hasConnected = false;   // true after first successful WS open
 
 export function connectWs() {
   // Close previous connection if any (prevents leaks during HMR)
@@ -42,6 +43,12 @@ export function connectWs() {
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
+    if (_hasConnected) {
+      // Reconnection — full reload guarantees clean state on all clients
+      window.location.reload();
+      return;
+    }
+    _hasConnected = true;
     connected.value = true;
     _heartbeatInterval = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -86,6 +93,13 @@ export function connectWs() {
       if (_rtSentAt > 0) {
         latency.value = Math.round(performance.now() - _rtSentAt);
         _rtSentAt = 0;
+      }
+
+      // LinuxCNC just reconnected (WS stayed open, gateway was sending status_error).
+      // Full reload guarantees clean state — same strategy as WS reconnect above.
+      if (lcncError.value) {
+        window.location.reload();
+        return;
       }
 
       // Extract errors BEFORE rAF buffer to prevent message loss when

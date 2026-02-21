@@ -24,7 +24,7 @@ const emit = defineEmits<{
 const can = usePermissions();
 
 // ─── Sub-view navigation ──────────────────────────────────────────
-const probeView = ref<"edge" | "outside">("outside");
+const probeView = ref<"edge" | "outside" | "inside">("outside");
 
 // ─── Edge probe operations (single-axis) ──────────────────────────
 type ProbeOp = {
@@ -65,6 +65,18 @@ const outsideGrid: GridOp[] = [
   { id: "fl", label: "FL",  macro: "probe_front_left_top_corner",  description: "Front-left corner" },
   { id: "f",  label: "F",   macro: "probe_front_top_side",         description: "Front edge" },
   { id: "fr", label: "FR",  macro: "probe_front_right_top_corner", description: "Front-right corner" },
+];
+
+const insideGrid: GridOp[] = [
+  { id: "bl", label: "BL",  macro: "probe_back_left_inside_corner",   description: "Back-left inside corner" },
+  { id: "b",  label: "B",   macro: "probe_back_top_side",             description: "Back wall" },
+  { id: "br", label: "BR",  macro: "probe_back_right_inside_corner",  description: "Back-right inside corner" },
+  { id: "l",  label: "L",   macro: "probe_left_top_side",             description: "Left wall" },
+  { id: "z",  label: "Z",   macro: "probe_z_minus_wco",               description: "Z surface" },
+  { id: "r",  label: "R",   macro: "probe_right_top_side",            description: "Right wall" },
+  { id: "fl", label: "FL",  macro: "probe_front_left_inside_corner",  description: "Front-left inside corner" },
+  { id: "f",  label: "F",   macro: "probe_front_top_side",            description: "Front wall" },
+  { id: "fr", label: "FR",  macro: "probe_front_right_inside_corner", description: "Front-right inside corner" },
 ];
 
 const activeGridOp = ref<string | null>(null);
@@ -188,7 +200,8 @@ function fmt(n: number | undefined): string {
   <div class="probePanel scroll-thin">
     <!-- Sub-view tabs -->
     <div class="viewTabs">
-      <button class="viewTab" :class="{ active: probeView === 'outside' }" @click="probeView = 'outside'">Outside Corners</button>
+      <button class="viewTab" :class="{ active: probeView === 'outside' }" @click="probeView = 'outside'">Outside</button>
+      <button class="viewTab" :class="{ active: probeView === 'inside' }" @click="probeView = 'inside'">Inside</button>
       <button class="viewTab" :class="{ active: probeView === 'edge' }" @click="probeView = 'edge'">Edge</button>
     </div>
 
@@ -214,12 +227,12 @@ function fmt(n: number | undefined): string {
               <polygon points="10,28 1,23 1,33" class="arrowHead" />
               <circle cx="10" cy="10" r="2.5" class="crosshair" />
             </svg>
-            <!-- Back edge: triangle pointing ↓ from outside -->
+            <!-- Back edge: triangle pointing ↓ from outside, circle at vertex -->
             <svg v-else-if="op.id === 'b'" viewBox="0 0 80 80" class="gridIcon">
               <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
               <circle cx="40" cy="28" r="4" class="probeTip" />
               <polygon points="40,10 35,1 45,1" class="arrowHead" />
-              <line x1="10" y1="10" x2="70" y2="10" class="crosshairLine" />
+              <circle cx="40" cy="10" r="2.5" class="crosshair" />
             </svg>
             <!-- BR corner: triangles pointing ↓ and ← from outside -->
             <svg v-else-if="op.id === 'br'" viewBox="0 0 80 80" class="gridIcon">
@@ -229,12 +242,12 @@ function fmt(n: number | undefined): string {
               <polygon points="70,28 79,23 79,33" class="arrowHead" />
               <circle cx="70" cy="10" r="2.5" class="crosshair" />
             </svg>
-            <!-- Left edge: triangle pointing → from outside -->
+            <!-- Left edge: triangle pointing → from outside, circle at vertex -->
             <svg v-else-if="op.id === 'l'" viewBox="0 0 80 80" class="gridIcon">
               <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
               <circle cx="28" cy="40" r="4" class="probeTip" />
               <polygon points="10,40 1,35 1,45" class="arrowHead" />
-              <line x1="10" y1="10" x2="10" y2="70" class="crosshairLine" />
+              <circle cx="10" cy="40" r="2.5" class="crosshair" />
             </svg>
             <!-- Z center: probe centered, green crosshair circle around probe tip -->
             <svg v-else-if="op.id === 'z'" viewBox="0 0 80 80" class="gridIcon">
@@ -243,12 +256,12 @@ function fmt(n: number | undefined): string {
               <circle cx="40" cy="40" r="5" class="probeTip" />
               <text x="40" y="60" class="gridZLabel">Z</text>
             </svg>
-            <!-- Right edge: triangle pointing ← from outside -->
+            <!-- Right edge: triangle pointing ← from outside, circle at vertex -->
             <svg v-else-if="op.id === 'r'" viewBox="0 0 80 80" class="gridIcon">
               <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
               <circle cx="52" cy="40" r="4" class="probeTip" />
               <polygon points="70,40 79,35 79,45" class="arrowHead" />
-              <line x1="70" y1="10" x2="70" y2="70" class="crosshairLine" />
+              <circle cx="70" cy="40" r="2.5" class="crosshair" />
             </svg>
             <!-- FL corner: triangles pointing ↑ and → from outside -->
             <svg v-else-if="op.id === 'fl'" viewBox="0 0 80 80" class="gridIcon">
@@ -258,12 +271,12 @@ function fmt(n: number | undefined): string {
               <polygon points="10,52 1,47 1,57" class="arrowHead" />
               <circle cx="10" cy="70" r="2.5" class="crosshair" />
             </svg>
-            <!-- Front edge: triangle pointing ↑ from outside -->
+            <!-- Front edge: triangle pointing ↑ from outside, circle at vertex -->
             <svg v-else-if="op.id === 'f'" viewBox="0 0 80 80" class="gridIcon">
               <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
               <circle cx="40" cy="52" r="4" class="probeTip" />
               <polygon points="40,70 35,79 45,79" class="arrowHead" />
-              <line x1="10" y1="70" x2="70" y2="70" class="crosshairLine" />
+              <circle cx="40" cy="70" r="2.5" class="crosshair" />
             </svg>
             <!-- FR corner: triangles pointing ↑ and ← from outside -->
             <svg v-else-if="op.id === 'fr'" viewBox="0 0 80 80" class="gridIcon">
@@ -272,6 +285,92 @@ function fmt(n: number | undefined): string {
               <polygon points="52,70 47,79 57,79" class="arrowHead" />
               <polygon points="70,52 79,47 79,57" class="arrowHead" />
               <circle cx="70" cy="70" r="2.5" class="crosshair" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <!-- ═══ INSIDE CORNERS VIEW ═══ -->
+    <template v-else-if="probeView === 'inside'">
+      <div class="section">
+        <div class="sub">Probe Operation</div>
+        <div class="gridWrap">
+          <button
+            v-for="op in insideGrid"
+            :key="op.id"
+            class="gridCell"
+            :class="{ probing: probing && activeGridOp === op.id }"
+            :disabled="!can.ready || probing"
+            :title="op.description"
+            @click="runGridProbe(op)"
+          >
+            <!-- BL corner: L-shape wall top+left, probe inside L near corner -->
+            <svg v-if="op.id === 'bl'" viewBox="0 0 80 80" class="gridIcon">
+              <path d="M0 0H80V35H35V80H0Z" class="workpiece" />
+              <circle cx="24" cy="24" r="4" class="probeTip" />
+              <polygon points="52,35 47,44 57,44" class="arrowHead" />
+              <polygon points="35,52 44,47 44,57" class="arrowHead" />
+              <circle cx="35" cy="35" r="2.5" class="crosshair" />
+            </svg>
+            <!-- Back wall: half-rect top -->
+            <svg v-else-if="op.id === 'b'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="0" y="0" width="80" height="35" class="workpiece" />
+              <circle cx="40" cy="55" r="4" class="probeTip" />
+              <polygon points="40,35 35,44 45,44" class="arrowHead" />
+              <circle cx="40" cy="35" r="2.5" class="crosshair" />
+            </svg>
+            <!-- BR corner: L-shape wall top+right, probe inside L near corner -->
+            <svg v-else-if="op.id === 'br'" viewBox="0 0 80 80" class="gridIcon">
+              <path d="M0 0H80V80H45V35H0Z" class="workpiece" />
+              <circle cx="56" cy="24" r="4" class="probeTip" />
+              <polygon points="28,35 23,44 33,44" class="arrowHead" />
+              <polygon points="45,52 36,47 36,57" class="arrowHead" />
+              <circle cx="45" cy="35" r="2.5" class="crosshair" />
+            </svg>
+            <!-- Left wall: half-rect left -->
+            <svg v-else-if="op.id === 'l'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="0" y="0" width="35" height="80" class="workpiece" />
+              <circle cx="55" cy="40" r="4" class="probeTip" />
+              <polygon points="35,40 44,35 44,45" class="arrowHead" />
+              <circle cx="35" cy="40" r="2.5" class="crosshair" />
+            </svg>
+            <!-- Z center: full workpiece -->
+            <svg v-else-if="op.id === 'z'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="0" y="0" width="80" height="80" rx="3" class="workpiece" />
+              <circle cx="40" cy="40" r="9" class="crosshair" />
+              <circle cx="40" cy="40" r="5" class="probeTip" />
+              <text x="40" y="60" class="gridZLabel">Z</text>
+            </svg>
+            <!-- Right wall: half-rect right -->
+            <svg v-else-if="op.id === 'r'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="45" y="0" width="35" height="80" class="workpiece" />
+              <circle cx="25" cy="40" r="4" class="probeTip" />
+              <polygon points="45,40 36,35 36,45" class="arrowHead" />
+              <circle cx="45" cy="40" r="2.5" class="crosshair" />
+            </svg>
+            <!-- FL corner: L-shape wall bottom+left, probe inside L near corner -->
+            <svg v-else-if="op.id === 'fl'" viewBox="0 0 80 80" class="gridIcon">
+              <path d="M0 0H35V45H80V80H0Z" class="workpiece" />
+              <circle cx="24" cy="56" r="4" class="probeTip" />
+              <polygon points="52,45 47,36 57,36" class="arrowHead" />
+              <polygon points="35,28 44,23 44,33" class="arrowHead" />
+              <circle cx="35" cy="45" r="2.5" class="crosshair" />
+            </svg>
+            <!-- Front wall: half-rect bottom -->
+            <svg v-else-if="op.id === 'f'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="0" y="45" width="80" height="35" class="workpiece" />
+              <circle cx="40" cy="25" r="4" class="probeTip" />
+              <polygon points="40,45 35,36 45,36" class="arrowHead" />
+              <circle cx="40" cy="45" r="2.5" class="crosshair" />
+            </svg>
+            <!-- FR corner: L-shape wall bottom+right, probe inside L near corner -->
+            <svg v-else-if="op.id === 'fr'" viewBox="0 0 80 80" class="gridIcon">
+              <path d="M45 0H80V80H0V45H45Z" class="workpiece" />
+              <circle cx="56" cy="56" r="4" class="probeTip" />
+              <polygon points="28,45 23,36 33,36" class="arrowHead" />
+              <polygon points="45,28 36,23 36,33" class="arrowHead" />
+              <circle cx="45" cy="45" r="2.5" class="crosshair" />
             </svg>
           </button>
         </div>

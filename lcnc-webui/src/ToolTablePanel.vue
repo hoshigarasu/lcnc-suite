@@ -228,7 +228,7 @@ function fmtNum(n: any, decimals = 4) {
       <div class="sub">Tool Table</div>
       <div class="actions">
         <button class="btn" @click="openAdd" :disabled="!can.idle">+ Add</button>
-        <button class="btn" @click="fetchTools" :disabled="loading">Refresh</button>
+        <button class="btn" @click="fetchTools" :disabled="loading || !can.idle">Refresh</button>
       </div>
     </div>
 
@@ -294,20 +294,20 @@ function fmtNum(n: any, decimals = 4) {
         <div class="tcell tcellT sortHeader" @click="toggleSort('T')">
           T# {{ sortKey === 'T' ? (sortAsc ? '▲' : '▼') : '' }}
         </div>
-        <div class="tcell tcellType">
-          <select class="filterSelect" v-model="filterType">
-            <option value="">Type</option>
-            <option v-for="tt in TOOL_TYPES" :key="tt" :value="tt">{{ typeLabel(tt) }}</option>
-          </select>
-        </div>
-        <div class="tcell tcellDesc">Description</div>
         <div class="tcell tcellNum sortHeader" @click="toggleSort('D')">
           Ø {{ sortKey === 'D' ? (sortAsc ? '▲' : '▼') : '' }}
         </div>
         <div class="tcell tcellNum sortHeader" @click="toggleSort('Z')">
           Z Offset {{ sortKey === 'Z' ? (sortAsc ? '▲' : '▼') : '' }}
         </div>
+        <div class="tcell tcellType">
+          <select class="filterSelect" v-model="filterType">
+            <option value="">Type</option>
+            <option v-for="tt in TOOL_TYPES" :key="tt" :value="tt">{{ typeLabel(tt) }}</option>
+          </select>
+        </div>
         <div class="tcell tcellSm">Flutes</div>
+        <div class="tcell tcellDesc">Description</div>
         <div class="tcell tcellAction"></div>
         <div class="tcell tcellAction"></div>
       </div>
@@ -326,16 +326,6 @@ function fmtNum(n: any, decimals = 4) {
           </button>
         </div>
 
-        <!-- Type -->
-        <div class="tcell tcellType">
-          <span class="cellText">{{ typeLabel(tool.type) }}</span>
-        </div>
-
-        <!-- Description -->
-        <div class="tcell tcellDesc">
-          <span class="cellText cellDesc" :title="tool.description">{{ tool.description || tool.remark || "-" }}</span>
-        </div>
-
         <!-- Diameter -->
         <div class="tcell tcellNum">
           <span class="cellText mono">{{ fmtNum(tool.D) }}</span>
@@ -346,9 +336,19 @@ function fmtNum(n: any, decimals = 4) {
           <span class="cellText mono">{{ fmtNum(tool.Z, 6) }}</span>
         </div>
 
+        <!-- Type -->
+        <div class="tcell tcellType">
+          <span class="cellText">{{ typeLabel(tool.type) }}</span>
+        </div>
+
         <!-- Flutes -->
         <div class="tcell tcellSm">
           <span class="cellText mono">{{ tool.flutes ?? "-" }}</span>
+        </div>
+
+        <!-- Description -->
+        <div class="tcell tcellDesc">
+          <span class="cellText cellDesc" :title="tool.description">{{ tool.description || tool.remark || "-" }}</span>
         </div>
 
         <!-- Edit -->
@@ -500,6 +500,7 @@ function fmtNum(n: any, decimals = 4) {
   display: flex;
   align-items: center;
   min-height: 34px;
+  min-width: 560px;
   border-bottom: 1px solid color-mix(in oklab, var(--border) 30%, transparent);
 }
 
@@ -510,11 +511,11 @@ function fmtNum(n: any, decimals = 4) {
 .theader {
   position: sticky;
   top: 0;
-  background: var(--panel);
   z-index: 1;
+  background: var(--panel);
   font-size: 11px;
   font-weight: 600;
-  opacity: 0.6;
+  color: color-mix(in oklab, var(--fg) 60%, transparent);
   text-transform: uppercase;
   letter-spacing: 0.3px;
   border-bottom: 1px solid var(--border);
@@ -532,6 +533,11 @@ function fmtNum(n: any, decimals = 4) {
   font-size: 12px;
   flex-shrink: 0;
   min-width: 0;
+  border-right: 1px solid color-mix(in oklab, var(--border) 30%, transparent);
+}
+
+.tcell:last-child {
+  border-right: none;
 }
 
 .tcellT {
@@ -556,7 +562,7 @@ function fmtNum(n: any, decimals = 4) {
   letter-spacing: inherit;
   border: none;
   background: var(--panel);
-  color: var(--fg);
+  color: inherit;
   font-family: inherit;
   cursor: pointer;
   outline: none;

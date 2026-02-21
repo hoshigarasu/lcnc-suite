@@ -132,9 +132,8 @@ def _self_restart():
 
 def try_connect_lcnc() -> bool:
     """Attempt to connect to LinuxCNC. Returns True on success."""
-    global STAT, CMD, ERR, lcnc_connected, _lcnc_pid, _nc_files_dir, _max_jog_velocity, _ini_config, _ever_connected
+    global STAT, CMD, ERR, lcnc_connected, _lcnc_pid, _nc_files_dir, _ini_config, _ever_connected
     _nc_files_dir = None        # re-resolve on reconnect
-    _max_jog_velocity = None    # re-read from INI on reconnect
     _ini_config = None          # re-read INI config on reconnect
     if not _nml_connectable():
         return False
@@ -193,28 +192,12 @@ if _get_lcnc_pid() is not None:
 ALLOWED_EXTENSIONS = {".ngc", ".nc", ".gcode", ".tap", ".txt"}
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
 _nc_files_dir: Optional[str] = None
-_max_jog_velocity: Optional[float] = None
 _ini_config: Optional[dict] = None
 
 
 def get_max_jog_velocity() -> Optional[float]:
-    """Return [DISPLAY]MAX_LINEAR_VELOCITY from INI (units/sec), cached."""
-    global _max_jog_velocity
-    if _max_jog_velocity is not None:
-        return _max_jog_velocity
-    if STAT is not None:
-        try:
-            STAT.poll()
-            ini_path = getattr(STAT, "ini_filename", None)
-            if ini_path:
-                ini = linuxcnc.ini(ini_path)
-                val = ini.find("DISPLAY", "MAX_LINEAR_VELOCITY")
-                if val:
-                    _max_jog_velocity = float(val)
-                    return _max_jog_velocity
-        except Exception:
-            pass
-    return None
+    """Return max jog velocity from INI (units/sec), cached."""
+    return get_ini_config().get("max_jog_velocity")
 
 
 def get_ini_config() -> dict:
@@ -235,13 +218,29 @@ def get_ini_config() -> dict:
 
         ini = linuxcnc.ini(ini_path)
 
-        # Jog settings [DISPLAY]
-        config["default_jog_velocity"] = _ini_float(ini, "DISPLAY", "DEFAULT_LINEAR_VELOCITY")
-        config["min_jog_velocity"] = _ini_float(ini, "DISPLAY", "MIN_LINEAR_VELOCITY")
+        # Machine linear unit for increment conversion
+        linear_unit = (ini.find("TRAJ", "LINEAR_UNITS") or "mm").strip().lower()
+
+        # Ground truth velocity from trajectory planner (always u/s)
+        traj_max = _ini_float(ini, "TRAJ", "MAX_LINEAR_VELOCITY")
+
+        # Display velocity values (should be u/s, but some configs use u/min)
+        disp_max = _ini_float(ini, "DISPLAY", "MAX_LINEAR_VELOCITY")
+        disp_default = _ini_float(ini, "DISPLAY", "DEFAULT_LINEAR_VELOCITY")
+        disp_min = _ini_float(ini, "DISPLAY", "MIN_LINEAR_VELOCITY")
+
+        # Heuristic: if DISPLAY MAX is >10x TRAJ MAX, assume u/min → convert
+        vel_divisor = 1.0
+        if traj_max and disp_max and disp_max > traj_max * 10:
+            vel_divisor = 60.0
+
+        config["max_jog_velocity"] = (disp_max / vel_divisor) if disp_max else traj_max
+        config["default_jog_velocity"] = (disp_default / vel_divisor) if disp_default else None
+        config["min_jog_velocity"] = (disp_min / vel_divisor) if disp_min else None
 
         # Jog increments [DISPLAY]
         raw_incr = ini.find("DISPLAY", "INCREMENTS")
-        config["increments"] = _parse_increments(raw_incr) if raw_incr else None
+        config["increments"] = _parse_increments(raw_incr, linear_unit) if raw_incr else None
 
         # Spindle defaults [DISPLAY]
         config["default_spindle_speed"] = _ini_float(ini, "DISPLAY", "DEFAULT_SPINDLE_SPEED")
@@ -251,9 +250,14 @@ def get_ini_config() -> dict:
         # Feed override [DISPLAY]
         config["max_feed_override"] = _ini_float(ini, "DISPLAY", "MAX_FEED_OVERRIDE")
 
-        # Spindle speed limits [SPINDLE_0]
-        config["max_spindle_speed"] = _ini_float(ini, "SPINDLE_0", "MAX_FORWARD_VELOCITY")
-        config["min_spindle_speed"] = _ini_float(ini, "SPINDLE_0", "MIN_FORWARD_VELOCITY")
+        # Spindle speed limits — try SPINDLE_0 through SPINDLE_9
+        for i in range(10):
+            section = f"SPINDLE_{i}"
+            v = _ini_float(ini, section, "MAX_FORWARD_VELOCITY")
+            if v is not None:
+                config["max_spindle_speed"] = v
+                config["min_spindle_speed"] = _ini_float(ini, section, "MIN_FORWARD_VELOCITY")
+                break
 
         _ini_config = config
     except Exception:
@@ -635,33 +639,55 @@ def _ini_float(ini, section: str, key: str):
         return None
 
 
-def _parse_increments(raw: str) -> List[float]:
-    """Parse LinuxCNC INCREMENTS string into a sorted list of floats.
+def _parse_increments(raw: str, linear_unit: str = "mm") -> List[float]:
+    """Parse LinuxCNC INCREMENTS string into sorted machine-unit floats.
 
-    Handles decimals ('0.001'), fractions ('1/16'), and optional unit
-    suffixes ('mm', 'in', 'inch', 'mil', 'cm', 'um').  Values are
-    assumed to be in the machine's native units (matching LinuxCNC
-    behaviour where INCREMENTS are in machine units).
+    Handles comma-separated ('1 mm, .01 in, 10 mil') or space-separated
+    ('.01in .001in') formats, fractions ('1/8000 in'), and unit suffixes.
+    Converts to machine units based on LINEAR_UNITS from [TRAJ].
     """
-    _unit_re = re.compile(r'(mm|inch|in|mil|cm|um)$', re.IGNORECASE)
-    tokens = re.split(r'[,\s]+', raw.strip())
+    is_metric = linear_unit in ("mm", "metric")
+    if is_metric:
+        unit_factors = {
+            "mm": 1.0, "cm": 10.0, "um": 0.001,
+            "in": 25.4, "inch": 25.4, "mil": 0.0254,
+        }
+    else:
+        unit_factors = {
+            "in": 1.0, "inch": 1.0, "mil": 0.001,
+            "mm": 1.0 / 25.4, "cm": 10.0 / 25.4, "um": 0.001 / 25.4,
+        }
+
+    _num_unit_re = re.compile(
+        r'([0-9]*\.?[0-9]+(?:/[0-9]+)?)\s*(mm|cm|um|inch|in|mil)?',
+        re.IGNORECASE,
+    )
+
+    # Split by comma if commas present, else by whitespace
+    entries = [e.strip() for e in raw.split(",")] if "," in raw else raw.split()
+
     result = []
-    for token in tokens:
-        if not token:
+    for entry in entries:
+        entry = entry.strip()
+        if not entry:
             continue
-        token = _unit_re.sub('', token).strip()
-        if not token:
+        m = _num_unit_re.search(entry)
+        if not m:
             continue
+        num_str, unit = m.group(1), (m.group(2) or "").lower()
         try:
-            if '/' in token:
-                num, den = token.split('/', 1)
-                val = float(num) / float(den)
+            if "/" in num_str:
+                n, d = num_str.split("/", 1)
+                val = float(n) / float(d)
             else:
-                val = float(token)
-            if val > 0:
-                result.append(val)
+                val = float(num_str)
         except (ValueError, ZeroDivisionError):
             continue
+        if val <= 0:
+            continue
+        factor = unit_factors.get(unit, 1.0)  # no unit = machine units
+        result.append(val * factor)
+
     result.sort()
     return result
 

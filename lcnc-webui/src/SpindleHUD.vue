@@ -8,6 +8,10 @@ const props = defineProps<{
   spindleActual: number | null;
   spindleDirection: number | null;
   spindleOverride: number | null;
+  minSpindleSpeed: number;
+  maxSpindleSpeed: number;
+  minSpindleOverride: number;
+  maxSpindleOverride: number;
 }>();
 
 const emit = defineEmits<{
@@ -74,8 +78,8 @@ function formatRpm(val: number | null): string {
         type="number"
         class="rpmInput"
         v-model.number="rpmInput"
-        min="0"
-        max="99999"
+        :min="minSpindleSpeed"
+        :max="maxSpindleSpeed"
         step="100"
         :disabled="!can.ready"
       />
@@ -95,8 +99,8 @@ function formatRpm(val: number | null): string {
         class="overrideSlider"
         v-model.number="overrideSlider"
         @change="onOverrideChange"
-        min="50"
-        max="200"
+        :min="minSpindleOverride"
+        :max="maxSpindleOverride"
         step="5"
         :disabled="!can.override"
       />

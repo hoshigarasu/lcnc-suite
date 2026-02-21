@@ -9,6 +9,8 @@ const props = defineProps<{
   linearUnit: string;
   maxJogVel: number;
   jogIncrement: number;
+  minJogVel: number;
+  iniIncrements: number[] | null;
 }>();
 
 const emit = defineEmits<{
@@ -19,6 +21,12 @@ const emit = defineEmits<{
 const can = usePermissions();
 
 const incrementOptions = computed(() => {
+  if (props.iniIncrements && props.iniIncrements.length > 0) {
+    return [
+      { label: "Cont", value: 0 },
+      ...props.iniIncrements.map(v => ({ label: String(v), value: v })),
+    ];
+  }
   if (props.linearUnit === "in") {
     return [
       { label: "Cont", value: 0 },
@@ -173,7 +181,7 @@ function onVelInput(ev: Event) {
       <input
         type="range"
         class="velSlider"
-        :min="0.1"
+        :min="minJogVel"
         :max="maxJogVel"
         :step="0.1"
         :value="jogVel"

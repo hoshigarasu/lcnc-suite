@@ -22,6 +22,8 @@ const props = defineProps<{
   maxJogVel: number;
   activeJogKeys?: Set<string>;
   jogIncrement: number;
+  minJogVel: number;
+  iniIncrements: number[] | null;
   // MDI props
   mdiText: string;
 }>();
@@ -125,6 +127,8 @@ function onMdiKeydown(e: KeyboardEvent) {
       :maxJogVel="maxJogVel"
       :activeJogKeys="activeJogKeys"
       :jogIncrement="jogIncrement"
+      :minJogVel="minJogVel"
+      :iniIncrements="iniIncrements"
       @update:jogVel="emit('update:jogVel', $event)"
       @update:jogIncrement="emit('update:jogIncrement', $event)"
       @toggleTeleop="emit('toggleTeleop')"

@@ -132,9 +132,10 @@ def _self_restart():
 
 def try_connect_lcnc() -> bool:
     """Attempt to connect to LinuxCNC. Returns True on success."""
-    global STAT, CMD, ERR, lcnc_connected, _lcnc_pid, _nc_files_dir, _max_jog_velocity, _ever_connected
+    global STAT, CMD, ERR, lcnc_connected, _lcnc_pid, _nc_files_dir, _max_jog_velocity, _ini_config, _ever_connected
     _nc_files_dir = None        # re-resolve on reconnect
     _max_jog_velocity = None    # re-read from INI on reconnect
+    _ini_config = None          # re-read INI config on reconnect
     if not _nml_connectable():
         return False
     try:
@@ -193,6 +194,7 @@ ALLOWED_EXTENSIONS = {".ngc", ".nc", ".gcode", ".tap", ".txt"}
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
 _nc_files_dir: Optional[str] = None
 _max_jog_velocity: Optional[float] = None
+_ini_config: Optional[dict] = None
 
 
 def get_max_jog_velocity() -> Optional[float]:
@@ -213,6 +215,51 @@ def get_max_jog_velocity() -> Optional[float]:
         except Exception:
             pass
     return None
+
+
+def get_ini_config() -> dict:
+    """Read static INI settings for the UI, cached until reconnect."""
+    global _ini_config
+    if _ini_config is not None:
+        return _ini_config
+
+    config: dict = {}
+    if STAT is None:
+        return config
+
+    try:
+        STAT.poll()
+        ini_path = getattr(STAT, "ini_filename", None)
+        if not ini_path:
+            return config
+
+        ini = linuxcnc.ini(ini_path)
+
+        # Jog settings [DISPLAY]
+        config["default_jog_velocity"] = _ini_float(ini, "DISPLAY", "DEFAULT_LINEAR_VELOCITY")
+        config["min_jog_velocity"] = _ini_float(ini, "DISPLAY", "MIN_LINEAR_VELOCITY")
+
+        # Jog increments [DISPLAY]
+        raw_incr = ini.find("DISPLAY", "INCREMENTS")
+        config["increments"] = _parse_increments(raw_incr) if raw_incr else None
+
+        # Spindle defaults [DISPLAY]
+        config["default_spindle_speed"] = _ini_float(ini, "DISPLAY", "DEFAULT_SPINDLE_SPEED")
+        config["min_spindle_override"] = _ini_float(ini, "DISPLAY", "MIN_SPINDLE_OVERRIDE")
+        config["max_spindle_override"] = _ini_float(ini, "DISPLAY", "MAX_SPINDLE_OVERRIDE")
+
+        # Feed override [DISPLAY]
+        config["max_feed_override"] = _ini_float(ini, "DISPLAY", "MAX_FEED_OVERRIDE")
+
+        # Spindle speed limits [SPINDLE_0]
+        config["max_spindle_speed"] = _ini_float(ini, "SPINDLE_0", "MAX_FORWARD_VELOCITY")
+        config["min_spindle_speed"] = _ini_float(ini, "SPINDLE_0", "MIN_FORWARD_VELOCITY")
+
+        _ini_config = config
+    except Exception:
+        pass
+
+    return config
 
 
 def get_nc_files_dir() -> str:
@@ -492,6 +539,17 @@ class StatusPayload:
     flood: Optional[bool]
     mist: Optional[bool]
 
+    # INI config (static, cached)
+    default_jog_velocity: Optional[float] = None
+    min_jog_velocity: Optional[float] = None
+    increments: Optional[List[float]] = None
+    default_spindle_speed: Optional[float] = None
+    min_spindle_override: Optional[float] = None
+    max_spindle_override: Optional[float] = None
+    max_feed_override: Optional[float] = None
+    max_spindle_speed: Optional[float] = None
+    min_spindle_speed: Optional[float] = None
+
 
 
 
@@ -575,6 +633,37 @@ def _ini_float(ini, section: str, key: str):
         return float(v)
     except Exception:
         return None
+
+
+def _parse_increments(raw: str) -> List[float]:
+    """Parse LinuxCNC INCREMENTS string into a sorted list of floats.
+
+    Handles decimals ('0.001'), fractions ('1/16'), and optional unit
+    suffixes ('mm', 'in', 'inch', 'mil', 'cm', 'um').  Values are
+    assumed to be in the machine's native units (matching LinuxCNC
+    behaviour where INCREMENTS are in machine units).
+    """
+    _unit_re = re.compile(r'(mm|inch|in|mil|cm|um)$', re.IGNORECASE)
+    tokens = re.split(r'[,\s]+', raw.strip())
+    result = []
+    for token in tokens:
+        if not token:
+            continue
+        token = _unit_re.sub('', token).strip()
+        if not token:
+            continue
+        try:
+            if '/' in token:
+                num, den = token.split('/', 1)
+                val = float(num) / float(den)
+            else:
+                val = float(token)
+            if val > 0:
+                result.append(val)
+        except (ValueError, ZeroDivisionError):
+            continue
+    result.sort()
+    return result
 
 
 def read_machine_limits_from_ini(stat_obj):
@@ -856,6 +945,7 @@ def poll_status() -> StatusPayload:
 
 
     spindle_ovr = get_spindle_override()
+    ini_cfg = get_ini_config()
 
     return StatusPayload(
         ts=time.time(),
@@ -894,6 +984,15 @@ def poll_status() -> StatusPayload:
         tool_length=tool_length,
         flood=bool(safe_get("flood", 0)),
         mist=bool(safe_get("mist", 0)),
+        default_jog_velocity=ini_cfg.get("default_jog_velocity"),
+        min_jog_velocity=ini_cfg.get("min_jog_velocity"),
+        increments=ini_cfg.get("increments"),
+        default_spindle_speed=ini_cfg.get("default_spindle_speed"),
+        min_spindle_override=ini_cfg.get("min_spindle_override"),
+        max_spindle_override=ini_cfg.get("max_spindle_override"),
+        max_feed_override=ini_cfg.get("max_feed_override"),
+        max_spindle_speed=ini_cfg.get("max_spindle_speed"),
+        min_spindle_speed=ini_cfg.get("min_spindle_speed"),
     )
 
 

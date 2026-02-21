@@ -156,6 +156,13 @@ const props = defineProps<{
   isHomed?: boolean;
   maxJogVel?: number;
   jogIncrement?: number;
+  minJogVel?: number;
+  iniIncrements?: number[] | null;
+  minSpindleSpeed?: number;
+  maxSpindleSpeed?: number;
+  minSpindleOverride?: number;
+  maxSpindleOverride?: number;
+  maxFeedOverride?: number;
   gcodeContent?: string | null;
   currentLine?: number | null;
   isPaused?: boolean;
@@ -1246,6 +1253,8 @@ defineExpose({
           :linearUnit="props.linearUnit ?? 'mm'"
           :maxJogVel="props.maxJogVel ?? 100"
           :jogIncrement="props.jogIncrement ?? 0"
+          :minJogVel="props.minJogVel ?? 0.1"
+          :iniIncrements="props.iniIncrements ?? null"
           @update:jogVel="emit('update:jogVel', $event)"
           @update:jogIncrement="emit('update:jogIncrement', $event)"
         />
@@ -1279,6 +1288,10 @@ defineExpose({
           :spindleActual="props.spindleActual ?? null"
           :spindleDirection="props.spindleDirection ?? null"
           :spindleOverride="props.spindleOverride ?? null"
+          :minSpindleSpeed="props.minSpindleSpeed ?? 0"
+          :maxSpindleSpeed="props.maxSpindleSpeed ?? 99999"
+          :minSpindleOverride="props.minSpindleOverride ?? 50"
+          :maxSpindleOverride="props.maxSpindleOverride ?? 200"
           @spindleForward="emit('spindleForward', $event)"
           @spindleReverse="emit('spindleReverse', $event)"
           @spindleStop="emit('spindleStop')"
@@ -1291,6 +1304,9 @@ defineExpose({
           :feedOverride="props.feedOverride ?? null"
           :spindleOverride="props.spindleOverride ?? null"
           :rapidOverride="props.rapidOverride ?? null"
+          :maxFeedOverride="props.maxFeedOverride ?? 200"
+          :minSpindleOverride="props.minSpindleOverride ?? 50"
+          :maxSpindleOverride="props.maxSpindleOverride ?? 200"
           @setFeedOverride="emit('setFeedOverride', $event)"
           @setSpindleOverride="emit('setSpindleOverride', $event)"
           @setRapidOverride="emit('setRapidOverride', $event)"

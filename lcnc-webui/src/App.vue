@@ -311,6 +311,48 @@ const maxJogVel = computed(() => {
   return (v != null && Number.isFinite(v) && v > 0) ? v : 50;
 });
 
+// INI config: jog
+const defaultJogVel = computed(() => {
+  const v = st.value.default_jog_velocity;
+  return (v != null && Number.isFinite(v) && v > 0) ? v : 10;
+});
+const minJogVel = computed(() => {
+  const v = st.value.min_jog_velocity;
+  return (v != null && Number.isFinite(v) && v > 0) ? v : 0.1;
+});
+const iniIncrements = computed<number[] | null>(() => {
+  const v = st.value.increments;
+  return Array.isArray(v) && v.length > 0 ? v : null;
+});
+
+// INI config: spindle
+const defaultSpindleSpeed = computed(() => {
+  const v = st.value.default_spindle_speed;
+  return (v != null && Number.isFinite(v) && v > 0) ? v : 1000;
+});
+const minSpindleSpeed = computed(() => {
+  const v = st.value.min_spindle_speed;
+  return (v != null && Number.isFinite(v) && v >= 0) ? v : 0;
+});
+const maxSpindleSpeed = computed(() => {
+  const v = st.value.max_spindle_speed;
+  return (v != null && Number.isFinite(v) && v > 0) ? v : 99999;
+});
+
+// INI config: overrides (INI 0-1 fractions → percentage integers)
+const minSpindleOverride = computed(() => {
+  const v = st.value.min_spindle_override;
+  return (v != null && Number.isFinite(v)) ? Math.round(v * 100) : 50;
+});
+const maxSpindleOverride = computed(() => {
+  const v = st.value.max_spindle_override;
+  return (v != null && Number.isFinite(v)) ? Math.round(v * 100) : 200;
+});
+const maxFeedOverride = computed(() => {
+  const v = st.value.max_feed_override;
+  return (v != null && Number.isFinite(v)) ? Math.round(v * 100) : 200;
+});
+
 // Spindle state
 const spindleSpeed = computed(() => st.value.spindle_speed ?? null);
 const spindleActual = computed(() => st.value.spindle_speed_actual ?? null);
@@ -378,6 +420,12 @@ function arm(v: boolean) {
 /** ---------- local UI jog ---------- */
 const jogVel = ref(10);
 const jogIncrement = ref(0); // 0 = continuous, >0 = increment distance in machine units
+
+// Initialize defaults from INI (once, when first non-fallback value arrives)
+let _jogVelInit = false;
+watch(defaultJogVel, (v) => { if (!_jogVelInit && v !== 10) { jogVel.value = v; _jogVelInit = true; } });
+let _rpmInit = false;
+watch(defaultSpindleSpeed, (v) => { if (!_rpmInit && v !== 1000) { rpmInput.value = v; _rpmInit = true; } });
 
 /**
  * Simple anti-spam gate so you don't double-send on fast clicks.
@@ -721,7 +769,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <div class="popover chipPopover overridesPopover" :class="{ open: openChip === 'overrides' }" @click.stop>
             <div class="ovrRow">
               <span class="ovrLabel">Feed</span>
-              <input type="range" v-model.number="feedSlider" @change="onFeedChange" min="0" max="200" step="5" :disabled="!permissions.override" />
+              <input type="range" v-model.number="feedSlider" @change="onFeedChange" min="0" :max="maxFeedOverride" step="5" :disabled="!permissions.override" />
               <span class="ovrVal" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
             </div>
             <div class="ovrPresets">
@@ -729,7 +777,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
             </div>
             <div class="ovrRow">
               <span class="ovrLabel">Spindle</span>
-              <input type="range" v-model.number="spindleSlider" @change="onSpindleSliderChange" min="50" max="200" step="5" :disabled="!permissions.override" />
+              <input type="range" v-model.number="spindleSlider" @change="onSpindleSliderChange" :min="minSpindleOverride" :max="maxSpindleOverride" step="5" :disabled="!permissions.override" />
               <span class="ovrVal" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
             </div>
             <div class="ovrPresets">
@@ -829,8 +877,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
               type="number"
               class="spRpmInput"
               v-model.number="rpmInput"
-              min="0"
-              max="99999"
+              :min="minSpindleSpeed"
+              :max="maxSpindleSpeed"
               step="100"
               :disabled="!permissions.ready"
             />
@@ -866,8 +914,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
               class="spOvrSlider"
               v-model.number="spindleOvrSlider"
               @change="onSpindleOvrChange"
-              min="50"
-              max="200"
+              :min="minSpindleOverride"
+              :max="maxSpindleOverride"
               step="5"
               :disabled="!permissions.override"
             />
@@ -951,6 +999,13 @@ watch(isHomed, (nowHomed, wasHomed) => {
                 :isHomed="isHomed"
                 :maxJogVel="maxJogVel"
                 :jogIncrement="jogIncrement"
+                :minJogVel="minJogVel"
+                :iniIncrements="iniIncrements"
+                :minSpindleSpeed="minSpindleSpeed"
+                :maxSpindleSpeed="maxSpindleSpeed"
+                :minSpindleOverride="minSpindleOverride"
+                :maxSpindleOverride="maxSpindleOverride"
+                :maxFeedOverride="maxFeedOverride"
                 :gcodeContent="gcodeContent"
                 :currentLine="currentLine"
                 :isPaused="isPaused"
@@ -989,6 +1044,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
               :jogVel="jogVel" :isTeleop="isTeleop" :isHomed="isHomed"
               :maxJogVel="maxJogVel" :activeJogKeys="jogKeys"
               :jogIncrement="jogIncrement"
+              :minJogVel="minJogVel" :iniIncrements="iniIncrements"
               :mdiText="mdiText"
               @zeroAxis="zeroAxis" @zeroAll="zeroAll" @setG5x="setG5x"
               @homeAll="homeAll" @unhomeAll="unhomeAll" @homeAxis="homeAxis" @unhomeAxis="unhomeAxis"

@@ -13,6 +13,8 @@ const props = defineProps<{
   maxJogVel: number;
   activeJogKeys?: Set<string>;
   jogIncrement: number;
+  minJogVel: number;
+  iniIncrements: number[] | null;
 }>();
 
 const can = usePermissions();
@@ -24,6 +26,12 @@ const emit = defineEmits<{
 }>();
 
 const incrementOptions = computed(() => {
+  if (props.iniIncrements && props.iniIncrements.length > 0) {
+    return [
+      { label: "Cont", value: 0 },
+      ...props.iniIncrements.map(v => ({ label: String(v), value: v })),
+    ];
+  }
   if (props.linearUnit === "in") {
     return [
       { label: "Cont", value: 0 },
@@ -200,7 +208,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
       <input
         class="inp"
         type="range"
-        min="0.1"
+        :min="minJogVel"
         :max="maxJogVel"
         step="0.1"
         :value="jogVel"

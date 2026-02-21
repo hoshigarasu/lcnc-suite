@@ -6,6 +6,9 @@ const props = defineProps<{
   feedOverride: number | null;
   spindleOverride: number | null;
   rapidOverride: number | null;
+  maxFeedOverride: number;
+  minSpindleOverride: number;
+  maxSpindleOverride: number;
 }>();
 
 const emit = defineEmits<{
@@ -54,7 +57,7 @@ function resetAll() {
       <input
         type="range" class="ovSlider"
         v-model.number="feedSlider" @change="onFeedChange"
-        min="0" max="200" step="5"
+        min="0" :max="maxFeedOverride" step="5"
         :disabled="!can.override"
       />
       <span class="ovValue" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
@@ -66,7 +69,7 @@ function resetAll() {
       <input
         type="range" class="ovSlider"
         v-model.number="spindleSlider" @change="onSpindleChange"
-        min="50" max="200" step="5"
+        :min="minSpindleOverride" :max="maxSpindleOverride" step="5"
         :disabled="!can.override"
       />
       <span class="ovValue" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>

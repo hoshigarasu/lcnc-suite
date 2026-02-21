@@ -56,15 +56,15 @@ type GridOp = {
 };
 
 const outsideGrid: GridOp[] = [
-  { id: "fl", label: "FL",  macro: "probe_front_left_top_corner",  description: "Front-left corner" },
-  { id: "f",  label: "F",   macro: "probe_front_top_side",         description: "Front edge" },
-  { id: "fr", label: "FR",  macro: "probe_front_right_top_corner", description: "Front-right corner" },
-  { id: "l",  label: "L",   macro: "probe_left_top_side",          description: "Left edge" },
-  { id: "z",  label: "Z",   macro: "probe_z_minus_wco",            description: "Z surface" },
-  { id: "r",  label: "R",   macro: "probe_right_top_side",         description: "Right edge" },
   { id: "bl", label: "BL",  macro: "probe_back_left_top_corner",   description: "Back-left corner" },
   { id: "b",  label: "B",   macro: "probe_back_top_side",          description: "Back edge" },
   { id: "br", label: "BR",  macro: "probe_back_right_top_corner",  description: "Back-right corner" },
+  { id: "l",  label: "L",   macro: "probe_left_top_side",          description: "Left edge" },
+  { id: "z",  label: "Z",   macro: "probe_z_minus_wco",            description: "Z surface" },
+  { id: "r",  label: "R",   macro: "probe_right_top_side",         description: "Right edge" },
+  { id: "fl", label: "FL",  macro: "probe_front_left_top_corner",  description: "Front-left corner" },
+  { id: "f",  label: "F",   macro: "probe_front_top_side",         description: "Front edge" },
+  { id: "fr", label: "FR",  macro: "probe_front_right_top_corner", description: "Front-right corner" },
 ];
 
 const activeGridOp = ref<string | null>(null);
@@ -206,72 +206,72 @@ function fmt(n: number | undefined): string {
             :title="op.description"
             @click="runGridProbe(op)"
           >
-            <!-- FL corner: probe on workpiece near front-left, arrows → and ↑ -->
-            <svg v-if="op.id === 'fl'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
-              <circle cx="28" cy="52" r="4" class="probeTip" />
-              <line x1="14" y1="70" x2="14" y2="56" class="arrow" /><polygon points="11,56 14,49 17,56" class="arrowHead" />
-              <line x1="14" y1="70" x2="24" y2="70" class="arrow" /><polygon points="24,67 31,70 24,73" class="arrowHead" />
-              <circle cx="10" cy="70" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Front edge: probe on workpiece near front center, arrow ↑ -->
-            <svg v-else-if="op.id === 'f'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
-              <circle cx="40" cy="52" r="4" class="probeTip" />
-              <line x1="40" y1="70" x2="40" y2="56" class="arrow" /><polygon points="37,56 40,49 43,56" class="arrowHead" />
-              <line x1="10" y1="70" x2="70" y2="70" class="crosshairLine" />
-            </svg>
-            <!-- FR corner: probe near front-right, arrows ← and ↑ -->
-            <svg v-else-if="op.id === 'fr'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
-              <circle cx="52" cy="52" r="4" class="probeTip" />
-              <line x1="66" y1="70" x2="66" y2="56" class="arrow" /><polygon points="63,56 66,49 69,56" class="arrowHead" />
-              <line x1="66" y1="70" x2="56" y2="70" class="arrow" /><polygon points="56,67 49,70 56,73" class="arrowHead" />
-              <circle cx="70" cy="70" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Left edge: probe on workpiece near left center, arrow → -->
-            <svg v-else-if="op.id === 'l'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
-              <circle cx="28" cy="40" r="4" class="probeTip" />
-              <line x1="10" y1="40" x2="22" y2="40" class="arrow" /><polygon points="22,37 29,40 22,43" class="arrowHead" />
-              <line x1="10" y1="10" x2="10" y2="70" class="crosshairLine" />
-            </svg>
-            <!-- Z center: probe centered on top, arrow ↓ (side-view hint) -->
-            <svg v-else-if="op.id === 'z'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
-              <circle cx="40" cy="40" r="5" class="probeTip" />
-              <line x1="40" y1="18" x2="40" y2="32" class="arrow" /><polygon points="37,32 40,39 43,32" class="arrowHead" />
-              <text x="40" y="60" class="gridZLabel">Z</text>
-            </svg>
-            <!-- Right edge: probe near right center, arrow ← -->
-            <svg v-else-if="op.id === 'r'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
-              <circle cx="52" cy="40" r="4" class="probeTip" />
-              <line x1="70" y1="40" x2="58" y2="40" class="arrow" /><polygon points="58,37 51,40 58,43" class="arrowHead" />
-              <line x1="70" y1="10" x2="70" y2="70" class="crosshairLine" />
-            </svg>
-            <!-- BL corner: probe near back-left, arrows → and ↓ -->
-            <svg v-else-if="op.id === 'bl'" viewBox="0 0 80 80" class="gridIcon">
+            <!-- BL corner: triangles pointing ↓ and → from outside -->
+            <svg v-if="op.id === 'bl'" viewBox="0 0 80 80" class="gridIcon">
               <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
               <circle cx="28" cy="28" r="4" class="probeTip" />
-              <line x1="14" y1="10" x2="14" y2="24" class="arrow" /><polygon points="11,24 14,31 17,24" class="arrowHead" />
-              <line x1="14" y1="10" x2="24" y2="10" class="arrow" /><polygon points="24,7 31,10 24,13" class="arrowHead" />
+              <polygon points="28,10 23,1 33,1" class="arrowHead" />
+              <polygon points="10,28 1,23 1,33" class="arrowHead" />
               <circle cx="10" cy="10" r="2.5" class="crosshair" />
             </svg>
-            <!-- Back edge: probe near back center, arrow ↓ -->
+            <!-- Back edge: triangle pointing ↓ from outside -->
             <svg v-else-if="op.id === 'b'" viewBox="0 0 80 80" class="gridIcon">
               <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
               <circle cx="40" cy="28" r="4" class="probeTip" />
-              <line x1="40" y1="10" x2="40" y2="24" class="arrow" /><polygon points="37,24 40,31 43,24" class="arrowHead" />
+              <polygon points="40,10 35,1 45,1" class="arrowHead" />
               <line x1="10" y1="10" x2="70" y2="10" class="crosshairLine" />
             </svg>
-            <!-- BR corner: probe near back-right, arrows ← and ↓ -->
+            <!-- BR corner: triangles pointing ↓ and ← from outside -->
             <svg v-else-if="op.id === 'br'" viewBox="0 0 80 80" class="gridIcon">
               <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
               <circle cx="52" cy="28" r="4" class="probeTip" />
-              <line x1="66" y1="10" x2="66" y2="24" class="arrow" /><polygon points="63,24 66,31 69,24" class="arrowHead" />
-              <line x1="66" y1="10" x2="56" y2="10" class="arrow" /><polygon points="56,7 49,10 56,13" class="arrowHead" />
+              <polygon points="52,10 47,1 57,1" class="arrowHead" />
+              <polygon points="70,28 79,23 79,33" class="arrowHead" />
               <circle cx="70" cy="10" r="2.5" class="crosshair" />
+            </svg>
+            <!-- Left edge: triangle pointing → from outside -->
+            <svg v-else-if="op.id === 'l'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
+              <circle cx="28" cy="40" r="4" class="probeTip" />
+              <polygon points="10,40 1,35 1,45" class="arrowHead" />
+              <line x1="10" y1="10" x2="10" y2="70" class="crosshairLine" />
+            </svg>
+            <!-- Z center: probe centered, green crosshair circle around probe tip -->
+            <svg v-else-if="op.id === 'z'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
+              <circle cx="40" cy="40" r="9" class="crosshair" />
+              <circle cx="40" cy="40" r="5" class="probeTip" />
+              <text x="40" y="60" class="gridZLabel">Z</text>
+            </svg>
+            <!-- Right edge: triangle pointing ← from outside -->
+            <svg v-else-if="op.id === 'r'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
+              <circle cx="52" cy="40" r="4" class="probeTip" />
+              <polygon points="70,40 79,35 79,45" class="arrowHead" />
+              <line x1="70" y1="10" x2="70" y2="70" class="crosshairLine" />
+            </svg>
+            <!-- FL corner: triangles pointing ↑ and → from outside -->
+            <svg v-else-if="op.id === 'fl'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
+              <circle cx="28" cy="52" r="4" class="probeTip" />
+              <polygon points="28,70 23,79 33,79" class="arrowHead" />
+              <polygon points="10,52 1,47 1,57" class="arrowHead" />
+              <circle cx="10" cy="70" r="2.5" class="crosshair" />
+            </svg>
+            <!-- Front edge: triangle pointing ↑ from outside -->
+            <svg v-else-if="op.id === 'f'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
+              <circle cx="40" cy="52" r="4" class="probeTip" />
+              <polygon points="40,70 35,79 45,79" class="arrowHead" />
+              <line x1="10" y1="70" x2="70" y2="70" class="crosshairLine" />
+            </svg>
+            <!-- FR corner: triangles pointing ↑ and ← from outside -->
+            <svg v-else-if="op.id === 'fr'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="10" y="10" width="60" height="60" rx="3" class="workpiece" />
+              <circle cx="52" cy="52" r="4" class="probeTip" />
+              <polygon points="52,70 47,79 57,79" class="arrowHead" />
+              <polygon points="70,52 79,47 79,57" class="arrowHead" />
+              <circle cx="70" cy="70" r="2.5" class="crosshair" />
             </svg>
           </button>
         </div>
@@ -655,9 +655,8 @@ function fmt(n: number | undefined): string {
 
 .crosshairLine {
   stroke: var(--ok);
-  stroke-width: 1;
-  stroke-dasharray: 3 2;
-  opacity: 0.6;
+  stroke-width: 1.5;
+  opacity: 0.8;
 }
 
 /* Parameters */

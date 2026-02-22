@@ -24,7 +24,7 @@ const emit = defineEmits<{
 const can = usePermissions();
 
 // ─── Sub-view navigation ──────────────────────────────────────────
-const probeView = ref<"edge" | "outside" | "inside" | "boss">("outside");
+const probeView = ref<"edge" | "outside" | "inside" | "boss" | "ridge">("outside");
 
 // ─── Edge probe operations (single-axis) ──────────────────────────
 type ProbeOp = {
@@ -88,6 +88,15 @@ const bossGrid: GridOp[] = [
   { id: "xpc", label: "Rect Pocket C",  macro: "probe_rect_pocket_center_start",  description: "Probe inside of rectangular pocket (center start)" },
 ];
 
+const ridgeGrid: GridOp[] = [
+  { id: "rx",  label: "Ridge X",    macro: "probe_ridge_x",                description: "Probe ridge in X axis" },
+  { id: "vx",  label: "Valley X",   macro: "probe_valley_x",               description: "Probe valley in X axis (edge start)" },
+  { id: "vxc", label: "Valley X C", macro: "probe_valley_x_center_start",  description: "Probe valley in X axis (center start)" },
+  { id: "ry",  label: "Ridge Y",    macro: "probe_ridge_y",                description: "Probe ridge in Y axis" },
+  { id: "vy",  label: "Valley Y",   macro: "probe_valley_y",               description: "Probe valley in Y axis (edge start)" },
+  { id: "vyc", label: "Valley Y C", macro: "probe_valley_y_center_start",  description: "Probe valley in Y axis (center start)" },
+];
+
 const activeGridOp = ref<string | null>(null);
 const activeBossOp = ref<string>("rb");
 const bossOpIsRound = computed(() => ["rb", "rp", "rpc"].includes(activeBossOp.value));
@@ -109,6 +118,8 @@ const params = ref({
   diameterHint: 0.0,
   xHintBP: 0.0,
   yHintBP: 0.0,
+  xHintRV: 0.0,
+  yHintRV: 0.0,
 });
 
 const autoZero = ref(false);
@@ -131,6 +142,8 @@ function buildVarMap(probeMode: number): Record<string, number> {
     "3025": p.diameterHint,
     "3026": p.xHintBP,
     "3027": p.yHintBP,
+    "3028": p.xHintRV,
+    "3029": p.yHintRV,
     "3030": probeMode,       // 0 = set WCO, 1 = measure only
     "3032": p.calOffset,
   };
@@ -173,6 +186,8 @@ watch(() => props.initialVars, (vars) => {
   if (vars["3025"] != null) p.diameterHint = vars["3025"];
   if (vars["3026"] != null) p.xHintBP = vars["3026"];
   if (vars["3027"] != null) p.yHintBP = vars["3027"];
+  if (vars["3028"] != null) p.xHintRV = vars["3028"];
+  if (vars["3029"] != null) p.yHintRV = vars["3029"];
   if (vars["3032"] != null) p.calOffset = vars["3032"];
   // Persist to localStorage
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...params.value, autoZero: autoZero.value }));
@@ -222,6 +237,14 @@ function runBossProbe(op: GridOp) {
   emit("mdi", `O<${op.macro}> CALL`);
 }
 
+function runRidgeProbe(op: GridOp) {
+  activeGridOp.value = op.id;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...params.value, autoZero: autoZero.value }));
+  const vars = buildVarMap(autoZero.value ? 0 : 1);
+  emit("setProbeVars", vars);
+  emit("mdi", `O<${op.macro}> CALL`);
+}
+
 function fmt(n: number | undefined): string {
   if (n == null || !Number.isFinite(n)) return "---";
   return n.toFixed(4);
@@ -235,6 +258,7 @@ function fmt(n: number | undefined): string {
       <button class="viewTab" :class="{ active: probeView === 'outside' }" @click="probeView = 'outside'">Outside</button>
       <button class="viewTab" :class="{ active: probeView === 'inside' }" @click="probeView = 'inside'">Inside</button>
       <button class="viewTab" :class="{ active: probeView === 'boss' }" @click="probeView = 'boss'">Boss/Pocket</button>
+      <button class="viewTab" :class="{ active: probeView === 'ridge' }" @click="probeView = 'ridge'">Ridge/Valley</button>
       <button class="viewTab" :class="{ active: probeView === 'edge' }" @click="probeView = 'edge'">Edge</button>
     </div>
 
@@ -498,6 +522,88 @@ function fmt(n: number | undefined): string {
           <input type="number" v-model.number="params.xHintBP" min="0" step="0.5" @change="saveParams" />
           <label>Y Hint</label>
           <input type="number" v-model.number="params.yHintBP" min="0" step="0.5" @change="saveParams" />
+        </div>
+      </div>
+    </template>
+
+    <!-- ═══ RIDGE / VALLEY VIEW ═══ -->
+    <template v-else-if="probeView === 'ridge'">
+      <div class="section">
+        <div class="sub">Probe Operation</div>
+        <div class="gridWrap bossGrid">
+          <button
+            v-for="op in ridgeGrid"
+            :key="op.id"
+            class="gridCell"
+            :class="{ probing: probing && activeGridOp === op.id }"
+            :disabled="!can.ready || probing"
+            :title="op.description"
+            @click="runRidgeProbe(op)"
+          >
+            <!-- Ridge X: vertical bar, 2 horizontal arrows inward, probe+crosshair at center -->
+            <svg v-if="op.id === 'rx'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="25" y="0" width="30" height="80" class="workpiece" />
+              <polygon points="25,40 16,35 16,45" class="arrowHead" />
+              <polygon points="55,40 64,35 64,45" class="arrowHead" />
+              <circle cx="40" cy="40" r="8" class="crosshair" />
+              <circle cx="40" cy="40" r="4" class="probeTip" />
+            </svg>
+            <!-- Ridge Y: horizontal bar, 2 vertical arrows inward, probe+crosshair at center -->
+            <svg v-else-if="op.id === 'ry'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="0" y="25" width="80" height="30" class="workpiece" />
+              <polygon points="40,25 35,16 45,16" class="arrowHead" />
+              <polygon points="40,55 35,64 45,64" class="arrowHead" />
+              <circle cx="40" cy="40" r="8" class="crosshair" />
+              <circle cx="40" cy="40" r="4" class="probeTip" />
+            </svg>
+            <!-- Valley X: two vertical walls, 2 horizontal arrows outward, probe dot outside left -->
+            <svg v-else-if="op.id === 'vx'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="0" y="0" width="20" height="80" class="workpiece" />
+              <rect x="60" y="0" width="20" height="80" class="workpiece" />
+              <polygon points="20,40 29,35 29,45" class="arrowHead" />
+              <polygon points="60,40 51,35 51,45" class="arrowHead" />
+              <circle cx="5" cy="40" r="3" class="probeTip" />
+              <circle cx="40" cy="40" r="2.5" class="crosshair" />
+            </svg>
+            <!-- Valley Y: two horizontal walls, 2 vertical arrows outward, probe dot outside top -->
+            <svg v-else-if="op.id === 'vy'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="0" y="0" width="80" height="20" class="workpiece" />
+              <rect x="0" y="60" width="80" height="20" class="workpiece" />
+              <polygon points="40,20 35,29 45,29" class="arrowHead" />
+              <polygon points="40,60 35,51 45,51" class="arrowHead" />
+              <circle cx="40" cy="5" r="3" class="probeTip" />
+              <circle cx="40" cy="40" r="2.5" class="crosshair" />
+            </svg>
+            <!-- Valley X Center: two vertical walls, 2 horizontal arrows outward, probe+crosshair at center -->
+            <svg v-else-if="op.id === 'vxc'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="0" y="0" width="20" height="80" class="workpiece" />
+              <rect x="60" y="0" width="20" height="80" class="workpiece" />
+              <polygon points="20,40 29,35 29,45" class="arrowHead" />
+              <polygon points="60,40 51,35 51,45" class="arrowHead" />
+              <circle cx="40" cy="40" r="8" class="crosshair" />
+              <circle cx="40" cy="40" r="4" class="probeTip" />
+            </svg>
+            <!-- Valley Y Center: two horizontal walls, 2 vertical arrows outward, probe+crosshair at center -->
+            <svg v-else-if="op.id === 'vyc'" viewBox="0 0 80 80" class="gridIcon">
+              <rect x="0" y="0" width="80" height="20" class="workpiece" />
+              <rect x="0" y="60" width="80" height="20" class="workpiece" />
+              <polygon points="40,20 35,29 45,29" class="arrowHead" />
+              <polygon points="40,60 35,51 45,51" class="arrowHead" />
+              <circle cx="40" cy="40" r="8" class="crosshair" />
+              <circle cx="40" cy="40" r="4" class="probeTip" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Hint parameters -->
+      <div class="section">
+        <div class="sub">Dimensional Hints</div>
+        <div class="paramGrid">
+          <label>X Hint</label>
+          <input type="number" v-model.number="params.xHintRV" min="0" step="0.5" @change="saveParams" />
+          <label>Y Hint</label>
+          <input type="number" v-model.number="params.yHintRV" min="0" step="0.5" @change="saveParams" />
         </div>
       </div>
     </template>

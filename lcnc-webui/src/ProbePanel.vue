@@ -10,6 +10,7 @@ const props = defineProps<{
   probedPosition: number[] | null;
   workPos: number[];
   probeResults: Record<string, number> | null;
+  g5xLabel: string;
 }>();
 
 const emit = defineEmits<{
@@ -18,7 +19,10 @@ const emit = defineEmits<{
   (e: "listProbeMacros"): void;
   (e: "simulateProbeTrip"): void;
   (e: "setProbeVars", vars: Record<string, number>): void;
+  (e: "setG5x", gcode: string): void;
 }>();
+
+const g5xOptions = ["G54", "G55", "G56", "G57", "G58", "G59", "G59.1", "G59.2", "G59.3"];
 
 const can = usePermissions();
 
@@ -265,6 +269,18 @@ function fmtR(key: string): string {
 
 <template>
   <div class="probePanel scroll-thin">
+    <!-- WCS selector -->
+    <div class="g5xRow">
+      <button
+        v-for="g in g5xOptions"
+        :key="g"
+        class="g5xBtn"
+        :class="{ active: g === g5xLabel }"
+        :disabled="!can.idle"
+        @click="emit('setG5x', g)"
+      >{{ g }}</button>
+    </div>
+
     <!-- Sub-view tabs -->
     <div class="viewTabs">
       <button class="viewTab" :class="{ active: probeView === 'outside' }" @click="probeView = 'outside'">Outside</button>
@@ -281,11 +297,10 @@ function fmtR(key: string): string {
         <input type="checkbox" v-model="autoZero" :disabled="!can.ready" @change="saveParams" />
         Auto Zero
       </label>
-      <span class="calOffsetGroup">
-        <span class="calOffsetLabel">Calibration Offset <span class="varNum">#3032</span></span>
-        <span class="calOffsetVal">{{ fmt(params.calOffset) }}</span>
-        <button class="calResetBtn" :disabled="!can.ready || probing" @click="resetCal">Reset</button>
-      </span>
+      <label class="checkRow">
+        <input type="checkbox" :checked="params.wcoRotation === 1" :disabled="!can.ready" @change="params.wcoRotation = ($event.target as HTMLInputElement).checked ? 1 : 0; saveParams()" />
+        Set Rotation
+      </label>
       <div class="controlBarRight">
         <div class="statusRow">
           <span class="statusDot" :class="statusClass"></span>
@@ -307,6 +322,7 @@ function fmtR(key: string): string {
 
     <!-- ═══ OUTSIDE CORNERS VIEW ═══ -->
     <template v-if="probeView === 'outside'">
+      <div class="gridSection">
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap">
@@ -389,10 +405,12 @@ function fmtR(key: string): string {
           </button>
         </div>
       </div>
+      </div>
     </template>
 
     <!-- ═══ INSIDE CORNERS VIEW ═══ -->
     <template v-else-if="probeView === 'inside'">
+      <div class="gridSection">
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap">
@@ -475,10 +493,12 @@ function fmtR(key: string): string {
           </button>
         </div>
       </div>
+      </div>
     </template>
 
     <!-- ═══ BOSS / POCKET VIEW ═══ -->
     <template v-else-if="probeView === 'boss'">
+      <div class="gridSection">
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap bossGrid">
@@ -564,10 +584,12 @@ function fmtR(key: string): string {
         <label>Y Hint <span class="varNum">#3027</span></label>
         <input type="number" v-model.number="params.yHintBP" min="0" step="0.5" :disabled="!can.ready" @change="saveParams" />
       </div>
+      </div>
     </template>
 
     <!-- ═══ EDGE ANGLE VIEW ═══ -->
     <template v-else-if="probeView === 'angle'">
+      <div class="gridSection">
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap angleGrid">
@@ -663,15 +685,13 @@ function fmtR(key: string): string {
       <div class="inlineParams">
         <label>Edge Width <span class="varNum">#3024</span></label>
         <input type="number" v-model.number="params.edgeWidth" min="0.1" step="0.1" :disabled="!can.ready" @change="saveParams" />
-        <label class="checkRow">
-          <input type="checkbox" :checked="params.wcoRotation === 1" :disabled="!can.ready" @change="params.wcoRotation = ($event.target as HTMLInputElement).checked ? 1 : 0; saveParams()" />
-          Set Rotation WCO
-        </label>
+      </div>
       </div>
     </template>
 
     <!-- ═══ CALIBRATE VIEW ═══ -->
     <template v-else-if="probeView === 'cal'">
+      <div class="gridSection">
       <!-- Round calibration: buttons + diameter -->
       <div class="calSection">
         <div class="sub">Round Hole</div>
@@ -759,10 +779,12 @@ function fmtR(key: string): string {
           <button class="calAxisBtn" :class="{ active: calAxis === 2 }" :disabled="!can.ready" @click="calAxis = 2">Y Error</button>
         </div>
       </div>
+      </div>
     </template>
 
     <!-- ═══ RIDGE / VALLEY VIEW ═══ -->
     <template v-else>
+      <div class="gridSection">
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap bossGrid">
@@ -838,6 +860,7 @@ function fmtR(key: string): string {
         <label>Y Hint <span class="varNum">#3029</span></label>
         <input type="number" v-model.number="params.yHintRV" min="0" step="0.5" :disabled="!can.ready" @change="saveParams" />
       </div>
+      </div>
     </template>
 
     <div class="sep"></div>
@@ -875,6 +898,9 @@ function fmtR(key: string): string {
 
         <label>Step Off Width <span class="varNum">#3023</span></label>
         <input type="number" v-model.number="params.stepOffWidth" min="0.1" step="0.5" :disabled="!can.ready" @change="saveParams" />
+
+        <label>Cal Offset <span class="varNum">#3032</span></label>
+        <span class="calOffsetReadonly">{{ fmt(params.calOffset) }} <button class="calResetBtn" :disabled="!can.ready || probing" @click="resetCal">Reset</button></span>
       </div>
     </div>
 
@@ -967,6 +993,28 @@ function fmtR(key: string): string {
   opacity: 0.8;
 }
 
+/* WCS selector row */
+.g5xRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.g5xBtn {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 6px;
+  opacity: 0.6;
+}
+
+.g5xBtn.active {
+  opacity: 1;
+  font-weight: 700;
+  border-color: var(--fg);
+}
+
 /* View tabs */
 .viewTabs {
   display: flex;
@@ -988,6 +1036,14 @@ function fmtR(key: string): string {
   opacity: 1;
   background: color-mix(in oklab, var(--fg) 15%, var(--button-bg));
   border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
+}
+
+/* Fixed-height section so grid + params don't shift when switching tabs */
+.gridSection {
+  height: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* Grids (centered) */
@@ -1078,35 +1134,19 @@ function fmtR(key: string): string {
 }
 
 /* Calibration layout */
-.calOffsetGroup {
+.calOffsetReadonly {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 8px;
-}
-
-.calOffsetLabel {
+  gap: 8px;
   font-size: 12px;
-  font-weight: 600;
-  opacity: 0.7;
-}
-
-.calOffsetVal {
-  font-size: 13px;
-  font-weight: 700;
-  font-family: monospace;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: color-mix(in oklab, var(--fg) 6%, var(--bg));
-  border: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .calResetBtn {
-  padding: 4px 10px;
-  font-size: 11px;
+  padding: 2px 8px;
+  font-size: 10px;
   font-weight: 600;
-  border-radius: 6px;
-  margin-left: auto;
+  border-radius: 4px;
 }
 
 .calParamTitle {

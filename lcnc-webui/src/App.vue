@@ -1203,10 +1203,12 @@ watch(isHomed, (nowHomed, wasHomed) => {
               :probedPosition="st.probed_position ?? null"
               :workPos="workPos"
               :probeResults="probeResults"
+              :g5xLabel="g5xLabel"
               @mdi="send({ cmd: 'mdi', text: $event })"
               @abort="send({ cmd: 'abort' })"
               @simulateProbeTrip="send({ cmd: 'simulate_probe_trip' })"
               @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
+              @setG5x="setG5x"
             />
           </template>
 

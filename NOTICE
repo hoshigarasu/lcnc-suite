@@ -1,0 +1,46 @@
+NOTICE — Third-Party Code and Attribution
+=========================================
+
+This project incorporates and depends on code from the following
+GPL v3-licensed projects. Their original authors retain copyright
+over their respective contributions.
+
+
+1. ProbeBasic
+   Author:    Chris P (kcjengr)
+   License:   GPL v3
+   Source:    https://github.com/kcjengr/probe_basic
+
+   Used subroutines (located in the LinuxCNC config's subroutines/
+   directory, not bundled in this repository):
+   - All probe_*.ngc subroutines (~60 files)
+   - ATC subroutines: toolchange.ngc, load_spindle_safety*.ngc,
+     m6_tool_call_*.ngc, m10-m26.ngc, clamptool.ngc, unclamptool.ngc,
+     extendatc.ngc, retractatc.ngc, store_tool_in_carousel.ngc,
+     rack_id_calc.ngc, move_*.ngc, unload_*.ngc
+   - Utility subroutines: program_coolant.ngc, toolsetter_wco.ngc,
+     go_to_*.ngc, on_abort.ngc, set_g30_position.ngc,
+     tool_touch_off.ngc, tool_setter_param_update.ngc,
+     touch_probe_param_update.ngc
+
+
+2. TooTall18T tool_length_probe
+   Author:    TooTall18T
+   License:   GPL v3
+   Source:    https://github.com/TooTall18T/tool_length_probe
+
+   Used subroutines:
+   - tool_touch_off_new.ngc (v5.0.2) — modified: fixed missing closing
+     '>' on o<tool_touch_off_new> return and o<tool_touch_off_new> endsub
+   - m600.ngc — automatic tool measurement
+   - m601.ngc — manual tool measurement
+
+
+3. LinuxCNC
+   License:   LGPL v3 / GPL v2 (mixed)
+   Source:    https://github.com/LinuxCNC/linuxcnc
+   Website:   https://linuxcnc.org
+
+   This project uses LinuxCNC's Python bindings and runs as a
+   companion application alongside LinuxCNC. It is not a derivative
+   of LinuxCNC itself.

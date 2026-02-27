@@ -27,6 +27,7 @@ const emit = defineEmits<{
   (e: "getProbeResults"): void;
   (e: "setCompensation", enable: boolean): void;
   (e: "setCompMethod", method: number): void;
+  (e: "clearSurfaceMap"): void;
 }>();
 
 const g5xOptions = ["G54", "G55", "G56", "G57", "G58", "G59", "G59.1", "G59.2", "G59.3"];
@@ -1165,8 +1166,9 @@ function fmtR(key: string): string {
 
       <div class="surfaceActions">
         <button class="btn" :disabled="!can.probe || probing" @click="runSurfaceScan">Start Scan</button>
-        <button class="btn" :disabled="!can.idle" @click="loadSurfaceMap">Load Map</button>
-        <button class="btn" :disabled="!surfacePoints?.length" @click="mapDialogOpen = true">3D Inspect</button>
+        <button v-if="!surfacePoints?.length" class="btn" :disabled="!can.idle" @click="loadSurfaceMap">Load Map</button>
+        <button v-else class="btn" @click="emit('clearSurfaceMap')">Unload Map</button>
+        <button class="btn" @click="if (!surfacePoints?.length) emit('getProbeResults'); mapDialogOpen = true">3D Inspect</button>
         <button class="btn" :class="{ active: eoffsetEnabled }" :disabled="!can.ready || probing" @click="toggleComp">{{ eoffsetEnabled ? 'Disable Comp' : 'Enable Comp' }}</button>
       </div>
 
@@ -1177,9 +1179,9 @@ function fmtR(key: string): string {
         <span class="compMethod">
           Method:
           <button v-for="(label, id) in METHOD_LABELS" :key="id"
-            class="methodBtn" :class="{ active: compMethod === id }"
+            class="methodBtn" :class="{ active: compMethod === Number(id) }"
             :disabled="!can.ready"
-            @click="setMethod(id)">{{ label }}</button>
+            @click="setMethod(Number(id))">{{ label }}</button>
         </span>
       </div>
     </template>

@@ -609,8 +609,11 @@ function ensureCoreGroups() {
     const cx = c.getContext("2d")!;
     cx.font = "bold 48px sans-serif";
     cx.fillStyle = color;
+    cx.strokeStyle = "#000000";
+    cx.lineWidth = 4;
     cx.textAlign = "center";
     cx.textBaseline = "middle";
+    cx.strokeText(text, 32, 32);
     cx.fillText(text, 32, 32);
     const m = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false });
     const s = new THREE.Sprite(m);
@@ -1338,7 +1341,7 @@ function buildSurfaceLayer(pts: number[][]) {
 }
 
 watch(() => props.surfacePoints, (pts) => {
-  if (pts && pts.length >= 3) buildSurfaceLayer(pts);
+  buildSurfaceLayer(pts ?? []);
 });
 
 defineExpose({

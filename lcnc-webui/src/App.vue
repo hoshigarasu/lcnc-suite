@@ -1357,6 +1357,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
               @getProbeResults="requestProbeResults"
               @setCompensation="requestCompToggle"
               @setCompMethod="send({ cmd: 'set_compensation_method', method: $event })"
+              @clearSurfaceMap="surfacePoints = null"
             />
           </template>
 

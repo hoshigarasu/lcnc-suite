@@ -108,7 +108,7 @@ base = armed && !estop && enabled
 | `ready` | base, idle, !busy, homed | MDI, Cycle Start, Spindle, Coolant, Probe, Tool measure/load |
 | `pause` | base, running, !paused | Pause |
 | `resume` | base, paused | Resume |
-| `abort` | armed | Abort |
+| `abort` | base | Abort |
 
 ### Usage in App.vue (direct)
 ```vue

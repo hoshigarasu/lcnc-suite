@@ -12,6 +12,7 @@ export default defineConfig({
       },
       '/files': 'http://127.0.0.1:8000',
       '/upload': 'http://127.0.0.1:8000',
+      '/save': 'http://127.0.0.1:8000',
       '/assets': 'http://127.0.0.1:8000',
     },
   },

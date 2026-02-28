@@ -2696,6 +2696,9 @@ async def ws_endpoint(ws: WebSocket):
                 continue
 
             reply = handle_command(msg, armed)
+            # Force status_loop to re-read g-code when file is (re)loaded
+            if msg.get("cmd") in ("load_file", "unload_file") and reply.get("ok"):
+                last_file = None
             await ws_send_json(ws, {"type": "reply", **reply})
 
     except WebSocketDisconnect:

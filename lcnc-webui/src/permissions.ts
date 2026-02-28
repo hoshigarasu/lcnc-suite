@@ -46,7 +46,7 @@ export function evaluatePermissions(s: MachineState): Permissions {
     ready:    base && s.isIdle && !s.busy && s.isHomed,
     pause:    base && s.isRunning && !s.isPaused,
     resume:   base && s.isPaused,
-    abort:    s.armed,
+    abort:    base,
     probe:    base && s.isIdle && !s.busy && s.isHomed && !s.eoffsetEnabled,
     zero:     base && s.isIdle && !s.busy && !s.eoffsetEnabled,
   };

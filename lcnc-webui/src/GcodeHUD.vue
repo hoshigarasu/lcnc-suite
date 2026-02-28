@@ -6,6 +6,7 @@ const props = defineProps<{
   gcodeContent: string | null;
   currentLine: number | null;
   isPaused: boolean;
+  elapsed: string;
 }>();
 
 const can = usePermissions();
@@ -105,6 +106,7 @@ function tokenizeCode(code: string, tokens: Token[]) {
         <div class="progressFill" :style="{ width: progressPercent + '%' }" />
       </div>
       <span class="progressLabel">{{ currentLine ?? 0 }}/{{ lineCount }} ({{ progressPercent.toFixed(0) }}%)</span>
+      <span class="elapsedLabel">{{ elapsed }}</span>
     </div>
 
     <!-- G-code lines -->
@@ -190,6 +192,15 @@ function tokenizeCode(code: string, tokens: Token[]) {
   color: var(--fg);
   opacity: 0.6;
   white-space: nowrap;
+}
+
+.elapsedLabel {
+  font-size: 9px;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  color: var(--fg);
+  opacity: 0.6;
+  white-space: nowrap;
+  margin-left: auto;
 }
 
 /* Code lines */

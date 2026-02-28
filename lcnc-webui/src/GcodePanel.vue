@@ -8,6 +8,7 @@ const props = defineProps<{
   gcodeContent: string | null;
   currentLine: number | null;
   isPaused: boolean;
+  elapsed: string;
 }>();
 
 const can = usePermissions();
@@ -281,6 +282,7 @@ function formatSize(bytes: number): string {
         {{ currentLine ?? 0 }} / {{ lineCount }}
         <span class="progressPct">({{ progressPercent.toFixed(0) }}%)</span>
       </span>
+      <span class="elapsedLabel">{{ elapsed }}</span>
     </div>
 
     <!-- Error banner -->
@@ -439,6 +441,15 @@ function formatSize(bytes: number): string {
 
 .progressPct {
   opacity: 0.6;
+}
+
+.elapsedLabel {
+  font-size: 11px;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  opacity: 0.7;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .fileInfo {

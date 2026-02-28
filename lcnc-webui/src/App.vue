@@ -193,6 +193,60 @@ const isPaused = computed(() => interpState.value === INTERP_PAUSED);
 const isRunning = computed(() => interpState.value === INTERP_READING || interpState.value === INTERP_WAITING);
 const isIdle = computed(() => interpState.value === INTERP_IDLE);
 
+/** ---------- program elapsed timer ---------- */
+let _timerStartMs: number | null = null;
+let _timerAccMs = 0;
+let _timerHandle: ReturnType<typeof setInterval> | null = null;
+const programElapsed = ref(0); // seconds
+
+function _startTimer() {
+  _timerStartMs = Date.now();
+  if (_timerHandle) clearInterval(_timerHandle);
+  _timerHandle = setInterval(() => {
+    programElapsed.value = Math.floor((_timerAccMs + Date.now() - (_timerStartMs ?? Date.now())) / 1000);
+  }, 1000);
+}
+function _stopTimer() {
+  if (_timerHandle) { clearInterval(_timerHandle); _timerHandle = null; }
+}
+
+watch([isRunning, isPaused], ([running, paused], [wasRunning, wasPaused]) => {
+  if (running && !wasRunning && !wasPaused) {
+    // IDLE → RUNNING: reset and start
+    _timerAccMs = 0;
+    programElapsed.value = 0;
+    _startTimer();
+  } else if (running && !wasRunning && wasPaused) {
+    // PAUSED → RUNNING: resume
+    _startTimer();
+  } else if (paused && wasRunning) {
+    // RUNNING → PAUSED: accumulate and stop
+    _timerAccMs += Date.now() - (_timerStartMs ?? Date.now());
+    programElapsed.value = Math.floor(_timerAccMs / 1000);
+    _stopTimer();
+  } else if (!running && !paused) {
+    // → IDLE: stop, keep final value
+    if (wasRunning && _timerStartMs) {
+      _timerAccMs += Date.now() - _timerStartMs;
+      programElapsed.value = Math.floor(_timerAccMs / 1000);
+    }
+    _stopTimer();
+  }
+});
+
+onUnmounted(() => _stopTimer());
+
+function formatElapsed(s: number): string {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(sec).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+const elapsedDisplay = computed(() => formatElapsed(programElapsed.value));
+
 /** ---------- display helpers for machine states ---------- */
 // G5x work coordinate system (G54, G55, etc.)
 const g5xLabel = computed(() => {
@@ -941,6 +995,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <div class="popover chipPopover programPopover" :class="{ open: openChip === 'program' }">
             <div class="statusRow"><div class="k">Task Mode</div><div class="v">{{ taskModeLabel }}</div></div>
             <div class="statusRow"><div class="k">Interpreter</div><div class="v">{{ interpStateLabel }}</div></div>
+            <div class="statusRow"><div class="k">Elapsed</div><div class="v mono">{{ elapsedDisplay }}</div></div>
             <div class="statusRow"><div class="k">G-codes</div><div class="v codes">{{ activeGcodes }}</div></div>
             <div class="statusRow"><div class="k">M-codes</div><div class="v codes">{{ activeMcodes }}</div></div>
           </div>
@@ -1248,6 +1303,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
                 :gcodeContent="gcodeContent"
                 :currentLine="currentLine"
                 :isPaused="isPaused"
+                :elapsed="elapsedDisplay"
                 :activeFile="activeFile"
                 :spindleSpeed="spindleSpeed"
                 :spindleActual="spindleActual"
@@ -1294,6 +1350,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
               :gcodeContent="gcodeContent"
               :currentLine="currentLine"
               :isPaused="isPaused"
+              :elapsed="elapsedDisplay"
               @loadFile="loadFile"
               @unloadFile="unloadFile"
               @cycleStart="cycleStart"
@@ -1429,6 +1486,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 <style scoped>
 .wrap {
+  --sidebar-total: 178px; /* 16px wrap padding + 150px sidebar + 12px gap */
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -2019,6 +2077,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 .toolDialogOverlay {
   position: fixed;
   inset: 0;
+  padding-left: var(--sidebar-total);
   background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
@@ -2280,6 +2339,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 .toolChangeOverlay {
   position: fixed;
   inset: 0;
+  padding-left: var(--sidebar-total);
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;

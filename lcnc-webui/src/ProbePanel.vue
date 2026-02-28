@@ -1773,6 +1773,7 @@ function fmtR(key: string): string {
 .mapOverlay {
   position: fixed;
   inset: 0;
+  padding-left: 178px; /* sidebar (150px) + wrap padding (16px) + gap (12px) */
   background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;

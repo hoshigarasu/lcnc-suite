@@ -159,6 +159,7 @@ const props = defineProps<{
   gcodeContent?: string | null;
   currentLine?: number | null;
   isPaused?: boolean;
+  elapsed?: string;
   activeFile?: string | null;
   spindleSpeed?: number | null;
   spindleActual?: number | null;
@@ -1437,6 +1438,7 @@ defineExpose({
           :gcodeContent="props.gcodeContent ?? null"
           :currentLine="props.currentLine ?? null"
           :isPaused="props.isPaused ?? false"
+          :elapsed="props.elapsed ?? '00:00'"
           @cycleStart="emit('cycleStart')"
           @cyclePause="emit('cyclePause')"
           @cycleResume="emit('cycleResume')"

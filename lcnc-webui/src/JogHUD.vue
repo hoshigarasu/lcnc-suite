@@ -349,7 +349,7 @@ function onAngularVelInput(ev: Event) {
 }
 
 .sector:hover:not(.disabled) {
-  fill: color-mix(in oklab, var(--fg) 10%, var(--button-bg));
+  fill: color-mix(in oklab, var(--fg) 12%, var(--button-bg));
 }
 
 .sector.active:not(.disabled) {

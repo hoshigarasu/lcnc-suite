@@ -636,7 +636,7 @@ async function saveEdit() {
 
 .actionBtn {
   font-size: var(--fs-sm);
-  padding: 4px 10px;
+  padding: 5px 10px;
   border-radius: var(--radius-lg);
   white-space: nowrap;
 }
@@ -934,40 +934,9 @@ async function saveEdit() {
 }
 
 /* Dialog */
-.dialogOverlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.dialog {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-  padding: 24px 32px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-}
-
 .runDialog {
   text-align: left;
   min-width: 320px;
-}
-
-.dialogTitle {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-
-.dialogBody {
-  font-size: var(--fs-md);
-  margin-bottom: 8px;
-  line-height: 1.5;
-  opacity: 0.8;
 }
 
 .dialogSection {
@@ -997,11 +966,5 @@ async function saveEdit() {
   width: 100px;
 }
 
-.dialogActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
 
 </style>

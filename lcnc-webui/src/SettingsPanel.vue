@@ -803,7 +803,7 @@ const halStats = computed(() => ({
 }
 
 .subTabs :deep(.tab-btn) {
-  padding: 6px 12px;
+  padding: 6px 10px;
   font-size: var(--fs-base);
   border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-sm);
 }
@@ -1083,7 +1083,7 @@ const halStats = computed(() => ({
 }
 
 .tsToggle {
-  padding: 4px 8px;
+  padding: 5px 8px;
   font-size: var(--fs-sm);
   font-weight: 600;
   opacity: 0.6;

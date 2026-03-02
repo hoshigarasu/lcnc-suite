@@ -1548,15 +1548,15 @@ watch(isHomed, (nowHomed, wasHomed) => {
     </div><!-- /bodyLayout -->
 
     <!-- Global tool change dialog -->
-    <div v-if="toolChangeRequested" class="toolChangeOverlay">
-      <div class="toolChangeDialog">
-        <div class="toolChangeTitle">Load Tool into Spindle</div>
-        <div class="toolChangeBody">
+    <div v-if="toolChangeRequested" class="dialogOverlay">
+      <div class="dialog">
+        <div class="dialogTitle">Load Tool into Spindle</div>
+        <div class="dialogBody">
           <strong>T{{ toolChangeTool }}</strong><template v-if="st.tool_change_info"> D{{ st.tool_change_info.D.toFixed(3) }} Z{{ st.tool_change_info.Z.toFixed(3) }}</template><br>
           <template v-if="st.tool_change_info?.description">{{ st.tool_change_info.description }}<br></template>
           Insert tool and press Confirm
         </div>
-        <div class="toolChangeActions">
+        <div class="dialogActions">
           <button class="btn danger" @click="send({ cmd: 'abort' })">Cancel</button>
           <button class="btn primary" :disabled="!armed" @click="confirmToolChange">
             Confirm
@@ -1565,10 +1565,10 @@ watch(isHomed, (nowHomed, wasHomed) => {
       </div>
     </div>
 
-    <div v-if="compConfirmPending !== null" class="toolChangeOverlay">
-      <div class="toolChangeDialog">
-        <div class="toolChangeTitle">{{ compConfirmPending ? 'Enable' : 'Disable' }} Compensation</div>
-        <div class="toolChangeBody">
+    <div v-if="compConfirmPending !== null" class="dialogOverlay">
+      <div class="dialog">
+        <div class="dialogTitle">{{ compConfirmPending ? 'Enable' : 'Disable' }} Compensation</div>
+        <div class="dialogBody">
           <template v-if="compConfirmPending">
             Z axis will move based on the surface compensation map.<br>
             Ensure tool is clear of the workpiece.
@@ -1579,7 +1579,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
             Ensure tool is clear of the workpiece.
           </template>
         </div>
-        <div class="toolChangeActions">
+        <div class="dialogActions">
           <button class="btn danger" @click="cancelCompToggle">Cancel</button>
           <button class="btn primary" @click="confirmCompToggle">Confirm</button>
         </div>
@@ -1587,10 +1587,10 @@ watch(isHomed, (nowHomed, wasHomed) => {
     </div>
 
     <!-- Tool table dialog -->
-    <div v-if="toolDialogOpen" class="toolDialogOverlay" @click.self="toolDialogOpen = false">
-      <div class="toolDialog">
-        <div class="toolDialogHeader">
-          <span class="toolDialogTitle">Tool Table</span>
+    <div v-if="toolDialogOpen" class="dialogOverlay" @click.self="toolDialogOpen = false">
+      <div class="dialog lg toolDialogSize">
+        <div class="dialogHeader">
+          <span class="dialogTitle">Tool Table</span>
           <button class="btn" @click="toolDialogOpen = false">Close</button>
         </div>
         <div class="toolDialogActions">
@@ -1735,7 +1735,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 8px 16px;
+  padding: 8px 14px;
   min-height: 40px;
   color: var(--fg);
   font-size: var(--fs-md);
@@ -2031,7 +2031,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 .ovrResetBtn {
   margin-top: 4px;
-  padding: 4px 10px;
+  padding: 5px 10px;
   font-size: var(--fs-sm);
   font-weight: 600;
   border-radius: var(--radius-lg);
@@ -2093,7 +2093,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 10px 16px;
+  padding: 10px 14px;
   border-radius: var(--radius-xl);
   min-width: 64px;
 }
@@ -2238,44 +2238,13 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 /* ---- Tool dialog ---- */
-.toolDialogOverlay {
-  position: fixed;
-  inset: 0;
-  padding-left: var(--sidebar-total);
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-}
-.toolDialog {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-  width: 70vw;
-  height: 75vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-}
-.toolDialogHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.toolDialogTitle {
-  font-weight: 600;
-  font-size: var(--fs-lg);
-}
+.toolDialogSize { height: 75vh; }
 .toolDialogActions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 12px;
-  padding: 10px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
 }
 .toolDialogBody {
@@ -2499,40 +2468,4 @@ watch(isHomed, (nowHomed, wasHomed) => {
   }
 }
 
-/* ---- Tool change dialog ---- */
-.toolChangeOverlay {
-  position: fixed;
-  inset: 0;
-  padding-left: var(--sidebar-total);
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.toolChangeDialog {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-  padding: 24px 32px;
-  min-width: 280px;
-  text-align: center;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-}
-.toolChangeTitle {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-.toolChangeBody {
-  font-size: var(--fs-lg);
-  margin-bottom: 16px;
-  line-height: 1.5;
-  opacity: 0.8;
-}
-.toolChangeActions {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-}
 </style>

@@ -140,7 +140,7 @@ function touchoffStep(letter: string) {
 }
 
 .zeroBtn {
-  padding: 6px 12px;
+  padding: 6px 10px;
   font-size: var(--fs-base);
   border-radius: var(--radius-lg);
   white-space: nowrap;
@@ -164,7 +164,7 @@ function touchoffStep(letter: string) {
 }
 
 .g5xBtn {
-  padding: 4px 10px;
+  padding: 5px 10px;
   font-size: var(--fs-sm);
   font-weight: 500;
   border-radius: var(--radius-lg);

@@ -296,6 +296,74 @@ input[type="checkbox"]:disabled {
   z-index: 1000;
 }
 
+/* ---- Dialogs ---- */
+.dialogOverlay {
+  position: fixed;
+  inset: 0;
+  padding-left: var(--sidebar-total, 0px);
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  padding: 24px 32px;
+  min-width: 280px;
+  text-align: center;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+.dialog.lg {
+  padding: 0;
+  min-width: auto;
+  text-align: left;
+  width: 70vw;
+  height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dialogTitle {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.dialogHeader .dialogTitle {
+  font-size: var(--fs-lg);
+  margin-bottom: 0;
+}
+
+.dialogTitle.danger { color: #e55; }
+
+.dialogBody {
+  font-size: var(--fs-lg);
+  margin-bottom: 8px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+.dialogActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
 /* G-code syntax highlighting tokens */
 .token-gcode, .tok-gcode { color: var(--info); font-weight: 600; }
 .token-mcode, .tok-mcode { color: #c586c0; font-weight: 600; }

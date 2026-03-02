@@ -419,48 +419,11 @@ defineExpose({ openAdd, fetchTools });
   flex-shrink: 0;
 }
 
-/* ---- Dialogs (unified style) ---- */
-.dialogOverlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.dialog {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-  padding: 24px 32px;
-  min-width: 280px;
-  text-align: center;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-}
-
+/* ---- Dialogs ---- */
 .editDialog {
   min-width: 300px;
   max-width: 360px;
   text-align: left;
-}
-
-.dialogTitle {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-
-.dialogTitle.danger {
-  color: #e55;
-}
-
-.dialogBody {
-  font-size: var(--fs-lg);
-  margin-bottom: 8px;
-  line-height: 1.5;
-  opacity: 0.8;
 }
 
 .dialogHint {
@@ -468,13 +431,6 @@ defineExpose({ openAdd, fetchTools });
   opacity: 0.5;
   font-family: var(--font-mono);
   margin-bottom: 8px;
-}
-
-.dialogActions {
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  margin-top: 16px;
 }
 
 .editFields {
@@ -499,7 +455,7 @@ defineExpose({ openAdd, fetchTools });
 
 .editInput {
   flex: 1;
-  padding: 6px 8px;
+  padding: 6px 10px;
   font-size: var(--fs-base);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);

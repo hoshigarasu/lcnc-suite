@@ -283,7 +283,7 @@ function updateOffset(axis: number, value: number) {
 }
 
 .pillPopover label:hover {
-  background: color-mix(in oklab, var(--fg) 10%, var(--button-bg));
+  background: color-mix(in oklab, var(--fg) 12%, var(--button-bg));
 }
 
 /* ---- Workpiece inputs ---- */

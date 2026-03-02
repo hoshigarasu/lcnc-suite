@@ -1254,10 +1254,10 @@ function fmtR(key: string): string {
   </div>
 
   <!-- Surface map popout dialog -->
-  <div v-if="mapDialogOpen" class="mapOverlay" @click.self="mapDialogOpen = false">
-    <div class="mapDialog">
-      <div class="mapHeader">
-        <span class="mapTitle">Surface Compensation Map</span>
+  <div v-if="mapDialogOpen" class="dialogOverlay" @click.self="mapDialogOpen = false">
+    <div class="dialog lg mapDialogSize">
+      <div class="dialogHeader">
+        <span class="dialogTitle">Surface Compensation Map</span>
         <button class="btn" @click="mapDialogOpen = false">Close</button>
       </div>
       <div ref="surfaceContainer" class="surface3d"></div>
@@ -1336,7 +1336,7 @@ function fmtR(key: string): string {
 }
 
 .g5xBtn {
-  padding: 4px 10px;
+  padding: 5px 10px;
   font-size: var(--fs-sm);
   font-weight: 500;
   border-radius: var(--radius-lg);
@@ -1498,7 +1498,7 @@ function fmtR(key: string): string {
 
 .calAxisBtn {
   flex: 1;
-  padding: 6px 8px;
+  padding: 6px 10px;
   font-size: var(--fs-sm);
   font-weight: 600;
   border-radius: var(--radius-lg);
@@ -1521,8 +1521,7 @@ function fmtR(key: string): string {
 }
 
 .gridCell:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--fg) 15%, var(--button-bg));
-  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
+  background: color-mix(in oklab, var(--fg) 12%, var(--button-bg));
 }
 
 .gridCell:disabled {
@@ -1770,38 +1769,7 @@ function fmtR(key: string): string {
   color: #fff;
   border-color: var(--accent);
 }
-.mapOverlay {
-  position: fixed;
-  inset: 0;
-  padding-left: 178px; /* sidebar (150px) + wrap padding (16px) + gap (12px) */
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.mapDialog {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-  width: 70vw;
-  height: 65vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-}
-.mapHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.mapTitle {
-  font-weight: 600;
-  font-size: var(--fs-lg);
-}
+.mapDialogSize { height: 65vh; }
 .surface3d {
   flex: 1;
   min-height: 0;

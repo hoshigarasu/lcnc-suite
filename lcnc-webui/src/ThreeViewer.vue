@@ -1467,7 +1467,7 @@ defineExpose({
     <!-- HUD Overlay -->
     <div v-show="hudVisible" class="hud" :style="{ opacity: viewerDefaults.opacities.hud ?? 1 }">
       <div class="hudSection">
-        <div class="hudLabel">Machine Position</div>
+        <div class="label">Machine Position</div>
         <div class="hudCoords">
           <div class="hudCol">
             <div v-for="a in hudPrimary" :key="'m'+a.letter" class="hudCoord">
@@ -1488,7 +1488,7 @@ defineExpose({
       </div>
 
       <div class="hudSection">
-        <div class="hudLabel">Work Position ({{ props.g5xLabel || '-' }})</div>
+        <div class="label">Work Position ({{ props.g5xLabel || '-' }})</div>
         <div class="hudCoords">
           <div class="hudCol">
             <div v-for="a in hudPrimary" :key="'w'+a.letter" class="hudCoord">
@@ -1509,7 +1509,7 @@ defineExpose({
       </div>
 
       <div class="hudSection">
-        <div class="hudLabel">Tool</div>
+        <div class="label">Tool</div>
         <div class="hudCoords">
           <div class="hudCoord"><span class="hudAxis">T</span> {{ vst?.tool_number ?? '-' }}</div>
           <div class="hudCoord"><span class="hudAxis">Ø</span> {{ formatCoord(vst?.tool_diameter) }}</div>
@@ -1518,22 +1518,22 @@ defineExpose({
       </div>
 
       <div class="hudSection">
-        <div class="hudLabel">Feed</div>
+        <div class="label">Feed</div>
         <div class="hudValue">{{ vst?.current_vel != null ? (vst.current_vel * 60).toFixed(1) : '---' }}/min</div>
       </div>
 
       <div class="hudSection">
-        <div class="hudLabel">Spindle</div>
+        <div class="label">Spindle</div>
         <div class="hudValue">{{ formatCoord(vst?.spindle_speed_actual) }} RPM</div>
       </div>
 
       <div v-if="vst?.eoffset_enabled" class="hudSection hudWarn">
-        <div class="hudLabel">Compensation</div>
+        <div class="label">Compensation</div>
         <div class="hudValue">Z {{ vst.eoffset_z != null ? vst.eoffset_z.toFixed(3) : '---' }}</div>
       </div>
 
       <div v-if="vst?.rotation_xy" class="hudSection hudWarn">
-        <div class="hudLabel">Rotation</div>
+        <div class="label">Rotation</div>
         <div class="hudValue">{{ vst.rotation_xy.toFixed(1) }}°</div>
       </div>
     </div>
@@ -1686,12 +1686,7 @@ defineExpose({
   line-height: 1.4;
 }
 
-.hudLabel {
-  color: var(--fg);
-  opacity: 0.6;
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.label {
   margin-bottom: 4px;
 }
 

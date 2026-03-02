@@ -53,7 +53,7 @@ function resetAll() {
   <div class="overrideHud hud-panel">
     <!-- Feed -->
     <div class="ovRow">
-      <span class="ovLabel">Feed</span>
+      <span class="label">Feed</span>
       <input
         type="range" class="ovSlider"
         v-model.number="feedSlider" @change="onFeedChange"
@@ -65,7 +65,7 @@ function resetAll() {
 
     <!-- Spindle -->
     <div class="ovRow">
-      <span class="ovLabel">Spindle</span>
+      <span class="label">Spindle</span>
       <input
         type="range" class="ovSlider"
         v-model.number="spindleSlider" @change="onSpindleChange"
@@ -77,7 +77,7 @@ function resetAll() {
 
     <!-- Rapid -->
     <div class="ovRow">
-      <span class="ovLabel">Rapid</span>
+      <span class="label">Rapid</span>
       <input
         type="range" class="ovSlider"
         v-model.number="rapidSlider" @change="onRapidChange"
@@ -106,12 +106,8 @@ function resetAll() {
   gap: 6px;
 }
 
-.ovLabel {
-  font-size: var(--fs-xs);
-  opacity: 0.6;
+.label {
   min-width: 42px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .ovSlider {

@@ -1085,7 +1085,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
       <div class="compactStatus">
         <div class="statusChip" :class="isEstop ? 'bad' : (isEnabled && isHomed ? 'ok' : '')" @click.stop="toggleChip('machine')">
           <span class="chipIcon">&#x2699;</span>
-          <span class="chipLabel">Machine</span>
+          <span class="label">Machine</span>
           <span class="chipValue">{{ isEstop ? 'E-STOP' : (!isEnabled ? 'OFF' : (!isHomed ? 'NOT HOMED' : 'READY')) }}</span>
           <div class="popover chipPopover" :class="{ open: openChip === 'machine' }">
             <div class="statusRow"><div class="k">E-Stop</div><div class="v" :class="isEstop ? 'badText' : 'okText'">{{ isEstop ? 'TRUE' : 'FALSE' }}</div></div>
@@ -1103,7 +1103,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
         <div class="statusChip" :class="isRunning ? 'ok' : (isPaused ? 'warn' : '')" @click.stop="toggleChip('program')">
           <span class="chipIcon">&#x25B6;</span>
-          <span class="chipLabel">Program</span>
+          <span class="label">Program</span>
           <span class="chipValue">{{ isRunning ? 'RUNNING' : (isPaused ? 'PAUSED' : 'IDLE') }}</span>
           <div class="popover chipPopover programPopover" :class="{ open: openChip === 'program' }">
             <div class="statusRow"><div class="k">Task Mode</div><div class="v">{{ taskModeLabel }}</div></div>
@@ -1115,7 +1115,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
         </div>
 
         <div class="statusChip" :class="{ warn: hasOffsetWarning }" @click.stop="openOffsetsPopover()">
-          <span class="chipLabel">Offsets</span>
+          <span class="label">Offsets</span>
           <span class="chipValue">{{ offsetChipValue }}</span>
           <div class="popover chipPopover offsetsPopover" :class="{ open: openChip === 'offsets' }" @click.stop>
             <table class="offsetTable">
@@ -1164,7 +1164,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
         <div class="statusChip overridesChip" :class="{ warn: overridesActive && !overridesDisabled, bad: overridesDisabled }" @click.stop="toggleChip('overrides')">
           <span class="chipIcon">%</span>
-          <span class="chipLabel">Overrides</span>
+          <span class="label">Overrides</span>
           <span class="chipValue">{{ overridesDisabled ? 'DISABLED' : (overridesActive ? 'ACTIVE' : 'DEFAULT') }}</span>
           <div class="popover chipPopover overridesPopover" :class="{ open: openChip === 'overrides' }" @click.stop>
             <div class="ovrRow">
@@ -1196,7 +1196,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
         </div>
 
         <div class="statusChip" :class="{ warn: unreadCount > 0 }" @click.stop="toggleChip('messages')">
-          <span class="chipLabel">Messages</span>
+          <span class="label">Messages</span>
           <span class="chipValue">{{ unreadCount > 0 ? unreadCount : 'NONE' }}</span>
           <div class="popover chipPopover messagesPopover" :class="{ open: openChip === 'messages' }" @click.stop>
             <div class="msgPopHeader">
@@ -1232,7 +1232,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           @click.stop="toggleChip('spindle')"
         >
           <span class="controlIcon">&#x2699;</span>
-          <span class="controlLabel">Spindle</span>
+          <span class="label">Spindle</span>
           <span class="controlStatus">{{ isSpinning ? ((isForward ? '+' : '-') + Math.round(Math.abs(spindleActual ?? 0)) + ' RPM') : spindleMismatch ? (Math.round(Math.abs(spindleActual ?? 0)) + ' RPM!') : 'OFF' }}</span>
         </button>
         <div class="popover spindlePopover" :class="{ open: openChip === 'spindle' }" @click.stop>
@@ -1246,7 +1246,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
               title="Spindle Reverse (CCW)"
             >
               <span class="spDirIcon">&#x21BA;</span>
-              <span class="spDirLabel">Rev</span>
+              <span class="label">Rev</span>
             </button>
             <button
               class="btn spDirBtn spStopBtn"
@@ -1256,7 +1256,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
               title="Spindle Stop"
             >
               <span class="spStopIcon">&#x25A0;</span>
-              <span class="spDirLabel">Stop</span>
+              <span class="label">Stop</span>
             </button>
             <button
               class="btn spDirBtn"
@@ -1266,7 +1266,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
               title="Spindle Forward (CW)"
             >
               <span class="spDirIcon">&#x21BB;</span>
-              <span class="spDirLabel">Fwd</span>
+              <span class="label">Fwd</span>
             </button>
           </div>
 
@@ -1333,7 +1333,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           @click.stop="toggleChip('coolant')"
         >
           <span class="controlIcon">&#x1F4A7;</span>
-          <span class="controlLabel">Coolant</span>
+          <span class="label">Coolant</span>
           <span class="controlStatus">{{ coolantActive ? (floodOn && mistOn ? 'BOTH' : (floodOn ? 'FLOOD' : 'MIST')) : 'OFF' }}</span>
         </button>
         <div class="popover coolantPopover" :class="{ open: openChip === 'coolant' }" @click.stop>
@@ -1365,7 +1365,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           @click.stop="toolDialogOpen = true"
         >
           <span class="controlIcon">&#x1F527;</span>
-          <span class="controlLabel">Tool</span>
+          <span class="label">Tool</span>
           <span class="controlStatus">{{ st.tool_number != null ? `T${st.tool_number}` : '---' }}{{ st.tool_diameter != null ? ` D${st.tool_diameter.toFixed(3)}` : '' }}{{ st.tool_offset?.[2] ? ` Z${st.tool_offset[2].toFixed(3)}` : '' }}</span>
         </button>
         </div>
@@ -1814,14 +1814,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   color: var(--fg);
 }
 
-.groupTitle {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  opacity: 0.7;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
-}
 
 .statusGroups {
   display: flex;
@@ -1930,7 +1922,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .chipIcon { display: none; font-size: var(--fs-xl); }
-.chipLabel { font-size: var(--fs-xs); opacity: 0.6; text-transform: uppercase; letter-spacing: 0.5px; }
 .chipValue { font-size: var(--fs-md); font-weight: 600; }
 
 .chipPopover {
@@ -2066,7 +2057,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .controlIcon { font-size: var(--fs-2xl); }
-.controlLabel { font-size: var(--fs-xs); opacity: 0.6; text-transform: uppercase; letter-spacing: 0.5px; }
 .controlStatus { font-size: var(--fs-base); font-weight: 600; }
 
 .spindlePopover {
@@ -2110,7 +2100,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 .spDirIcon { font-size: 22px; line-height: 1; }
 .spStopIcon { font-size: var(--fs-xl); line-height: 1.4; }
-.spDirLabel { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 
 .spRpmRow {
   display: flex;

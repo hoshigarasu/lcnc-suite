@@ -149,11 +149,7 @@ function formatRpm(val: number | null): string {
 }
 
 .label {
-  font-size: var(--fs-xs);
-  opacity: 0.6;
   min-width: 42px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .rpmInput {

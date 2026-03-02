@@ -1233,21 +1233,21 @@ function fmtR(key: string): string {
     <div class="section">
       <div class="sub">Probe Results</div>
       <div class="probeResultsGrid">
-        <div class="prCell"><span class="prLabel">X-</span><span class="prVal">{{ fmtR("x_minus") }}</span></div>
-        <div class="prCell"><span class="prLabel">X+</span><span class="prVal">{{ fmtR("x_plus") }}</span></div>
-        <div class="prCell"><span class="prLabel">X Width</span><span class="prVal">{{ fmtR("x_width") }}</span></div>
+        <div class="prCell"><span class="label">X-</span><span class="prVal">{{ fmtR("x_minus") }}</span></div>
+        <div class="prCell"><span class="label">X+</span><span class="prVal">{{ fmtR("x_plus") }}</span></div>
+        <div class="prCell"><span class="label">X Width</span><span class="prVal">{{ fmtR("x_width") }}</span></div>
 
-        <div class="prCell"><span class="prLabel">Y-</span><span class="prVal">{{ fmtR("y_minus") }}</span></div>
-        <div class="prCell"><span class="prLabel">Y+</span><span class="prVal">{{ fmtR("y_plus") }}</span></div>
-        <div class="prCell"><span class="prLabel">Y Width</span><span class="prVal">{{ fmtR("y_width") }}</span></div>
+        <div class="prCell"><span class="label">Y-</span><span class="prVal">{{ fmtR("y_minus") }}</span></div>
+        <div class="prCell"><span class="label">Y+</span><span class="prVal">{{ fmtR("y_plus") }}</span></div>
+        <div class="prCell"><span class="label">Y Width</span><span class="prVal">{{ fmtR("y_width") }}</span></div>
 
-        <div class="prCell"><span class="prLabel">Z-</span><span class="prVal">{{ fmtR("z_minus") }}</span></div>
-        <div class="prCell"><span class="prLabel">Diam</span><span class="prVal">{{ fmtR("diameter") }}</span></div>
-        <div class="prCell"><span class="prLabel">X Center</span><span class="prVal">{{ fmtR("x_center") }}</span></div>
+        <div class="prCell"><span class="label">Z-</span><span class="prVal">{{ fmtR("z_minus") }}</span></div>
+        <div class="prCell"><span class="label">Diam</span><span class="prVal">{{ fmtR("diameter") }}</span></div>
+        <div class="prCell"><span class="label">X Center</span><span class="prVal">{{ fmtR("x_center") }}</span></div>
 
-        <div class="prCell"><span class="prLabel">Edge Delta</span><span class="prVal">{{ fmtR("edge_delta") }}</span></div>
-        <div class="prCell"><span class="prLabel">Edge Angle</span><span class="prVal">{{ fmtR("edge_angle") }}</span></div>
-        <div class="prCell"><span class="prLabel">Y Center</span><span class="prVal">{{ fmtR("y_center") }}</span></div>
+        <div class="prCell"><span class="label">Edge Delta</span><span class="prVal">{{ fmtR("edge_delta") }}</span></div>
+        <div class="prCell"><span class="label">Edge Angle</span><span class="prVal">{{ fmtR("edge_angle") }}</span></div>
+        <div class="prCell"><span class="label">Y Center</span><span class="prVal">{{ fmtR("y_center") }}</span></div>
       </div>
     </div>
 
@@ -1293,14 +1293,6 @@ function fmtR(key: string): string {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.sub {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .sep {
@@ -1684,13 +1676,6 @@ function fmtR(key: string): string {
   border: 1px solid var(--border);
 }
 
-.prLabel {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  opacity: 0.5;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
 
 .prVal {
   font-size: var(--fs-md);

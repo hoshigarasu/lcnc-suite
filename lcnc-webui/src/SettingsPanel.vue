@@ -336,7 +336,7 @@ const halStats = computed(() => ({
       <template #viewer>
         <div class="scrollContent scroll-thin">
         <div class="section">
-          <div class="sectionTitle">Workpiece Defaults</div>
+          <div class="sub">Workpiece Defaults</div>
           <div class="wpColumns">
             <div class="fieldGroup">
               <div class="inputRow" v-for="(label, i) in ['Size X', 'Size Y', 'Size Z']" :key="'s'+i">
@@ -366,7 +366,7 @@ const halStats = computed(() => ({
         </div>
 
         <div class="section">
-          <div class="sectionTitle">Layer Defaults</div>
+          <div class="sub">Layer Defaults</div>
           <div class="layerGrid">
             <label v-for="layer in (['backplot', 'toolpath', 'machine', 'workpiece', 'bounds', 'workzero', 'hud'] as Layer[])" :key="layer">
               <input type="checkbox" v-model="layers[layer]" @change="onLayerChange" />
@@ -376,7 +376,7 @@ const halStats = computed(() => ({
         </div>
 
         <div class="section">
-          <div class="sectionTitle">Color Defaults</div>
+          <div class="sub">Color Defaults</div>
           <div class="colorGrid">
             <div class="colorRow" v-for="cf in colorFields" :key="cf.key">
               <input
@@ -391,7 +391,7 @@ const halStats = computed(() => ({
         </div>
 
         <div class="section">
-          <div class="sectionTitle">Opacity Defaults</div>
+          <div class="sub">Opacity Defaults</div>
           <div class="opacityList">
             <div class="opacityRow" v-for="of_ in opacityFields" :key="of_.key">
               <span class="opacityLabel">{{ of_.label }}</span>
@@ -407,7 +407,7 @@ const halStats = computed(() => ({
           </div>
         </div>
         <div class="section">
-          <div class="sectionTitle">Viewer Behavior</div>
+          <div class="sub">Viewer Behavior</div>
           <div class="fieldGroup">
             <div class="inputRow">
               <label class="inputLabel">Tracking</label>
@@ -446,7 +446,7 @@ const halStats = computed(() => ({
       <template #machine>
         <div class="scrollContent scroll-thin">
           <div class="section">
-            <div class="sectionTitle">Tool Load Behavior</div>
+            <div class="sub">Tool Load Behavior</div>
             <div class="settingDesc">Controls what happens when you load a tool from the Tool Table.</div>
             <div class="btnGroup modeGroup">
               <button
@@ -468,7 +468,7 @@ const halStats = computed(() => ({
             </div>
           </div>
           <div class="section">
-            <div class="sectionTitle">Run from Line</div>
+            <div class="sub">Run from Line</div>
             <div class="settingDesc">Allow starting program execution from a selected line in the code viewer.</div>
             <div class="btnGroup modeGroup">
               <button
@@ -512,7 +512,7 @@ const halStats = computed(() => ({
       <template #toolsetter>
         <div class="scrollContent scroll-thin">
           <div class="section">
-            <div class="sectionTitle">Toolsetter Position (G53)</div>
+            <div class="sub">Toolsetter Position (G53)</div>
             <div class="tsGrid">
               <label>Touch X <span class="varNum">#3100</span></label>
               <input type="number" v-model.number="tsParams.touchX" step="0.001" @change="saveTsParams" />
@@ -524,7 +524,7 @@ const halStats = computed(() => ({
           </div>
 
           <div class="section">
-            <div class="sectionTitle">Tool Change Position (G30) <span class="varNum">#5181–#5183</span></div>
+            <div class="sub">Tool Change Position (G30) <span class="varNum">#5181–#5183</span></div>
             <div class="tsGrid">
               <label>X</label>
               <span class="readonlyVal">{{ g30X != null ? g30X.toFixed(3) : '—' }}</span>
@@ -540,7 +540,7 @@ const halStats = computed(() => ({
           </div>
 
           <div class="section">
-            <div class="sectionTitle">Probe Settings</div>
+            <div class="sub">Probe Settings</div>
             <div class="tsGrid">
               <label>Fast Feed <span class="varNum">#3004</span></label>
               <input type="number" v-model.number="tsParams.fastFeed" min="1" step="10" @change="saveTsParams" />
@@ -558,7 +558,7 @@ const halStats = computed(() => ({
           </div>
 
           <div class="section">
-            <div class="sectionTitle">Options</div>
+            <div class="sub">Options</div>
             <div class="tsCheckGrid">
               <label class="checkRow">
                 <input type="checkbox" :checked="tsParams.useToolTable === 1" @change="tsParams.useToolTable = ($event.target as HTMLInputElement).checked ? 1 : 0; saveTsParams()" />
@@ -602,7 +602,7 @@ const halStats = computed(() => ({
           </div>
 
           <div class="section">
-            <div class="sectionTitle">Diameter Offset</div>
+            <div class="sub">Diameter Offset</div>
             <div class="tsGrid">
               <label>Min Diameter <span class="varNum">#3111</span></label>
               <input type="number" v-model.number="tsParams.offsetDiameter" min="0" step="1" @change="saveTsParams" />
@@ -612,7 +612,7 @@ const halStats = computed(() => ({
           </div>
 
           <div class="section">
-            <div class="sectionTitle">Edge-Finder</div>
+            <div class="sub">Edge-Finder</div>
             <div class="tsGrid">
               <label>Probe Tool # <span class="varNum">#3014</span></label>
               <span class="readonlyVal">T{{ probeTool }} <span class="varNum">(set in Probe tab)</span></span>
@@ -762,11 +762,11 @@ const halStats = computed(() => ({
       <template #debug>
         <div class="scrollContent scroll-thin">
           <div class="section">
-            <div class="sectionTitle">Last reply</div>
+            <div class="sub">Last reply</div>
             <pre class="debugPre">{{ props.lastReply }}</pre>
           </div>
           <div class="section">
-            <div class="sectionTitle">Raw status</div>
+            <div class="sub">Raw status</div>
             <pre class="debugPre">{{ props.status }}</pre>
           </div>
         </div>
@@ -800,12 +800,7 @@ const halStats = computed(() => ({
   margin-bottom: 24px;
 }
 
-.sectionTitle {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.sub {
   margin-bottom: 12px;
 }
 
@@ -1168,8 +1163,8 @@ const halStats = computed(() => ({
 }
 
 .halName {
-  flex: 1;
-  min-width: 0;
+  flex: 2;
+  min-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1205,9 +1200,9 @@ const halStats = computed(() => ({
 }
 
 .halSignal {
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 60px;
   opacity: 0.6;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -310,7 +310,7 @@ async function saveEdit() {
   <div class="container" @dragover.prevent="onDragOver" @dragleave="onDragLeave" @drop.prevent="onDrop">
     <div class="header">
       <div class="fileInfo">
-        <div class="label">File:</div>
+        <div class="sub">File:</div>
         <div class="fileName">{{ fileName }}</div>
       </div>
       <div class="headerActions">
@@ -602,14 +602,6 @@ async function saveEdit() {
   align-items: center;
   gap: 8px;
   min-width: 0;
-}
-
-.label {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .fileName {

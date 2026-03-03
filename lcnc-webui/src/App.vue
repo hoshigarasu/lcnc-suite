@@ -1720,7 +1720,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   border: 1px dashed var(--border);
   background: transparent;
   color: var(--fg);
-  font-size: 22px;
+  font-size: var(--fs-2xl);
   opacity: 0.4;
   transition: opacity 0.15s, background 0.15s;
 }
@@ -1748,7 +1748,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .statusBanner.refresh {
-  background: color-mix(in oklab, #ffdd00 20%, var(--panel));
+  background: color-mix(in oklab, var(--active-tool) 20%, var(--panel));
 }
 
 .bodyLayout {
@@ -2098,7 +2098,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   border-color: color-mix(in srgb, var(--danger) 50%, transparent);
 }
 
-.spDirIcon { font-size: 22px; line-height: 1; }
+.spDirIcon { font-size: var(--fs-2xl); line-height: 1; }
 .spStopIcon { font-size: var(--fs-xl); line-height: 1.4; }
 
 .spRpmRow {
@@ -2394,7 +2394,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .safetyIcon {
-  font-size: 24px;
+  font-size: var(--fs-3xl);
   line-height: 1;
 }
 

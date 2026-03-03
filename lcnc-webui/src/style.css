@@ -21,6 +21,7 @@
   --accent: #6c63ff;
   --highlight: #ffa500;
   --display: #22b8cf;
+  --active-tool: #ffdd00;
 
   /* Panel sizing */
   --panel-min-w: 460px;
@@ -42,6 +43,7 @@
   --fs-lg: 14px;
   --fs-xl: 16px;
   --fs-2xl: 20px;
+  --fs-3xl: 24px;
 
   /* Opacity */
   --opacity-disabled: 0.4;

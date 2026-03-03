@@ -130,7 +130,7 @@ function touchoffStep(letter: string) {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-size: 24px;
+  font-size: var(--fs-3xl);
 }
 
 .axis span {

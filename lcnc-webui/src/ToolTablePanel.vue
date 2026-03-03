@@ -508,10 +508,10 @@ defineExpose({ openAdd, fetchTools });
 }
 
 .activeTool {
-  background: color-mix(in oklab, #ffdd00 12%, transparent);
+  background: color-mix(in oklab, var(--active-tool) 12%, transparent);
 }
 .activeTool:hover {
-  background: color-mix(in oklab, #ffdd00 18%, transparent);
+  background: color-mix(in oklab, var(--active-tool) 18%, transparent);
 }
 
 .tcell {

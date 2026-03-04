@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, inject, onMounted, type Ref } from "vue";
 import TabPanel from "./TabPanel.vue";
 import {
   loadViewerDefaults, saveViewerDefaults,
   loadMachineDefaults, saveMachineDefaults,
   type Vec3, type Layer, type ColorDefaults, type OpacityDefaults,
   type TrackMode, type Projection, type ToolChangeMode, type SpindleDir,
+  type ThemeMode,
 } from "./defaults";
 import { fetchHal, fetchG30, type HalPin, type HalSignal, type HalParam } from "./lcncApi";
 
 const TS_STORAGE_KEY = "lcnc-toolsetter-params";
+
+const themeMode = inject<Ref<ThemeMode>>("themeMode", ref("auto") as Ref<ThemeMode>);
+const setTheme = inject<(mode: ThemeMode) => void>("setTheme", () => {});
 
 const props = defineProps<{
   lastReply?: unknown;
@@ -174,6 +178,7 @@ const subTabs = [
   { id: "viewer", label: "3D Viewer" },
   { id: "machine", label: "Machine" },
   { id: "toolsetter", label: "Toolsetter" },
+  { id: "display", label: "Display" },
   { id: "hal", label: "HAL" },
   { id: "debug", label: "Debug" },
 ];
@@ -622,6 +627,23 @@ const halStats = computed(() => ({
               <input type="number" v-model.number="tsParams.finderTouchY" step="0.001" @change="saveTsParams" />
               <label>Finder Z Diff <span class="varNum">#3115</span></label>
               <input type="number" v-model.number="tsParams.finderDiffZ" step="0.001" @change="saveTsParams" />
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template #display>
+        <div class="scrollContent scroll-thin">
+          <div class="section">
+            <div class="sub">Theme</div>
+            <div class="btnGroup">
+              <button class="optBtn" :class="{ active: themeMode === 'auto' }" @click="setTheme('auto')">Auto</button>
+              <button class="optBtn" :class="{ active: themeMode === 'light' }" @click="setTheme('light')">Light</button>
+              <button class="optBtn" :class="{ active: themeMode === 'dark' }" @click="setTheme('dark')">Dark</button>
+            </div>
+            <div class="btnGroup" style="margin-top: 8px;">
+              <button class="optBtn" :class="{ active: themeMode === 'hc-light' }" @click="setTheme('hc-light')">HC Light</button>
+              <button class="optBtn" :class="{ active: themeMode === 'hc-dark' }" @click="setTheme('hc-dark')">HC Dark</button>
             </div>
           </div>
         </div>

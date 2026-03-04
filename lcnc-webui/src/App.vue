@@ -10,7 +10,7 @@ import GcodePanel from "./GcodePanel.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import ToolTablePanel from "./ToolTablePanel.vue";
 import ProbePanel from "./ProbePanel.vue";
-import { loadViewerDefaults, loadPanelsDefaults, savePanelsDefaults, MAX_PANELS, loadMachineDefaults } from "./defaults";
+import { loadViewerDefaults, loadPanelsDefaults, savePanelsDefaults, MAX_PANELS, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, type ThemeMode } from "./defaults";
 import {
   INTERP_IDLE, INTERP_READING, INTERP_PAUSED, INTERP_WAITING,
   TRAJ_MODE_FREE, TRAJ_MODE_TELEOP,
@@ -21,7 +21,51 @@ import {
 const _vd = loadViewerDefaults();
 const needsRefresh = ref(false);
 
-onMounted(() => connectWs());
+// ─── Theme ──────────────────────────────────────────────────────
+const themeMode = ref<ThemeMode>(loadDisplayDefaults().theme);
+const themeMql = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applyTheme(mode: ThemeMode) {
+  if (mode === "auto") {
+    document.documentElement.removeAttribute("data-theme");
+  } else {
+    document.documentElement.setAttribute("data-theme", mode);
+  }
+}
+
+const isDark = computed(() => {
+  const m = themeMode.value;
+  if (m === "dark" || m === "hc-dark") return true;
+  if (m === "light" || m === "hc-light") return false;
+  return themeMql.matches;
+});
+
+function setTheme(mode: ThemeMode) {
+  themeMode.value = mode;
+  applyTheme(mode);
+  saveDisplayDefaults({ theme: mode });
+}
+
+// Re-evaluate isDark when OS preference changes in auto mode
+function onOsThemeChange() {
+  // Trigger Vue reactivity by toggling a dummy ref isn't needed —
+  // isDark reads themeMql.matches which is live. But we need to
+  // notify watchers, so reassign themeMode to itself.
+  if (themeMode.value === "auto") {
+    themeMode.value = "auto"; // triggers computed re-eval
+  }
+}
+
+provide("isDark", isDark);
+provide("setTheme", setTheme);
+provide("themeMode", themeMode);
+
+applyTheme(themeMode.value);
+
+onMounted(() => {
+  connectWs();
+  themeMql.addEventListener("change", onOsThemeChange);
+});
 
 watch(lcncError, (newVal, oldVal) => {
   if (oldVal && !newVal) needsRefresh.value = true;
@@ -936,6 +980,7 @@ onUnmounted(() => {
   window.removeEventListener("keyup", onKeyUp);
   document.removeEventListener("click", onDocClick);
   document.removeEventListener("visibilitychange", visHandler);
+  themeMql.removeEventListener("change", onOsThemeChange);
 });
 
 /** ---------- Probe results from DEBUG EVAL messages ---------- */

@@ -79,7 +79,7 @@ export function getCachedGeometry(id: string): THREE.BufferGeometry | undefined 
 </script>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, inject, onMounted, onUnmounted, ref, watch, type ComputedRef } from "vue";
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
@@ -88,6 +88,8 @@ import { loadViewerDefaults, ALL_LAYERS, type Vec3, type Layer } from "./default
 import JogHUD from "./JogHUD.vue";
 import GcodeHUD from "./GcodeHUD.vue";
 import SetupHUD from "./SetupHUD.vue";
+
+const isDark = inject<ComputedRef<boolean>>("isDark", computed(() => window.matchMedia("(prefers-color-scheme: dark)").matches));
 
 const viewerDefaults = loadViewerDefaults();
 
@@ -1173,10 +1175,9 @@ function animate() {
   renderer?.render(scene!, camera!);
 }
 
-const themeMql = window.matchMedia('(prefers-color-scheme: dark)');
-function onThemeChange() {
+watch(isDark, () => {
   if (scene) scene.background = sceneBgFromTheme();
-}
+});
 
 onMounted(() => {
   scene = new THREE.Scene();
@@ -1211,8 +1212,6 @@ onMounted(() => {
   controls.enablePan = true;
   controls.screenSpacePanning = true;
 
-  themeMql.addEventListener('change', onThemeChange);
-
   resizeObs = new ResizeObserver(() => resize());
   resizeObs.observe(host.value!);
 
@@ -1230,7 +1229,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  themeMql.removeEventListener('change', onThemeChange);
   resizeObs?.disconnect();
   resizeObs = null;
   cancelAnimationFrame(raf);

@@ -236,3 +236,30 @@ export function loadMdiHistory(): string[] {
 export function saveMdiHistory(history: string[]): void {
   saveSection("mdi", { history });
 }
+
+// ─── Display section ────────────────────────────────────────────
+
+export type ThemeMode = "auto" | "light" | "dark" | "hc-light" | "hc-dark";
+const VALID_THEMES = new Set<string>(["auto", "light", "dark", "hc-light", "hc-dark"]);
+
+export interface DisplayDefaults {
+  theme: ThemeMode;
+}
+
+const DISPLAY_FALLBACK: DisplayDefaults = { theme: "auto" };
+
+registerSection<DisplayDefaults>("display", DISPLAY_FALLBACK, (saved, fb) => {
+  if (!saved) return { ...fb };
+  const t = saved.theme;
+  return {
+    theme: (VALID_THEMES.has(t) ? t : fb.theme) as ThemeMode,
+  };
+});
+
+export function loadDisplayDefaults(): DisplayDefaults {
+  return loadSection<DisplayDefaults>("display");
+}
+
+export function saveDisplayDefaults(data: DisplayDefaults): void {
+  saveSection("display", data);
+}

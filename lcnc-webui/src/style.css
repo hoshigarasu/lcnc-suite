@@ -64,15 +64,67 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* DARK when OS/browser prefers dark */
+/* DARK when OS/browser prefers dark (auto mode — no data-theme set) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #0b0f14;
     --fg: #e6edf3;
     --panel: #121821;
     --border: rgba(255,255,255,0.12);
     --button-bg: #1a1a1a;
   }
+}
+
+/* Manual overrides (set via Settings > Display) */
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --fg: #213547;
+  --panel: #f5f5f5;
+  --border: rgba(0,0,0,0.12);
+  --button-bg: #f9f9f9;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0f14;
+  --fg: #e6edf3;
+  --panel: #121821;
+  --border: rgba(255,255,255,0.12);
+  --button-bg: #1a1a1a;
+}
+
+/* High-contrast overrides — boost surfaces AND semantic colors */
+:root[data-theme="hc-light"] {
+  --bg: #ffffff;
+  --fg: #000000;
+  --panel: #f0f0f0;
+  --border: rgba(0,0,0,0.45);
+  --button-bg: #ffffff;
+  --ok: #0a7a0a;
+  --err: #a00018;
+  --danger: #bb0000;
+  --warn: #c47800;
+  --info: #0055cc;
+  --accent: #4a3fd6;
+  --highlight: #d07000;
+  --display: #0a7a9a;
+  --active-tool: #c8a800;
+}
+
+:root[data-theme="hc-dark"] {
+  --bg: #000000;
+  --fg: #ffffff;
+  --panel: #0a0a0a;
+  --border: rgba(255,255,255,0.45);
+  --button-bg: #111111;
+  --ok: #33dd33;
+  --err: #ff4444;
+  --danger: #ff3333;
+  --warn: #ffcc00;
+  --info: #66aaff;
+  --accent: #9b93ff;
+  --highlight: #ffbb33;
+  --display: #44ddff;
+  --active-tool: #ffee44;
 }
 
 html, body {

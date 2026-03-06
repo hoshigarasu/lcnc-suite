@@ -80,12 +80,11 @@ function fetchTools() {
 
 // Handle replies from gateway
 watch(lastReply, (reply) => {
-  if (!reply) return;
-  if (reply.tools !== undefined && reply.ok) {
+  if (!reply || !loading.value) return;
+  if (Array.isArray(reply.tools) && reply.ok) {
     tools.value = reply.tools;
     loading.value = false;
-  }
-  if (reply.ok === false && reply.error && loading.value) {
+  } else if (reply.ok === false && reply.error) {
     error.value = reply.error;
     loading.value = false;
   }
@@ -519,7 +518,15 @@ defineExpose({ openAdd, fetchTools });
   font-size: var(--fs-base);
   flex-shrink: 0;
   min-width: 0;
+  box-sizing: border-box;
   border-right: 1px solid color-mix(in oklab, var(--border) 30%, transparent);
+}
+
+/* Compact buttons inside table cells */
+.tcell .btn {
+  padding: 2px 6px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .tcell:last-child {
@@ -546,6 +553,7 @@ defineExpose({ openAdd, fetchTools });
   cursor: pointer;
   user-select: none;
   padding: 4px 6px;
+  box-sizing: border-box;
 }
 .sortHeader:hover {
   opacity: 1;

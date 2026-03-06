@@ -202,19 +202,32 @@ const canMachineOn = computed(
 );
 const canMachineOff = computed(() => armed.value && isEnabled.value);
 
-/** Centralized permissions — single source of truth for all button enable/disable */
-const permissions = computed(() => evaluatePermissions({
-  armed: armed.value,
-  isEstop: isEstop.value,
-  isEnabled: isEnabled.value,
-  isHomed: isHomed.value,
-  isIdle: isIdle.value,
-  isRunning: isRunning.value,
-  isPaused: isPaused.value,
-  busy: busy.value,
-  hasFile: !!activeFile.value,
-  eoffsetEnabled: !!st.value.eoffset_enabled,
-}));
+/** Centralized permissions — single source of truth for all button enable/disable.
+ *  Memoized: returns the same object reference when values haven't changed,
+ *  so child components using usePermissions() don't re-render on every status update. */
+let _prevPerms: ReturnType<typeof evaluatePermissions> | null = null;
+const permissions = computed(() => {
+  const next = evaluatePermissions({
+    armed: armed.value,
+    isEstop: isEstop.value,
+    isEnabled: isEnabled.value,
+    isHomed: isHomed.value,
+    isIdle: isIdle.value,
+    isRunning: isRunning.value,
+    isPaused: isPaused.value,
+    busy: busy.value,
+    hasFile: !!activeFile.value,
+    eoffsetEnabled: !!st.value.eoffset_enabled,
+  });
+  if (_prevPerms &&
+      _prevPerms.idle === next.idle && _prevPerms.jog === next.jog &&
+      _prevPerms.override === next.override && _prevPerms.ready === next.ready &&
+      _prevPerms.pause === next.pause && _prevPerms.resume === next.resume &&
+      _prevPerms.abort === next.abort && _prevPerms.probe === next.probe &&
+      _prevPerms.zero === next.zero) return _prevPerms;
+  _prevPerms = next;
+  return next;
+});
 provide(PERMISSIONS_KEY, permissions);
 
 const isHomed = computed(() => {

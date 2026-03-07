@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
-import type { Sprite } from "three";
 import { usePermissions } from "./permissions";
 
 const STORAGE_KEY = "lcnc-probe-params";
@@ -224,7 +223,6 @@ function loadParams() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const saved = JSON.parse(raw);
-      console.log("[probe] loadParams from localStorage", saved);
       if (saved.autoZero != null) autoZero.value = saved.autoZero;
       delete saved.autoZero;
       Object.assign(params.value, saved);
@@ -234,10 +232,8 @@ function loadParams() {
 
 function saveParams() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...params.value, autoZero: autoZero.value }));
-  console.log("[probe] saveParams → localStorage", { ...params.value });
   // Sync to var file (and best-effort MDI) on every change
   const varMap = buildVarMap(autoZero.value ? 0 : 1);
-  console.log("[probe] saveParams → setProbeVars", varMap);
   emit("setProbeVars", varMap);
 }
 
@@ -276,7 +272,6 @@ function runGridProbe(op: GridOp) {
   activeGridOp.value = op.id;
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...params.value, autoZero: autoZero.value }));
   const vars = buildVarMap(autoZero.value ? 0 : 1);
-  console.log("[probe] runGridProbe → setProbeVars", op.macro, vars);
   emit("setProbeVars", vars);
   emit("mdi", `O<${op.macro}> CALL`);
 }
@@ -287,7 +282,6 @@ function runBossProbe(op: GridOp) {
   activeGridOp.value = op.id;
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...params.value, autoZero: autoZero.value }));
   const vars = buildVarMap(autoZero.value ? 0 : 1);
-  console.log("[probe] runBossProbe → setProbeVars", op.macro, vars);
   emit("setProbeVars", vars);
   emit("mdi", `O<${op.macro}> CALL`);
 }
@@ -297,7 +291,6 @@ function runRidgeProbe(op: GridOp) {
   activeGridOp.value = op.id;
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...params.value, autoZero: autoZero.value }));
   const vars = buildVarMap(autoZero.value ? 0 : 1);
-  console.log("[probe] runRidgeProbe → setProbeVars", op.macro, vars);
   emit("setProbeVars", vars);
   emit("mdi", `O<${op.macro}> CALL`);
 }
@@ -307,7 +300,6 @@ function runAngleProbe(op: GridOp) {
   activeGridOp.value = op.id;
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...params.value, autoZero: autoZero.value }));
   const vars = buildVarMap(autoZero.value ? 0 : 1);
-  console.log("[probe] runAngleProbe → setProbeVars", op.macro, vars);
   emit("setProbeVars", vars);
   emit("mdi", `O<${op.macro}> CALL`);
 }
@@ -317,7 +309,6 @@ function runCalProbe(macro: string) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...params.value, autoZero: autoZero.value }));
   const vars = buildVarMap(autoZero.value ? 0 : 1);
   vars["3036"] = calAxis.value;
-  console.log("[probe] runCalProbe → setProbeVars", macro, vars);
   emit("setProbeVars", vars);
   emit("mdi", `O<${macro}> CALL`);
 }

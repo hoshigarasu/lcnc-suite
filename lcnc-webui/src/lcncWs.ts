@@ -158,12 +158,9 @@ export function connectWs() {
         persistMessages(messages.value);
       }
     } else if (msg.type === "viewer_init") {
-      console.log("viewer_init", msg.data);
       viewerInit.value = msg.data;
     } else if (msg.type === "viewer_gcode") {
       viewerGcode.value = msg.data;
-    } else {
-      console.debug("WS msg", msg);
     }
   };
 

@@ -4,6 +4,11 @@ import { send, lastReply, connected } from "./lcncWs";
 import { usePermissions } from "./permissions";
 import { loadMachineDefaults, type ToolChangeMode } from "./defaults";
 
+const FETCH_DELAY_MS = 500;
+const REFETCH_AFTER_SAVE_MS = 400;
+const REFETCH_AFTER_DELETE_MS = 300;
+const TOOL_RENUMBER_DELAY_MS = 200;
+
 const props = defineProps<{
   currentTool: number | null;
   iniFilename: string | null;
@@ -114,7 +119,7 @@ watch(lastReply, (reply) => {
 // Fetch on mount and when connection re-establishes
 onMounted(fetchTools);
 watch(connected, (val) => {
-  if (val) setTimeout(fetchTools, 500);
+  if (val) setTimeout(fetchTools, FETCH_DELAY_MS);
 });
 
 // Re-fetch when LinuxCNC config changes (INI switch or reconnect)
@@ -221,13 +226,13 @@ function saveEdit() {
     send({ cmd: "delete_tool", tool_number: orig.T });
     setTimeout(() => {
       send({ cmd: "add_tool", ...buildToolMsg(form) } as any);
-    }, 200);
+    }, TOOL_RENUMBER_DELAY_MS);
   } else {
     send({ cmd: "save_tool", ...buildToolMsg(form) } as any);
   }
 
   editTool.value = null;
-  setTimeout(fetchTools, 400);
+  setTimeout(fetchTools, REFETCH_AFTER_SAVE_MS);
 }
 
 function cancelEditModal() {
@@ -255,7 +260,7 @@ function confirmDelete() {
   if (deletingTool.value == null) return;
   send({ cmd: "delete_tool", tool_number: deletingTool.value });
   deletingTool.value = null;
-  setTimeout(fetchTools, 300);
+  setTimeout(fetchTools, REFETCH_AFTER_DELETE_MS);
 }
 
 function cancelDelete() {
@@ -323,7 +328,7 @@ async function confirmImport() {
     importResult.value = { added: data.added };
     importPreview.value = null;
     importFile.value = null;
-    setTimeout(fetchTools, 300);
+    setTimeout(fetchTools, REFETCH_AFTER_DELETE_MS);
   } catch (err: any) {
     error.value = err.message || "Import failed";
   } finally {

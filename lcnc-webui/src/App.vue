@@ -1057,7 +1057,6 @@ watch(lastReply, (r: any) => {
 
 /** ---------- G-code content watcher ---------- */
 watch(viewerGcode, (newGcode) => {
-  console.log("viewerGcode updated:", newGcode);
   if (newGcode?.content) {
     gcodeContent.value = newGcode.content;
   } else {

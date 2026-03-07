@@ -3,9 +3,36 @@ import { ref as _ref } from "vue";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
+interface HolderSegment {
+  height: number;
+  lower_diameter: number;
+  upper_diameter: number;
+}
+
+interface ProfileSegment {
+  end: [number, number];
+  arc?: boolean;
+  ccw?: boolean;
+  center?: [number, number];
+}
+
+interface ToolMeta {
+  type?: string;
+  oal?: number;
+  flute_length?: number;
+  body_length?: number;
+  shaft_diameter?: number;
+  taper_angle?: number;
+  point_angle?: number;
+  tip_diameter?: number;
+  corner_radius?: number;
+  holder_segments?: HolderSegment[];
+  profile?: ProfileSegment[];
+}
+
 // ---- Central caches (shared across ALL ThreeViewer instances) ----
 const _geometryCache = new Map<string, THREE.BufferGeometry>();
-const _toolMetaCache = new Map<number, any>();  // tool_number → ToolMeta, populated on first sight
+const _toolMetaCache = new Map<number, ToolMeta>();  // tool_number → ToolMeta, populated on first sight
 let _loadPromise: Promise<void> | null = null;
 let _loadedInitJson: string | null = null;
 export const machineReady = _ref(false);
@@ -53,7 +80,6 @@ export function loadMachineAssets(init: any, onProgress?: (msg: string) => void)
         const url = base.endsWith("/") ? `${base}${p.file}` : `${base}/${p.file}`;
         const t0 = performance.now();
         onProgress?.(`Fetching ${p.id}…`);
-        console.log(`[loader] fetching ${p.id}: ${url}`);
         const geom = await fetchAndParseStl(url, abort.signal);
         geom.computeVertexNormals();
         geom.userData._shared = true;
@@ -62,7 +88,6 @@ export function loadMachineAssets(init: any, onProgress?: (msg: string) => void)
       }));
 
       machineReady.value = true;
-      console.log(`[loader] all assets ready (${_geometryCache.size} geometries)`);
     } catch (err) {
       _loadPromise = null; // clear so the next buildFromInit call retries fresh
       throw err;
@@ -125,33 +150,6 @@ type ViewerInit = {
 
 type ViewPreset = "top" | "bottom" | "left" | "right" | "front" | "back" | "iso" | "dimetric" | "reset";
 
-
-interface HolderSegment {
-  height: number;
-  lower_diameter: number;
-  upper_diameter: number;
-}
-
-interface ProfileSegment {
-  end: [number, number];
-  arc?: boolean;
-  ccw?: boolean;
-  center?: [number, number];
-}
-
-interface ToolMeta {
-  type?: string;
-  oal?: number;
-  flute_length?: number;
-  body_length?: number;
-  shaft_diameter?: number;
-  taper_angle?: number;
-  point_angle?: number;
-  tip_diameter?: number;
-  corner_radius?: number;
-  holder_segments?: HolderSegment[];
-  profile?: ProfileSegment[];
-}
 
 type ViewerState = {
   ts?: number;
@@ -1404,7 +1402,6 @@ function applyState(init: ViewerInit, st: ViewerState) {
       _toolGrp.add(toolMarker);
       const visMesh = toolBodyMesh ?? toolCutterMesh;
       if (visMesh) visMesh.userData.toolVis = { r: diam * 0.5, L: visLen };
-      console.log("[TOOL] rebuild:", { toolNum, diam, visLen, type: _lastToolMeta?.type, children: toolMarker.children.length });
 
     } else if (toolBodyMesh || toolCutterMesh) {
       // Same tool — rebuild geometry only if diam/length changed

@@ -93,7 +93,6 @@ const tabs = [
   { id: "manual", label: "Manual Control" },
   { id: "gcode", label: "Program" },
   { id: "probe", label: "Probing" },
-  { id: "settings", label: "Settings" },
 ];
 
 /** ---------- dynamic panels ---------- */
@@ -628,6 +627,7 @@ function toggleBlockDelete() {
 
 // Tool sidebar state
 const toolDialogOpen = ref(false);
+const settingsDialogOpen = ref(false);
 const toolTableRef = ref<InstanceType<typeof ToolTablePanel> | null>(null);
 const toolNumber = ref(1);
 const TS_TOOL_KEY = "lcnc-tool-number";
@@ -1301,10 +1301,9 @@ watch(isHomed, (nowHomed, wasHomed) => {
           class="btn controlBtn"
           :class="{ active: isSpinning, warn: spindleMismatch }"
           @click.stop="toggleChip('spindle')"
+          title="Spindle"
         >
-          <span class="controlIcon">&#x2699;</span>
-          <span class="label">Spindle</span>
-          <span class="controlStatus">{{ isSpinning ? ((isForward ? '+' : '-') + Math.round(Math.abs(spindleActual ?? 0)) + ' RPM') : spindleMismatch ? (Math.round(Math.abs(spindleActual ?? 0)) + ' RPM!') : 'OFF' }}</span>
+          <span class="controlIcon">&#x21BB;</span>
         </button>
         <div class="popover spindlePopover" :class="{ open: openChip === 'spindle' }" @click.stop>
           <!-- Direction controls -->
@@ -1402,10 +1401,9 @@ watch(isHomed, (nowHomed, wasHomed) => {
           class="btn controlBtn"
           :class="{ active: coolantActive }"
           @click.stop="toggleChip('coolant')"
+          title="Coolant"
         >
           <span class="controlIcon">&#x1F4A7;</span>
-          <span class="label">Coolant</span>
-          <span class="controlStatus">{{ coolantActive ? (floodOn && mistOn ? 'BOTH' : (floodOn ? 'FLOOD' : 'MIST')) : 'OFF' }}</span>
         </button>
         <div class="popover coolantPopover" :class="{ open: openChip === 'coolant' }" @click.stop>
           <div class="coolantRow">
@@ -1434,13 +1432,17 @@ watch(isHomed, (nowHomed, wasHomed) => {
           class="btn controlBtn"
           :class="{ active: !!st.probing }"
           @click.stop="toolDialogOpen = true"
+          title="Tool"
         >
           <span class="controlIcon">&#x1F527;</span>
-          <span class="label">Tool</span>
-          <span class="controlStatus">{{ st.tool_number != null ? `T${st.tool_number}` : '---' }}{{ st.tool_diameter != null ? ` D${st.tool_diameter.toFixed(3)}` : '' }}{{ st.tool_offset?.[2] ? ` Z${st.tool_offset[2].toFixed(3)}` : '' }}</span>
         </button>
         </div>
         <div class="controlGroup">
+        <button class="btn controlBtn" @click.stop="settingsDialogOpen = true" title="Settings">
+          <span class="controlIcon">&#x2699;</span>
+        </button>
+        </div>
+        <div class="controlGroup simtripGroup">
         <button class="btn controlBtn simtrip" :disabled="!st.probing" @click.stop="send({ cmd: 'simulate_probe_trip' })" title="Simulate probe contact (sim/debug)">Sim Trip</button>
         </div>
       </div>
@@ -1602,10 +1604,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
               @clearSurfaceMap="surfacePoints = null"
             />
           </template>
-
-          <template #settings>
-            <SettingsPanel :lastReply="lastReply" :status="status" @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })" @mdi="send({ cmd: 'mdi', text: $event })" />
-          </template>
         </TabPanel>
       </div>
 
@@ -1658,6 +1656,21 @@ watch(isHomed, (nowHomed, wasHomed) => {
         </div>
         <div class="toolDialogBody">
           <ToolTablePanel ref="toolTableRef" :currentTool="st.tool_number ?? null" :iniFilename="st.ini_filename ?? null" hideHeader />
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings dialog -->
+    <div v-if="settingsDialogOpen" class="dialogOverlay" @click.self="settingsDialogOpen = false">
+      <div class="dialog lg settingsDialogSize">
+        <div class="dialogHeader">
+          <span class="dialogTitle">Settings</span>
+          <button class="btn-icon" @click="settingsDialogOpen = false">&times;</button>
+        </div>
+        <div class="settingsDialogBody">
+          <SettingsPanel :lastReply="lastReply" :status="status"
+            @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
+            @mdi="send({ cmd: 'mdi', text: $event })" />
         </div>
       </div>
     </div>
@@ -2103,16 +2116,15 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 /* ---- Controls section (Spindle button + popover) ---- */
-.controlBtns { display: flex; flex-direction: column; gap: 8px; }
+.controlBtns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-controls); }
 .controlGroup { position: relative; }
 
 .controlBtn {
   width: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px;
+  justify-content: center;
+  padding: 10px;
 }
 
 .controlBtn.active {
@@ -2130,7 +2142,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .controlIcon { font-size: var(--fs-2xl); }
-.controlStatus { font-size: var(--fs-base); font-weight: 600; }
 
 .spindlePopover {
   top: 0;
@@ -2372,6 +2383,17 @@ watch(isHomed, (nowHomed, wasHomed) => {
   font-style: italic;
 }
 .controlBtn.simtrip:disabled { color: var(--fg); background: var(--button-bg); border-color: var(--border); font-style: normal; }
+.simtripGroup { grid-column: 1 / -1; }
+
+/* ---- Settings dialog ---- */
+.settingsDialogSize { height: 75vh; }
+.settingsDialogBody {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 12px 12px;
+}
+
 .toolStatusRow {
   display: flex;
   align-items: center;
@@ -2506,8 +2528,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   .panel-viewer    { flex: 1; min-width: var(--panel-min-w-wide); overflow: hidden; }
   .panel-manual,
   .panel-probe { min-width: var(--panel-min-w-wide); }
-  .panel-gcode,
-  .panel-settings  { flex: 0.5; min-width: var(--panel-min-w); }
+  .panel-gcode     { flex: 0.5; min-width: var(--panel-min-w); }
 }
 
 /* ---- Portrait layout — panels stacked vertically ---- */

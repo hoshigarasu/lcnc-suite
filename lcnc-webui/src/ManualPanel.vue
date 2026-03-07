@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from "vue";
+import { ref, watch, nextTick, onMounted } from "vue";
 import DroPanel from "./DroPanel.vue";
 import JogPanel from "./JogPanel.vue";
 import { usePermissions } from "./permissions";
 import { loadMdiHistory, saveMdiHistory } from "./defaults";
 
 const can = usePermissions();
+
+// ─── Sub-view navigation ──────────────────────────────────────────
+const manualView = ref<"position" | "jogging" | "mdi">("position");
 
 const props = defineProps<{
   // DRO props
@@ -64,8 +67,6 @@ const history = ref<string[]>([]);
 const historyIndex = ref(-1); // -1 = current input, 0 = most recent, etc.
 const savedInput = ref("");   // stash current input when browsing history
 const maxHistory = 50;
-const mdiPopoverOpen = ref(false);
-const mdiSectionRef = ref<HTMLElement | null>(null);
 const mdiInputRef = ref<HTMLInputElement | null>(null);
 
 // Re-focus MDI input when it becomes enabled again after a command
@@ -75,18 +76,7 @@ watch(() => can.value.ready, (ready, was) => {
 
 onMounted(() => {
   history.value = loadMdiHistory();
-  document.addEventListener("click", onDocClick);
 });
-
-onUnmounted(() => {
-  document.removeEventListener("click", onDocClick);
-});
-
-function onDocClick(e: MouseEvent) {
-  if (mdiPopoverOpen.value && mdiSectionRef.value && !mdiSectionRef.value.contains(e.target as Node)) {
-    mdiPopoverOpen.value = false;
-  }
-}
 
 function handleSend() {
   const cmd = props.mdiText.trim();
@@ -104,11 +94,6 @@ function handleSend() {
   emit("sendMdi");
 }
 
-function selectHistory(cmd: string) {
-  emit("update:mdiText", cmd);
-  mdiPopoverOpen.value = false;
-}
-
 function clearHistory() {
   history.value = [];
   saveMdiHistory([]);
@@ -117,7 +102,7 @@ function clearHistory() {
 }
 
 function onMdiKeydown(e: KeyboardEvent) {
-  if (e.key === "ArrowUp") {
+  if (e.key === "ArrowDown") {
     e.preventDefault();
     e.stopPropagation(); // prevent global jog handler
     if (history.value.length === 0) return;
@@ -130,7 +115,7 @@ function onMdiKeydown(e: KeyboardEvent) {
     }
     return;
   }
-  if (e.key === "ArrowDown") {
+  if (e.key === "ArrowUp") {
     e.preventDefault();
     e.stopPropagation(); // prevent global jog handler
     if (historyIndex.value < 0) return;
@@ -146,94 +131,97 @@ function onMdiKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="manualPanel scroll-thin">
-    <!-- DRO section -->
-    <DroPanel
-      :axes="axes"
-      :workPos="workPos"
-      :machinePos="machinePos"
-      :dtg="dtg"
-      :g5xLabel="g5xLabel"
-      :linearUnit="linearUnit"
-      :homed="homed"
-      :homedJoints="homedJoints"
-      :touchoff="touchoff"
-      @update:touchoff="emit('update:touchoff', $event)"
-      @setAxis="(axis: number, val: number) => emit('setAxis', axis, val)"
-      @setAll="(vals: number[]) => emit('setAll', vals)"
-      @setG5x="emit('setG5x', $event)"
-      @homeAll="emit('homeAll')"
-      @unhomeAll="emit('unhomeAll')"
-      @homeAxis="emit('homeAxis', $event)"
-      @unhomeAxis="emit('unhomeAxis', $event)"
-    />
-
-    <div class="sep"></div>
-
-    <!-- Go-to navigation -->
-    <div class="gotoRow">
-      <button class="btn" :disabled="!can.ready" @click="emit('goToG30')">Go to G30</button>
-      <button class="btn" :disabled="!can.ready" @click="emit('goToHome')">Go to Home</button>
-      <button class="btn" :disabled="!can.ready" @click="emit('goToZero')">Go to Zero</button>
+  <div class="manualPanel">
+    <!-- Sub-view tabs -->
+    <div class="viewTabs">
+      <button class="tab-btn" :class="{ active: manualView === 'position' }" @click="manualView = 'position'">Position</button>
+      <button class="tab-btn" :class="{ active: manualView === 'jogging' }" @click="manualView = 'jogging'">Jogging</button>
+      <button class="tab-btn" :class="{ active: manualView === 'mdi' }" @click="manualView = 'mdi'">MDI</button>
     </div>
 
-    <div class="sep"></div>
-
-    <!-- Jog section -->
-    <JogPanel
-      :axes="axes"
-      :jogVel="jogVel"
-      :angularJogVel="angularJogVel"
-      :isTeleop="isTeleop"
-      :isHomed="isHomed"
-      :linearUnit="linearUnit"
-      :maxJogVel="maxJogVel"
-      :maxAngularJogVel="maxAngularJogVel"
-      :minAngularJogVel="minAngularJogVel"
-      :activeJogKeys="activeJogKeys"
-      :jogIncrement="jogIncrement"
-      :minJogVel="minJogVel"
-      :iniIncrements="iniIncrements"
-      @update:jogVel="emit('update:jogVel', $event)"
-      @update:angularJogVel="emit('update:angularJogVel', $event)"
-      @update:jogIncrement="emit('update:jogIncrement', $event)"
-      @toggleTeleop="emit('toggleTeleop')"
-    />
-
-    <div class="sep"></div>
-
-    <!-- MDI input bar + history popover -->
-    <div class="mdiSection" ref="mdiSectionRef">
-      <div class="sub">MDI</div>
-      <div class="mdiRow">
-        <input
-          ref="mdiInputRef"
-          type="text"
-          class="mdiInput"
-          :value="mdiText"
-          @input="emit('update:mdiText', ($event.target as HTMLInputElement).value)"
-          @focus="mdiPopoverOpen = true"
-          @keyup.enter="handleSend"
-          @keydown="onMdiKeydown"
-          :disabled="!can.ready"
-          placeholder="G-code command (↑↓ history)"
-        />
-        <button class="btn-inline" @click="handleSend" :disabled="!can.ready">
-          Send
-        </button>
+    <!-- ═══ POSITION VIEW ═══ -->
+    <template v-if="manualView === 'position'">
+      <DroPanel
+        :axes="axes"
+        :workPos="workPos"
+        :machinePos="machinePos"
+        :dtg="dtg"
+        :g5xLabel="g5xLabel"
+        :linearUnit="linearUnit"
+        :homed="homed"
+        :homedJoints="homedJoints"
+        :touchoff="touchoff"
+        @update:touchoff="emit('update:touchoff', $event)"
+        @setAxis="(axis: number, val: number) => emit('setAxis', axis, val)"
+        @setAll="(vals: number[]) => emit('setAll', vals)"
+        @setG5x="emit('setG5x', $event)"
+        @homeAll="emit('homeAll')"
+        @unhomeAll="emit('unhomeAll')"
+        @homeAxis="emit('homeAxis', $event)"
+        @unhomeAxis="emit('unhomeAxis', $event)"
+      />
+      <div class="sep"></div>
+      <div class="gotoRow">
+        <button class="btn" :disabled="!can.ready" @click="emit('goToG30')">Go to G30</button>
+        <button class="btn" :disabled="!can.ready" @click="emit('goToHome')">Go to Home</button>
+        <button class="btn" :disabled="!can.ready" @click="emit('goToZero')">Go to Zero</button>
       </div>
-      <div v-if="mdiPopoverOpen" class="mdiPopover" @click.stop>
-        <div class="mdiPopoverHeader">
+    </template>
+
+    <!-- ═══ JOGGING VIEW ═══ -->
+    <template v-if="manualView === 'jogging'">
+      <JogPanel
+        :axes="axes"
+        :jogVel="jogVel"
+        :angularJogVel="angularJogVel"
+        :isTeleop="isTeleop"
+        :isHomed="isHomed"
+        :linearUnit="linearUnit"
+        :maxJogVel="maxJogVel"
+        :maxAngularJogVel="maxAngularJogVel"
+        :minAngularJogVel="minAngularJogVel"
+        :activeJogKeys="activeJogKeys"
+        :jogIncrement="jogIncrement"
+        :minJogVel="minJogVel"
+        :iniIncrements="iniIncrements"
+        @update:jogVel="emit('update:jogVel', $event)"
+        @update:angularJogVel="emit('update:angularJogVel', $event)"
+        @update:jogIncrement="emit('update:jogIncrement', $event)"
+        @toggleTeleop="emit('toggleTeleop')"
+      />
+    </template>
+
+    <!-- ═══ MDI VIEW ═══ -->
+    <template v-if="manualView === 'mdi'">
+      <div class="mdiSection">
+        <div class="mdiRow">
+          <input
+            ref="mdiInputRef"
+            type="text"
+            class="mdiInput"
+            :value="mdiText"
+            @input="emit('update:mdiText', ($event.target as HTMLInputElement).value)"
+            @keyup.enter="handleSend"
+            @keydown="onMdiKeydown"
+            :disabled="!can.ready"
+            placeholder="G-code command (↑↓ history)"
+          />
+          <button class="btn-inline" @click="handleSend" :disabled="!can.ready">
+            Send
+          </button>
+        </div>
+        <div class="mdiHistoryHeader">
           <span class="sub">History</span>
           <button class="btn-inline" @click="clearHistory" :disabled="!can.ready || history.length === 0">Clear</button>
         </div>
         <div class="mdiHistoryList scroll-thin">
-          <div v-for="(cmd, i) in [...history].reverse()" :key="i" class="mdiHistoryItem"
-               @click="selectHistory(cmd)">{{ cmd }}</div>
+          <div v-for="(cmd, i) in history" :key="i" class="mdiHistoryItem"
+               :class="{ active: historyIndex === i }"
+               @click="emit('update:mdiText', cmd)">{{ cmd }}</div>
           <div v-if="history.length === 0" class="mdiHistoryEmpty">No history</div>
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
@@ -241,24 +229,20 @@ function onMdiKeydown(e: KeyboardEvent) {
 .manualPanel {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  overflow-y: auto;
+  gap: var(--gap-section);
   height: 100%;
 }
 
-.sep {
-  margin: 12px 0;
-  border-top: 1px solid var(--border);
-  opacity: 0.4;
-}
-
 .mdiSection {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .mdiRow {
   display: flex;
-  gap: 10px;
+  gap: var(--gap-controls);
   align-items: center;
 }
 
@@ -267,28 +251,11 @@ function onMdiKeydown(e: KeyboardEvent) {
   min-width: 0;
 }
 
-.mdiPopover {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  margin-bottom: 4px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  max-height: 300px;
-}
-
-.mdiPopoverHeader {
+.mdiHistoryHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: var(--gap-controls) 0;
 }
 
 .mdiHistoryList {
@@ -306,7 +273,8 @@ function onMdiKeydown(e: KeyboardEvent) {
   text-overflow: ellipsis;
 }
 
-.mdiHistoryItem:hover {
+.mdiHistoryItem:hover,
+.mdiHistoryItem.active {
   background: var(--hl-hover);
 }
 
@@ -318,7 +286,7 @@ function onMdiKeydown(e: KeyboardEvent) {
 
 .gotoRow {
   display: flex;
-  gap: 10px;
+  gap: var(--gap-controls);
 }
 
 .gotoRow .btn {

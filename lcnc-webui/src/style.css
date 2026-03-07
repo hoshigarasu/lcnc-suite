@@ -64,6 +64,12 @@
   --radius-pill: 999px;
   --radius-round: 50%;
 
+  /* Spacing scale */
+  --gap-tight:    4px;   /* tightly grouped toggles, icon grids, increment buttons */
+  --gap-controls: 8px;   /* buttons in a row, form fields, standard control spacing */
+  --gap-section:  12px;  /* between sections within a panel, card gaps */
+  --gap-panel:    20px;  /* major layout divisions, top-level section breaks */
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

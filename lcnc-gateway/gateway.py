@@ -1902,7 +1902,9 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             else:
                 return {"ok": False, "error": f"Invalid target: {target}"}
             set_mode(linuxcnc.MODE_MDI)
-            zero_parts = " ".join(f"{k.upper()}0" for k in _WCS_AXIS_KEYS) + " R0"
+            STAT.poll()
+            machine_axes = [a.lower() for a in _axes_from_mask(getattr(STAT, "axis_mask", 7))]
+            zero_parts = " ".join(f"{k.upper()}0" for k in machine_axes) + " R0"
             for p in indices:
                 CMD.mdi(f"G10 L2 P{p} {zero_parts}")
                 CMD.wait_complete(5)

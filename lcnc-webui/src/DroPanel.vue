@@ -102,7 +102,7 @@ function touchoffStep(letter: string) {
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(100px, 1fr) auto minmax(70px, 110px) minmax(70px, 110px);
+  grid-template-columns: 1fr 90px minmax(70px, 110px) minmax(70px, 110px);
   column-gap: 12px;
   row-gap: 12px;
   align-items: center;

@@ -212,7 +212,7 @@ function onAngularVelInput(ev: Event) {
         :disabled="disabled"
         @input="onVelInput"
       />
-      <span class="velLabel">{{ (jogVel * 60).toFixed(0) }} {{ linearUnit }}/min</span>
+      <span class="sliderVal">{{ (jogVel * 60).toFixed(0) }} {{ linearUnit }}/min</span>
     </div>
     <div v-if="abcAxes.length > 0" class="velRow">
       <input
@@ -225,54 +225,58 @@ function onAngularVelInput(ev: Event) {
         :disabled="disabled"
         @input="onAngularVelInput"
       />
-      <span class="velLabel">{{ (angularJogVel * 60).toFixed(0) }} °/min</span>
+      <span class="sliderVal">{{ (angularJogVel * 60).toFixed(0) }} °/min</span>
     </div>
 
-    <!-- Wheel + Z column -->
+    <!-- Wheel + Z column + extra axes -->
     <div class="padRow">
-      <svg class="jogwheel" :class="{ disabled }" viewBox="0 0 200 200">
-        <path
-          v-for="s in sectors"
-          :key="s.id"
-          class="sector"
-          :class="{ active: activeSectors.has(s.id), disabled }"
-          :d="s.path"
-          @pointerdown.prevent="startJog(s, $event)"
-          @pointerup.prevent="stopJog(s, $event)"
-          @pointercancel.prevent="stopJog(s, $event)"
-          @pointerleave.prevent="stopJog(s, $event)"
-          @contextmenu.prevent
-        />
-        <!-- Center hub -->
-        <circle cx="100" cy="100" r="30" class="hub" />
-        <text x="100" y="100" class="hubLabel">XY</text>
-        <!-- Sector labels -->
-        <text
-          v-for="s in sectors"
-          :key="s.id + '-lbl'"
-          :x="s.labelX"
-          :y="s.labelY"
-          class="sectorLabel"
-          :class="{ small: s.axis2 != null, disabled }"
-        >{{ s.label }}</text>
-      </svg>
+      <div class="jogMain">
+        <svg class="jogwheel" :class="{ disabled }" viewBox="0 0 200 200">
+          <path
+            v-for="s in sectors"
+            :key="s.id"
+            class="sector"
+            :class="{ active: activeSectors.has(s.id), disabled }"
+            :d="s.path"
+            @pointerdown.prevent="startJog(s, $event)"
+            @pointerup.prevent="stopJog(s, $event)"
+            @pointercancel.prevent="stopJog(s, $event)"
+            @pointerleave.prevent="stopJog(s, $event)"
+            @contextmenu.prevent
+          />
+          <!-- Center hub -->
+          <circle cx="100" cy="100" r="30" class="hub" />
+          <text x="100" y="100" class="hubLabel">XY</text>
+          <!-- Sector labels -->
+          <text
+            v-for="s in sectors"
+            :key="s.id + '-lbl'"
+            :x="s.labelX"
+            :y="s.labelY"
+            class="sectorLabel"
+            :class="{ small: s.axis2 != null, disabled }"
+          >{{ s.label }}</text>
+        </svg>
 
-      <div class="zCol">
-        <JogButton :axis="2" :dir="1" label="Z+" :vel="jogVel" :disabled="disabled" direction="up" :jogIncrement="jogIncrement" />
-        <JogButton :axis="2" :dir="-1" label="Z-" :vel="jogVel" :disabled="disabled" direction="down" :jogIncrement="jogIncrement" />
+        <div class="zCol">
+          <JogButton :axis="2" :dir="1" label="Z+" :vel="jogVel" :disabled="disabled" direction="up" :jogIncrement="jogIncrement" />
+          <JogButton :axis="2" :dir="-1" label="Z-" :vel="jogVel" :disabled="disabled" direction="down" :jogIncrement="jogIncrement" />
+        </div>
       </div>
 
       <!-- Rotary columns: ABC | UVW -->
-      <div v-if="abcAxes.length > 0" class="rotaryCol">
-        <div v-for="ra in abcAxes" :key="ra.letter" class="rotaryPair">
-          <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="angularJogVel" :disabled="disabled" direction="left" :jogIncrement="jogIncrement" />
-          <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="angularJogVel" :disabled="disabled" direction="right" :jogIncrement="jogIncrement" />
+      <div v-if="extraAxes.length > 0" class="extraAxesRow">
+        <div v-if="abcAxes.length > 0" class="rotaryCol">
+          <div v-for="ra in abcAxes" :key="ra.letter" class="rotaryPair">
+            <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="angularJogVel" :disabled="disabled" direction="left" :jogIncrement="jogIncrement" />
+            <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="angularJogVel" :disabled="disabled" direction="right" :jogIncrement="jogIncrement" />
+          </div>
         </div>
-      </div>
-      <div v-if="uvwAxes.length > 0" class="rotaryCol">
-        <div v-for="ra in uvwAxes" :key="ra.letter" class="rotaryPair">
-          <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="jogVel" :disabled="disabled" direction="left" :jogIncrement="jogIncrement" />
-          <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="jogVel" :disabled="disabled" direction="right" :jogIncrement="jogIncrement" />
+        <div v-if="uvwAxes.length > 0" class="rotaryCol">
+          <div v-for="ra in uvwAxes" :key="ra.letter" class="rotaryPair">
+            <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="jogVel" :disabled="disabled" direction="left" :jogIncrement="jogIncrement" />
+            <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="jogVel" :disabled="disabled" direction="right" :jogIncrement="jogIncrement" />
+          </div>
         </div>
       </div>
     </div>
@@ -316,20 +320,34 @@ function onAngularVelInput(ev: Event) {
   flex: 1;
 }
 
-.velLabel {
-  font-size: var(--fs-xs);
-  color: var(--fg);
-  opacity: 0.7;
-  white-space: nowrap;
-  text-align: right;
-  font-family: var(--font-mono);
-}
 
 /* Wheel + Z layout */
 .padRow {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.jogMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.extraAxesRow {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+
+/* Landscape: stack extra axes below wheel+Z */
+@media (orientation: landscape) {
+  .padRow { flex-direction: column; }
+}
+
+/* Portrait: flat row */
+@media (orientation: portrait) {
+  .padRow { flex-direction: row; }
 }
 
 .jogwheel {

@@ -1246,7 +1246,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
             <div class="ovrRow">
               <span class="ovrLabel">Feed</span>
               <input type="range" v-model.number="feedSlider" @change="onFeedChange" min="0" :max="maxFeedOverride" step="5" :disabled="!permissions.override || !feedOvrEnabled" />
-              <span class="ovrVal" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
+              <span class="sliderVal" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
             </div>
             <div class="ovrPresets">
               <button v-for="p in [50, 100, 150, 200]" :key="'f'+p" class="ovrPresetBtn" :disabled="!permissions.override || !feedOvrEnabled" @click="setOverridePreset('feed', p)">{{ p }}%</button>
@@ -1254,7 +1254,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
             <div class="ovrRow">
               <span class="ovrLabel">Spindle</span>
               <input type="range" v-model.number="spindleSlider" @change="onSpindleSliderChange" :min="minSpindleOverride" :max="maxSpindleOverride" step="5" :disabled="!permissions.override || !spindleOvrEnabled" />
-              <span class="ovrVal" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
+              <span class="sliderVal" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
             </div>
             <div class="ovrPresets">
               <button v-for="p in [50, 100, 150, 200]" :key="'s'+p" class="ovrPresetBtn" :disabled="!permissions.override || !spindleOvrEnabled" @click="setOverridePreset('spindle', p)">{{ p }}%</button>
@@ -1262,7 +1262,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
             <div class="ovrRow">
               <span class="ovrLabel">Rapid</span>
               <input type="range" v-model.number="rapidSlider" @change="onRapidChange" min="25" max="100" step="25" :disabled="!permissions.override" />
-              <span class="ovrVal" :class="{ warn: rapidSlider !== 100 }">{{ rapidSlider }}%</span>
+              <span class="sliderVal" :class="{ warn: rapidSlider !== 100 }">{{ rapidSlider }}%</span>
             </div>
             <div class="ovrPresets">
               <button v-for="p in [25, 50, 75, 100]" :key="'r'+p" class="ovrPresetBtn" :disabled="!permissions.override" @click="setOverridePreset('rapid', p)">{{ p }}%</button>
@@ -1382,7 +1382,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <div class="spOvrGroup">
             <div class="spOvrHeader">
               <span>Speed Override</span>
-              <span class="spOvrValue" :class="{ warn: spindleOvrSlider !== 100 }">{{ spindleOvrSlider }}%</span>
+              <span class="sliderVal" :class="{ warn: spindleOvrSlider !== 100 }">{{ spindleOvrSlider }}%</span>
             </div>
             <input
               type="range"
@@ -2090,13 +2090,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   min-width: 0;
 }
 
-.ovrVal {
-  font-family: var(--font-mono);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  min-width: 40px;
-  text-align: right;
-}
+
 
 .ovrPresets {
   display: flex;
@@ -2267,11 +2261,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   opacity: 0.8;
 }
 
-.spOvrValue {
-  font-family: var(--font-mono);
-  font-size: var(--fs-md);
-  font-weight: 600;
-}
 
 .spOvrSlider { width: 100%; }
 
@@ -2306,7 +2295,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
 .coolantToggle {
   min-width: 60px;
   padding: 6px 14px;
-  font-size: var(--fs-base);
   font-weight: 600;
   border-radius: var(--radius-xl);
 }
@@ -2359,7 +2347,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 .toolActionBtn {
   padding: 7px 10px;
-  font-size: var(--fs-base);
   font-weight: 600;
   border-radius: var(--radius-xl);
 }
@@ -2491,6 +2478,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   gap: 4px;
   padding: 12px 20px;
   min-width: 80px;
+  font-size: var(--fs-xl);
 }
 
 .safetyIcon {

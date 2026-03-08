@@ -127,14 +127,12 @@ function touchoffStep(letter: string) {
 
 .zeroBtn {
   padding: 6px 10px;
-  font-size: var(--fs-base);
   border-radius: var(--radius-lg);
   white-space: nowrap;
 }
 
 .homeBtn {
   padding: 10px 14px;
-  font-size: var(--fs-md);
   font-weight: 600;
   border-radius: var(--radius-xl);
   display: flex;

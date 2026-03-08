@@ -88,7 +88,7 @@ function formatRpm(val: number | null): string {
     <!-- Actual speed -->
     <div class="infoRow">
       <span class="label">Actual</span>
-      <span class="infoValue">{{ formatRpm(spindleActual) }} RPM</span>
+      <span class="sliderVal">{{ formatRpm(spindleActual) }} RPM</span>
     </div>
 
     <!-- Override slider -->
@@ -168,12 +168,6 @@ function formatRpm(val: number | null): string {
   gap: 6px;
 }
 
-.infoValue {
-  font-size: var(--fs-sm);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--fg);
-}
 
 /* Override */
 .overrideRow {

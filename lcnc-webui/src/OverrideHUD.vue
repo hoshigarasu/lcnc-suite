@@ -60,7 +60,7 @@ function resetAll() {
         min="0" :max="maxFeedOverride" step="5"
         :disabled="!can.override"
       />
-      <span class="ovValue" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
+      <span class="sliderVal" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
     </div>
 
     <!-- Spindle -->
@@ -72,7 +72,7 @@ function resetAll() {
         :min="minSpindleOverride" :max="maxSpindleOverride" step="5"
         :disabled="!can.override"
       />
-      <span class="ovValue" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
+      <span class="sliderVal" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
     </div>
 
     <!-- Rapid -->
@@ -84,7 +84,7 @@ function resetAll() {
         min="25" max="100" step="25"
         :disabled="!can.override"
       />
-      <span class="ovValue" :class="{ warn: rapidSlider !== 100 }">{{ rapidSlider }}%</span>
+      <span class="sliderVal" :class="{ warn: rapidSlider !== 100 }">{{ rapidSlider }}%</span>
     </div>
 
     <!-- Reset -->
@@ -114,20 +114,6 @@ function resetAll() {
   flex: 1;
 }
 
-.ovValue {
-  font-size: var(--fs-xs);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--fg);
-  opacity: 0.7;
-  min-width: 32px;
-  text-align: right;
-}
-
-.ovValue.warn {
-  color: var(--warn);
-  opacity: 1;
-}
 
 .resetBtn {
   padding: 4px 0;

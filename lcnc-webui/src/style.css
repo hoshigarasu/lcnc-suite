@@ -25,7 +25,7 @@
 
   /* Panel sizing */
   --panel-min-w: 460px;
-  --panel-min-w-wide: 580px;
+  --panel-min-w-wide: 540px;
   --panel-min-h: 400px;
   --panel-h-portrait: 500px;
   --viewer-min-h-portrait: 500px;
@@ -175,7 +175,7 @@ button {
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);
   padding: 0.6em 1.2em;
-  font-size: 1em;
+  font-size: var(--fs-base);
   font-weight: 500;
   font-family: inherit;
   background-color: var(--button-bg);
@@ -314,7 +314,6 @@ input[type="checkbox"]:disabled {
 .btn-inline {
   padding: 4px 10px;
   border-radius: var(--radius-md);
-  font-size: var(--fs-base);
 }
 
 .tip {
@@ -539,4 +538,19 @@ input[type="checkbox"]:disabled {
 .pill {
   text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+.sliderVal {
+  font-size: var(--fs-base);
+  font-family: var(--font-mono);
+  opacity: 0.7;
+  white-space: nowrap;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sliderVal.warn {
+  color: var(--warn);
+  opacity: 1;
 }

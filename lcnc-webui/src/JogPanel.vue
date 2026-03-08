@@ -225,7 +225,9 @@ function stopJog(s: Sector, e?: PointerEvent) {
   <div>
     <div class="sub">Jogging</div>
 
-    <div class="modeRow">
+    <div class="controlGrid">
+      <!-- Mode row -->
+      <div class="k">Mode</div>
       <button
         class="modeBtn"
         :class="isTeleop ? 'teleop' : ''"
@@ -235,12 +237,11 @@ function stopJog(s: Sector, e?: PointerEvent) {
       >
         {{ isTeleop ? "World" : "Joint" }}
       </button>
-      <span class="modeHint" v-if="!isHomed">Home to enable World mode</span>
-    </div>
+      <span v-if="!isHomed" class="modeHint">Home first</span>
+      <span v-else></span>
 
-    <div class="btnrow" style="margin-bottom: 10px">
-      <div class="k" style="min-width: 90px">{{ abcAxes.length > 0 ? 'Linear' : 'Speed' }}</div>
-
+      <!-- Linear speed row -->
+      <div class="k">{{ abcAxes.length > 0 ? 'Linear' : 'Speed' }}</div>
       <input
         class="inp"
         type="range"
@@ -251,26 +252,26 @@ function stopJog(s: Sector, e?: PointerEvent) {
         @input="onInput"
         :disabled="!can.jog"
       />
-      <div class="pill">{{ (jogVel * 60).toFixed(0) }} {{ linearUnit }}/min</div>
-    </div>
+      <span class="sliderVal">{{ (jogVel * 60).toFixed(0) }} {{ linearUnit }}/min</span>
 
-    <div v-if="abcAxes.length > 0" class="btnrow" style="margin-bottom: 10px">
-      <div class="k" style="min-width: 90px">Rotary</div>
-      <input
-        class="inp"
-        type="range"
-        :min="minAngularJogVel"
-        :max="maxAngularJogVel"
-        step="0.1"
-        :value="angularJogVel"
-        @input="onAngularInput"
-        :disabled="!can.jog"
-      />
-      <div class="pill">{{ (angularJogVel * 60).toFixed(0) }} °/min</div>
-    </div>
+      <!-- Rotary speed row -->
+      <template v-if="abcAxes.length > 0">
+        <div class="k">Rotary</div>
+        <input
+          class="inp"
+          type="range"
+          :min="minAngularJogVel"
+          :max="maxAngularJogVel"
+          step="0.1"
+          :value="angularJogVel"
+          @input="onAngularInput"
+          :disabled="!can.jog"
+        />
+        <span class="sliderVal">{{ (angularJogVel * 60).toFixed(0) }} °/min</span>
+      </template>
 
-    <div class="btnrow" style="margin-bottom: 10px; justify-content: center">
-      <div class="k" style="min-width: 90px">Step</div>
+      <!-- Step row -->
+      <div class="k">Step</div>
       <div class="incrGroup">
         <button
           v-for="opt in incrementOptions"
@@ -281,56 +282,60 @@ function stopJog(s: Sector, e?: PointerEvent) {
           :disabled="!can.jog"
         >{{ opt.label }}</button>
       </div>
-      <div class="pill" v-if="jogIncrement > 0">{{ jogIncrement }} {{ linearUnit }}{{ abcAxes.length > 0 ? ' · °' : '' }} /click</div>
-      <div class="pill" v-else>Hold to jog</div>
+      <span class="sliderVal" v-if="jogIncrement > 0">{{ jogIncrement }} {{ linearUnit }}{{ abcAxes.length > 0 ? ' · °' : '' }} /click</span>
+      <span class="sliderVal" v-else>Hold to jog</span>
     </div>
 
     <div class="jogArea">
-      <!-- XY wheel -->
-      <svg class="jogwheel" viewBox="0 0 200 200">
-        <path
-          v-for="s in sectors"
-          :key="s.id"
-          class="sector"
-          :class="{ active: isSectorActive(s.id), disabled: !can.jog }"
-          :d="s.path"
-          @pointerdown.prevent="startJog(s, $event)"
-          @pointerup.prevent="stopJog(s, $event)"
-          @pointercancel.prevent="stopJog(s, $event)"
-          @pointerleave.prevent="stopJog(s, $event)"
-          @contextmenu.prevent
-        />
-        <!-- Center hub -->
-        <circle cx="100" cy="100" r="30" class="hub" />
-        <text x="100" y="100" class="hubLabel">XY</text>
-        <!-- Sector labels -->
-        <text
-          v-for="s in sectors"
-          :key="s.id + '-lbl'"
-          :x="s.labelX"
-          :y="s.labelY"
-          class="sectorLabel"
-          :class="{ small: s.axis2 != null, disabled: !can.jog }"
-        >{{ s.label }}</text>
-      </svg>
+      <div class="jogMain">
+        <!-- XY wheel -->
+        <svg class="jogwheel" viewBox="0 0 200 200">
+          <path
+            v-for="s in sectors"
+            :key="s.id"
+            class="sector"
+            :class="{ active: isSectorActive(s.id), disabled: !can.jog }"
+            :d="s.path"
+            @pointerdown.prevent="startJog(s, $event)"
+            @pointerup.prevent="stopJog(s, $event)"
+            @pointercancel.prevent="stopJog(s, $event)"
+            @pointerleave.prevent="stopJog(s, $event)"
+            @contextmenu.prevent
+          />
+          <!-- Center hub -->
+          <circle cx="100" cy="100" r="30" class="hub" />
+          <text x="100" y="100" class="hubLabel">XY</text>
+          <!-- Sector labels -->
+          <text
+            v-for="s in sectors"
+            :key="s.id + '-lbl'"
+            :x="s.labelX"
+            :y="s.labelY"
+            class="sectorLabel"
+            :class="{ small: s.axis2 != null, disabled: !can.jog }"
+          >{{ s.label }}</text>
+        </svg>
 
-      <!-- Z column -->
-      <div class="zcol">
-        <JogButton :axis="2" :dir="1" label="Z+" :vel="jogVel" :disabled="!can.jog" direction="up" :active="activeJogKeys?.has('PageUp')" :jogIncrement="jogIncrement" />
-        <JogButton :axis="2" :dir="-1" label="Z-" :vel="jogVel" :disabled="!can.jog" direction="down" :active="activeJogKeys?.has('PageDown')" :jogIncrement="jogIncrement" />
+        <!-- Z column -->
+        <div class="zcol">
+          <JogButton :axis="2" :dir="1" label="Z+" :vel="jogVel" :disabled="!can.jog" direction="up" :active="activeJogKeys?.has('PageUp')" :jogIncrement="jogIncrement" />
+          <JogButton :axis="2" :dir="-1" label="Z-" :vel="jogVel" :disabled="!can.jog" direction="down" :active="activeJogKeys?.has('PageDown')" :jogIncrement="jogIncrement" />
+        </div>
       </div>
 
       <!-- Rotary columns: ABC | UVW -->
-      <div v-if="abcAxes.length > 0" class="rotaryCol">
-        <div v-for="ra in abcAxes" :key="ra.letter" class="rotaryPair">
-          <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="angularJogVel" :disabled="!can.jog" direction="left" :jogIncrement="jogIncrement" :active="activeJogKeys?.has(rotaryKeyMap[ra.index]?.neg ?? '')" />
-          <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="angularJogVel" :disabled="!can.jog" direction="right" :jogIncrement="jogIncrement" :active="activeJogKeys?.has(rotaryKeyMap[ra.index]?.pos ?? '')" />
+      <div v-if="extraAxes.length > 0" class="extraAxesRow">
+        <div v-if="abcAxes.length > 0" class="rotaryCol">
+          <div v-for="ra in abcAxes" :key="ra.letter" class="rotaryPair">
+            <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="angularJogVel" :disabled="!can.jog" direction="left" :jogIncrement="jogIncrement" :active="activeJogKeys?.has(rotaryKeyMap[ra.index]?.neg ?? '')" />
+            <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="angularJogVel" :disabled="!can.jog" direction="right" :jogIncrement="jogIncrement" :active="activeJogKeys?.has(rotaryKeyMap[ra.index]?.pos ?? '')" />
+          </div>
         </div>
-      </div>
-      <div v-if="uvwAxes.length > 0" class="rotaryCol">
-        <div v-for="ra in uvwAxes" :key="ra.letter" class="rotaryPair">
-          <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="jogVel" :disabled="!can.jog" direction="left" :jogIncrement="jogIncrement" :active="activeJogKeys?.has(rotaryKeyMap[ra.index]?.neg ?? '')" />
-          <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="jogVel" :disabled="!can.jog" direction="right" :jogIncrement="jogIncrement" :active="activeJogKeys?.has(rotaryKeyMap[ra.index]?.pos ?? '')" />
+        <div v-if="uvwAxes.length > 0" class="rotaryCol">
+          <div v-for="ra in uvwAxes" :key="ra.letter" class="rotaryPair">
+            <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="jogVel" :disabled="!can.jog" direction="left" :jogIncrement="jogIncrement" :active="activeJogKeys?.has(rotaryKeyMap[ra.index]?.neg ?? '')" />
+            <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="jogVel" :disabled="!can.jog" direction="right" :jogIncrement="jogIncrement" :active="activeJogKeys?.has(rotaryKeyMap[ra.index]?.pos ?? '')" />
+          </div>
         </div>
       </div>
     </div>
@@ -343,30 +348,24 @@ function stopJog(s: Sector, e?: PointerEvent) {
 </template>
 
 <style scoped>
-.btnrow {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+/* ---- Control grid (label | slider/buttons | pill) ---- */
+.controlGrid {
+  display: grid;
+  grid-template-columns: auto 1fr 100px;
+  gap: var(--gap-controls) var(--gap-controls);
   align-items: center;
+  margin-bottom: var(--gap-controls);
 }
 
 .k {
   font-size: var(--fs-base);
   opacity: 0.7;
+  white-space: nowrap;
 }
 
-.pill {
-  padding: 6px 10px;
-  border-radius: var(--radius-pill);
-  font-size: var(--fs-base);
-  border: 1px solid var(--border);
-  user-select: none;
-  background: color-mix(in oklab, var(--panel) 80%, transparent);
-  color: var(--fg);
-}
 
 .inp {
-  flex: 1;
+  width: 100%;
   min-width: 0;
 }
 
@@ -382,7 +381,29 @@ function stopJog(s: Sector, e?: PointerEvent) {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: var(--gap-section);
+}
+
+.jogMain {
+  display: flex;
+  align-items: center;
   gap: 16px;
+}
+
+.extraAxesRow {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+/* Landscape: stack extra axes below wheel+Z */
+@media (orientation: landscape) {
+  .jogArea { flex-direction: column; }
+}
+
+/* Portrait: flat row (current behavior) */
+@media (orientation: portrait) {
+  .jogArea { flex-direction: row; }
 }
 
 .jogwheel {
@@ -481,15 +502,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
   height: 50px;
 }
 
-/* ---- Mode row ---- */
-.modeRow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
+/* ---- Mode button ---- */
 .modeBtn {
   font-size: var(--fs-base);
   font-weight: 600;

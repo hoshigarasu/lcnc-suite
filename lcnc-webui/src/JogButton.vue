@@ -23,10 +23,10 @@ const isDiagonal = computed(() => props.axis2 != null && props.dir2 != null);
 // SVG polygon points for each direction
 const points = computed(() => {
   switch (props.direction) {
-    case 'up':         return '50,2 98,98 2,98';
-    case 'down':       return '2,2 98,2 50,98';
-    case 'left':       return '98,2 2,50 98,98';
-    case 'right':      return '2,2 98,50 2,98';
+    case 'up':         return '50,6.7 97,93.3 3,93.3';
+    case 'down':       return '3,6.7 97,6.7 50,93.3';
+    case 'left':       return '93.3,3 93.3,97 6.7,50';
+    case 'right':      return '6.7,3 6.7,97 93.3,50';
     case 'up-right':   return '98,2 2,50 50,98';
     case 'up-left':    return '2,2 98,50 50,98';
     case 'down-right': return '50,2 98,98 2,50';
@@ -112,7 +112,7 @@ function stopJog(e?: PointerEvent) {
     @pointerleave.prevent="stopJog"
     @contextmenu.prevent
   >
-    <svg class="tri" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <svg class="tri" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
       <polygon :points="points" />
     </svg>
     <span class="jlabel" :class="{ small: isDiagonal }">{{ label }}</span>
@@ -179,25 +179,25 @@ function stopJog(e?: PointerEvent) {
 
 /* Cardinal: label at centroid (1/3 from base) */
 .up .jlabel {
-  bottom: 22%;
+  bottom: 28%;
   left: 50%;
   transform: translateX(-50%);
 }
 
 .down .jlabel {
-  top: 22%;
+  top: 28%;
   left: 50%;
   transform: translateX(-50%);
 }
 
 .left .jlabel {
-  right: 22%;
+  right: 28%;
   top: 50%;
   transform: translateY(-50%);
 }
 
 .right .jlabel {
-  left: 22%;
+  left: 28%;
   top: 50%;
   transform: translateY(-50%);
 }

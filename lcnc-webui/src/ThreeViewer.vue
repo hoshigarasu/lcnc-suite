@@ -194,6 +194,7 @@ const props = defineProps<{
   jogVel?: number;
   angularJogVel?: number;
   isHomed?: boolean;
+  isTeleop?: boolean;
   maxJogVel?: number;
   maxAngularJogVel?: number;
   minAngularJogVel?: number;
@@ -234,6 +235,7 @@ const emit = defineEmits<{
   (e: "goToG30"): void;
   (e: "goToHome"): void;
   (e: "goToZero"): void;
+  (e: "toggleTeleop"): void;
 }>();
 
 // HUD data (read from status for template)
@@ -2144,9 +2146,12 @@ defineExpose({
           :jogIncrement="props.jogIncrement ?? 0"
           :minJogVel="props.minJogVel ?? 0.1"
           :iniIncrements="props.iniIncrements ?? null"
+          :isTeleop="props.isTeleop ?? false"
+          :isHomed="props.isHomed ?? false"
           @update:jogVel="emit('update:jogVel', $event)"
           @update:angularJogVel="emit('update:angularJogVel', $event)"
           @update:jogIncrement="emit('update:jogIncrement', $event)"
+          @toggleTeleop="emit('toggleTeleop')"
         />
       </div>
 
@@ -2190,6 +2195,7 @@ defineExpose({
 <style scoped>
 .hudOverlay {
   position: absolute;
+  z-index: 1;
   top: 12px;
   left: 12px;
   pointer-events: auto;
@@ -2242,6 +2248,7 @@ defineExpose({
 
 .viewerHost {
   position: relative;
+  z-index: 0;
   width: 100%;
   height: 100%;
   border-radius: var(--radius-3xl);
@@ -2270,6 +2277,7 @@ defineExpose({
 
 .hud {
   position: absolute;
+  z-index: 1;
   top: 12px;
   right: 12px;
   display: flex;

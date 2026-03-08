@@ -136,7 +136,7 @@ function onMdiKeydown(e: KeyboardEvent) {
     <!-- Sub-view tabs -->
     <div class="viewTabs">
       <button class="tab-btn" :class="{ active: manualView === 'position' }" @click="manualView = 'position'">Position</button>
-      <button class="tab-btn" :class="{ active: manualView === 'jogging' }" @click="manualView = 'jogging'">Jogging</button>
+      <button class="tab-btn" :class="{ active: manualView === 'jogging' }" @click="manualView = 'jogging'">Jog</button>
       <button class="tab-btn" :class="{ active: manualView === 'mdi' }" @click="manualView = 'mdi'">MDI</button>
     </div>
 

@@ -19,12 +19,15 @@ const props = defineProps<{
   jogIncrement: number;
   minJogVel: number;
   iniIncrements: number[] | null;
+  isTeleop: boolean;
+  isHomed: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "update:jogVel", vel: number): void;
   (e: "update:angularJogVel", vel: number): void;
   (e: "update:jogIncrement", val: number): void;
+  (e: "toggleTeleop"): void;
 }>();
 
 const extraAxes = computed(() => {
@@ -188,23 +191,26 @@ function onAngularVelInput(ev: Event) {
 
 <template>
   <div class="jogHud hud-panel">
-    <!-- Increment row -->
-    <div class="incRow">
+    <div class="controlGrid">
+      <!-- Mode row -->
+      <div class="k">Mode</div>
       <button
-        v-for="opt in incrementOptions"
-        :key="opt.value"
-        class="incBtn"
-        :class="{ active: jogIncrement === opt.value }"
+        class="modeBtn"
+        :class="isTeleop ? 'teleop' : ''"
         :disabled="disabled"
-        @click="emit('update:jogIncrement', opt.value)"
-      >{{ opt.label }}</button>
-    </div>
+        @click="emit('toggleTeleop')"
+        :title="isTeleop ? 'Switch to Joint mode' : (isHomed ? 'Switch to World mode' : 'Home all axes first')"
+      >
+        {{ isTeleop ? "World" : "Joint" }}
+      </button>
+      <span v-if="!isHomed" class="modeHint">Home first</span>
+      <span v-else></span>
 
-    <!-- Speed slider(s) -->
-    <div class="velRow">
+      <!-- Linear speed row -->
+      <div class="k">{{ abcAxes.length > 0 ? 'Linear' : 'Speed' }}</div>
       <input
+        class="inp"
         type="range"
-        class="velSlider"
         :min="minJogVel"
         :max="maxJogVel"
         :step="0.1"
@@ -213,23 +219,41 @@ function onAngularVelInput(ev: Event) {
         @input="onVelInput"
       />
       <span class="sliderVal">{{ (jogVel * 60).toFixed(0) }} {{ linearUnit }}/min</span>
-    </div>
-    <div v-if="abcAxes.length > 0" class="velRow">
-      <input
-        type="range"
-        class="velSlider"
-        :min="minAngularJogVel"
-        :max="maxAngularJogVel"
-        :step="0.1"
-        :value="angularJogVel"
-        :disabled="disabled"
-        @input="onAngularVelInput"
-      />
-      <span class="sliderVal">{{ (angularJogVel * 60).toFixed(0) }} °/min</span>
+
+      <!-- Rotary speed row -->
+      <template v-if="abcAxes.length > 0">
+        <div class="k">Rotary</div>
+        <input
+          class="inp"
+          type="range"
+          :min="minAngularJogVel"
+          :max="maxAngularJogVel"
+          :step="0.1"
+          :value="angularJogVel"
+          :disabled="disabled"
+          @input="onAngularVelInput"
+        />
+        <span class="sliderVal">{{ (angularJogVel * 60).toFixed(0) }} °/min</span>
+      </template>
+
+      <!-- Step row -->
+      <div class="k">Step</div>
+      <div class="incrGroup">
+        <button
+          v-for="opt in incrementOptions"
+          :key="opt.value"
+          class="incrBtn"
+          :class="{ active: jogIncrement === opt.value }"
+          :disabled="disabled"
+          @click="emit('update:jogIncrement', opt.value)"
+        >{{ opt.label }}</button>
+      </div>
+      <span class="sliderVal" v-if="jogIncrement > 0">{{ jogIncrement }} {{ linearUnit }} /click</span>
+      <span class="sliderVal" v-else>Hold to jog</span>
     </div>
 
     <!-- Wheel + Z column + extra axes -->
-    <div class="padRow">
+    <div class="jogArea">
       <div class="jogMain">
         <svg class="jogwheel" :class="{ disabled }" viewBox="0 0 200 200">
           <path
@@ -290,64 +314,90 @@ function onAngularVelInput(ev: Event) {
   gap: 6px;
 }
 
-/* Increment row */
-.incRow {
+/* ---- Control grid (label | slider/buttons | readout) ---- */
+.controlGrid {
+  display: grid;
+  grid-template-columns: auto 1fr 80px;
+  gap: var(--gap-tight) var(--gap-controls);
+  align-items: center;
+}
+
+.k {
+  font-size: var(--fs-xs);
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.inp {
+  width: 100%;
+  min-width: 0;
+}
+
+/* ---- Mode button ---- */
+.modeBtn {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.modeBtn.teleop:not(:disabled) {
+  background: color-mix(in oklab, var(--ok) 15%, var(--button-bg));
+  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
+}
+
+.modeHint {
+  font-size: var(--fs-2xs);
+  opacity: 0.5;
+}
+
+/* ---- Increment buttons ---- */
+.incrGroup {
   display: flex;
   gap: 3px;
 }
 
-.incBtn {
+.incrBtn {
   flex: 1;
-  padding: 3px 0;
+  padding: 3px 6px;
+  border-radius: var(--radius-xl);
   font-size: var(--fs-xs);
-  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  user-select: none;
 }
 
-.incBtn.active {
+.incrBtn.active {
   background: var(--hl-selected);
-  font-weight: 600;
+  font-weight: 700;
   border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
 }
 
-/* Velocity slider */
-.velRow {
+/* ---- Wheel + Z layout ---- */
+.jogArea {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.velSlider {
-  flex: 1;
-}
-
-
-/* Wheel + Z layout */
-.padRow {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+  justify-content: center;
+  gap: var(--gap-controls);
 }
 
 .jogMain {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
 }
 
 .extraAxesRow {
   display: flex;
-  gap: 4px;
+  gap: 5px;
   justify-content: center;
 }
 
 /* Landscape: stack extra axes below wheel+Z */
 @media (orientation: landscape) {
-  .padRow { flex-direction: column; }
+  .jogArea { flex-direction: column; }
 }
 
 /* Portrait: flat row */
 @media (orientation: portrait) {
-  .padRow { flex-direction: row; }
+  .jogArea { flex-direction: row; }
 }
 
 .jogwheel {
@@ -422,12 +472,12 @@ function onAngularVelInput(ev: Event) {
 .zCol {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 17px;
   align-items: center;
 }
 
 .zCol :deep(button) {
-  width: 42px;
+  width: 68px;
   height: 68px;
 }
 
@@ -435,17 +485,17 @@ function onAngularVelInput(ev: Event) {
 .rotaryCol {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   justify-content: center;
 }
 
 .rotaryPair {
   display: flex;
-  gap: 2px;
+  gap: 0;
 }
 
 .rotaryPair :deep(button) {
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
 }
 </style>

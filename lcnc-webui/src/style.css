@@ -182,7 +182,6 @@ button {
   color: var(--fg);
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, opacity 0.15s;
-  min-width: 48px;
 }
 
 button:hover:not(:disabled) {

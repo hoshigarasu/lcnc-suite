@@ -223,7 +223,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
 
 <template>
   <div>
-    <div class="sub">Jogging</div>
+    <div class="sub">Jog</div>
 
     <div class="controlGrid">
       <!-- Mode row -->
@@ -494,7 +494,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
 
 .rotaryPair {
   display: flex;
-  gap: 4px;
+  gap: 0;
 }
 
 .rotaryPair :deep(button) {

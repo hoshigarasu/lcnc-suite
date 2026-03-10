@@ -52,16 +52,16 @@ Left column (150px) with three sections:
 
 ### HAL E-Stop Chain
 
-`lcnc_webui.hal` inserts an AND gate into the e-stop loop:
+`lcnc_webui.hal` inserts two AND gates and a heartbeat watchdog into the e-stop loop:
 
 ```
 user-enable-out ──┐
-                  AND2 ──► emc-enable-in
-connected ────────┘
+                  AND2.0 ──┐
+connected ────────┘        AND2.1 ──► emc-enable-in
+watchdog.ok ───────────────┘
 ```
 
-Machine stays enabled only when BOTH: user hasn't pressed e-stop AND at least one web client is **connected**.
-When the AND gate output drops, LinuxCNC enters **ESTOP** (task_state=1).
+Machine stays enabled only when ALL THREE: user hasn't pressed e-stop, at least one web client is **connected**, AND the gateway heartbeat is alive (watchdog hasn't tripped). When any condition drops, LinuxCNC enters **ESTOP** (task_state=1).
 
 ### Layer Behavior
 
@@ -69,20 +69,22 @@ When the AND gate output drops, LinuxCNC enters **ESTOP** (task_state=1).
 |---------|---------------|----------------|----------------|
 | Armed client, normal operation | heartbeat toggles at 30Hz | TRUE | ON |
 | Clients connected, **none armed** | heartbeat toggles at 30Hz | TRUE | **ON** |
-| No clients connected | sends `connected: false` | FALSE | **ESTOP** |
-| Last client disconnects (was armed) | `abort()` + `jog_stop()` all axes → pin drops | FALSE | **ESTOP** |
+| Last client disconnects | 3s grace period: heartbeat keeps toggling | TRUE (grace) | **ON** |
+| Grace period expires, no reconnect | pins drop | FALSE | **OFF** |
+| Page refresh (reconnect within 3s) | grace cancelled on reconnect | TRUE | **ON** |
 | Heartbeat timeout (armed), other clients exist | force-disarm + `abort()` + `jog_stop()` | TRUE | ON |
-| Heartbeat timeout (armed), last client | force-disarm + `abort()` + `jog_stop()` → pin drops | FALSE | **ESTOP** |
-| Heartbeat timeout (non-armed) | evict client; if last → pin drops | depends | depends |
+| Heartbeat timeout (armed), last client | force-disarm + `abort()` + `jog_stop()` → grace starts | TRUE (grace) | ON |
 | Gateway crashes | watchdog detects socket close → resets all pins | FALSE | **ESTOP** |
+| Gateway freezes | heartbeat stops → watchdog trips after 0.5s | TRUE | **ESTOP** |
 | User presses E-Stop | `CMD.state(ESTOP)` + forces `connected: false` | FALSE (transient) | **ESTOP** |
 
 Recovery: clear E-Stop → Machine On. Motion commands still require `require_armed()`.
 
 ### Pin Semantics
 
-- **`webui-safety.connected`**: TRUE when `bool(clients)` — any connected client keeps the machine alive; armed state gates motion commands via `require_armed()`, not the HAL pin
-- **`webui-safety.heartbeat`**: toggles every ~33ms (30Hz) while gateway has active clients; goes LOW on gateway disconnect
+- **`webui-safety.connected`**: TRUE when `bool(clients)` or during disconnect grace period — keeps machine alive; armed state gates motion commands via `require_armed()`, not the HAL pin
+- **`webui-safety.heartbeat`**: toggles every ~33ms (30Hz) while gateway has active clients or during grace period; monitored by `watchdog` component (0.5s timeout)
+- **`watchdog.ok-out-0`**: TRUE while heartbeat keeps toggling within timeout; FALSE if gateway freezes or stops sending
 
 Additional safety mechanisms:
 - **Server-authoritative arming**: Each WebSocket client independently armed/disarmed; gateway is the source of truth

@@ -10,19 +10,30 @@ loadrt not
 # Web UI safety watchdog
 loadusr -Wn webui-safety ~/lcnc-suite/lcnc-gateway/hal_watchdog.py
 
+# Heartbeat watchdog: trips if gateway stops toggling heartbeat (freeze detection)
+loadrt watchdog num_chan=1
+addf watchdog.set-timeouts servo-thread
+addf watchdog.process servo-thread
+setp watchdog.timeout-0 0.5
+net webui-heartbeat webui-safety.heartbeat => watchdog.input-0
+
 # ---- Web UI safety: require armed client to operate ----
-loadrt and2 count=1
+loadrt and2 count=2
 addf and2.0 servo-thread
+addf and2.1 servo-thread
 
 # Break the direct estop loopback (adjust if your config uses a different signal)
 unlinkp iocontrol.0.emc-enable-in
 
-# AND gate: machine runs only when BOTH conditions are true:
-#   1. User has not pressed e-stop (user-enable-out = TRUE)
+# Safety chain: machine runs only when ALL conditions are true:
+#   1. User has not pressed e-stop (estop-loop = TRUE)
 #   2. A web client is connected (webui-safety.connected = TRUE)
+#   3. Gateway heartbeat is alive (watchdog.ok-out-0 = TRUE)
 net estop-loop                    => and2.0.in0
 net webui-connected webui-safety.connected => and2.0.in1
-net estop-out and2.0.out          => iocontrol.0.emc-enable-in
+net estop-connected and2.0.out    => and2.1.in0
+net webui-hb-ok watchdog.ok-out-0 => and2.1.in1
+net estop-out and2.1.out          => iocontrol.0.emc-enable-in
 
 addf time.0 servo-thread
 addf not.0 servo-thread

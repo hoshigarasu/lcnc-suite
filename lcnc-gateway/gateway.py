@@ -55,6 +55,8 @@ import socket as _socket
 _HAL_SOCK_PATH = "/tmp/webui-safety.sock"
 _hal_sock: Optional[_socket.socket] = None
 _hal_last_hb = False
+_disconnect_grace_task: Optional[asyncio.Task] = None
+_DISCONNECT_GRACE_SEC = 3.0  # covers 2s frontend reconnect delay
 
 def _hal_connect():
     """Connect to the HAL watchdog Unix socket. Non-fatal if unavailable."""
@@ -98,6 +100,34 @@ def _hal_send(msg: dict):
             _hal_sock.sendall((json.dumps(msg) + "\n").encode())
         except Exception:
             _hal_sock = None  # will reconnect on next send
+
+
+async def _disconnect_grace():
+    """Keep heartbeat alive while waiting for reconnect, then drop pins."""
+    global _hal_last_hb
+    ticks = int(_DISCONNECT_GRACE_SEC * POLL_HZ)
+    for _ in range(ticks):
+        if _clients:
+            return  # client reconnected during grace
+        _hal_last_hb = not _hal_last_hb
+        _hal_send({"heartbeat": _hal_last_hb, "connected": True})
+        await asyncio.sleep(1.0 / POLL_HZ)
+    if not _clients:
+        _hal_send({"connected": False, "heartbeat": False})
+
+
+def _start_disconnect_grace():
+    global _disconnect_grace_task
+    if _disconnect_grace_task and not _disconnect_grace_task.done():
+        return  # already running
+    _disconnect_grace_task = asyncio.get_event_loop().create_task(_disconnect_grace())
+
+
+def _cancel_disconnect_grace():
+    global _disconnect_grace_task
+    if _disconnect_grace_task and not _disconnect_grace_task.done():
+        _disconnect_grace_task.cancel()
+    _disconnect_grace_task = None
 
 
 def _get_lcnc_pid() -> Optional[int]:
@@ -2779,6 +2809,7 @@ async def ws_endpoint(ws: WebSocket):
     _next_client_id += 1
     client_ip = ws.client.host if ws.client else "unknown"
     _clients[client_id] = {"ip": client_ip, "armed": False, "last_hb": time.time()}
+    _cancel_disconnect_grace()
 
     # Restore lcnc_connected if LinuxCNC is still running but the flag was
     # cleared by a previous connection's WebSocket error
@@ -3213,4 +3244,8 @@ async def ws_endpoint(ws: WebSocket):
         status_task.cancel()
         # Update HAL pins to reflect this client is gone
         has_clients = bool(_clients)
-        _hal_send({"connected": has_clients, "heartbeat": False})
+        if has_clients:
+            _hal_send({"connected": True, "heartbeat": False})
+        else:
+            # Grace period: delay dropping connected pin to allow page refresh
+            _start_disconnect_grace()

@@ -358,6 +358,7 @@ def get_nc_files_dir() -> str:
 TOOL_LIBRARY_PATH = BASE_DIR / "tool_library.json"
 _tool_tbl_path: Optional[str] = None
 _tool_tbl_ini: Optional[str] = None
+_tool_meta_dirty = False
 
 _TOOL_TP_RE = re.compile(r"T(\d+)\s+P(\d+)")
 _TOOL_FIELD_RE = re.compile(r"([XYZD])([+-]?[\d.]+)")
@@ -1422,6 +1423,8 @@ def handle_command(msg: Dict[str, Any], armed: bool):
                 if field in msg:
                     library[key][field] = msg[field]
             save_tool_library(library)
+            global _tool_meta_dirty
+            _tool_meta_dirty = True
             return {"ok": True}
 
         if cmd == "add_tool":
@@ -2850,7 +2853,7 @@ async def ws_endpoint(ws: WebSocket):
 
     async def status_loop():
         nonlocal last_file, armed, viewer_init_sent, _poll_fails, _probe_results, _prev_tc_req, _prev_tool_num
-        global lcnc_connected, STAT, CMD, ERR, _hal_last_hb, _reconnect_fails
+        global lcnc_connected, STAT, CMD, ERR, _hal_last_hb, _reconnect_fails, _tool_meta_dirty
         loop = asyncio.get_event_loop()
         while True:
             try:
@@ -2949,9 +2952,10 @@ async def ws_endpoint(ws: WebSocket):
                 if _probe_results:
                     status_msg["probe_results"] = _probe_results
 
-                # Inject tool_meta on tool_number change (for 3D rendering)
-                if st.tool_number != _prev_tool_num:
+                # Inject tool_meta on tool_number change or library edit (for 3D rendering)
+                if st.tool_number != _prev_tool_num or _tool_meta_dirty:
                     _prev_tool_num = st.tool_number
+                    _tool_meta_dirty = False
                     if st.tool_number is not None:
                         try:
                             _lib = load_tool_library()

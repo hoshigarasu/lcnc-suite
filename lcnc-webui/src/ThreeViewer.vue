@@ -1453,24 +1453,42 @@ function applyState(init: ViewerInit, st: ViewerState) {
       if (visMesh) visMesh.userData.toolVis = { r: diam * 0.5, L: visLen };
 
     } else if (toolBodyMesh || toolCutterMesh) {
-      // Same tool — rebuild geometry only if diam/length changed
-      const r = Math.max(0.2, diam * 0.5);
-      const visMesh = toolBodyMesh ?? toolCutterMesh;
-      const prev = (visMesh!.userData.toolVis as any) || {};
-      const changed = Math.abs((prev.r ?? 0) - r) > 0.01
-                   || Math.abs((prev.L ?? 0) - visLen) > 0.5;
-      if (changed) {
-        const { pts, fluteY } = buildToolProfile(diam, visLen, _lastToolMeta);
-        const { cutter, shaft } = splitProfileAt(pts, fluteY);
-        if (toolCutterMesh && cutter.length >= 3) {
-          toolCutterMesh.geometry.dispose();
-          toolCutterMesh.geometry = buildToolGeometry(cutter);
+      // Check if tool_meta changed (e.g. shaft_diameter edited in tool table)
+      if (meta && JSON.stringify(meta) !== JSON.stringify(_lastToolMeta)) {
+        _lastToolMeta = meta;
+        if (toolNum != null) _toolMetaCache.set(toolNum, meta);
+        // Full rebuild with new metadata
+        if (toolMarker) {
+          _toolGrp!.remove(toolMarker);
+          disposeObject(toolMarker);
+          toolCutterMesh = null;
+          toolBodyMesh = null;
+          holderMesh = null;
         }
-        if (toolBodyMesh && shaft.length >= 3) {
-          toolBodyMesh.geometry.dispose();
-          toolBodyMesh.geometry = buildToolGeometry(shaft);
+        toolMarker = buildToolGroup(diam, visLen, _lastToolMeta);
+        _toolGrp!.add(toolMarker);
+        const visMesh = toolBodyMesh ?? toolCutterMesh;
+        if (visMesh) visMesh.userData.toolVis = { r: diam * 0.5, L: visLen };
+      } else {
+        // Same tool, same meta — rebuild geometry only if diam/length changed
+        const r = Math.max(0.2, diam * 0.5);
+        const visMesh = toolBodyMesh ?? toolCutterMesh;
+        const prev = (visMesh!.userData.toolVis as any) || {};
+        const changed = Math.abs((prev.r ?? 0) - r) > 0.01
+                     || Math.abs((prev.L ?? 0) - visLen) > 0.5;
+        if (changed) {
+          const { pts, fluteY } = buildToolProfile(diam, visLen, _lastToolMeta);
+          const { cutter, shaft } = splitProfileAt(pts, fluteY);
+          if (toolCutterMesh && cutter.length >= 3) {
+            toolCutterMesh.geometry.dispose();
+            toolCutterMesh.geometry = buildToolGeometry(cutter);
+          }
+          if (toolBodyMesh && shaft.length >= 3) {
+            toolBodyMesh.geometry.dispose();
+            toolBodyMesh.geometry = buildToolGeometry(shaft);
+          }
+          visMesh!.userData.toolVis = { r, L: visLen };
         }
-        visMesh!.userData.toolVis = { r, L: visLen };
       }
     }
   }

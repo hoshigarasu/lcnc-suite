@@ -176,66 +176,132 @@ BY USING THIS SOFTWARE, YOU EXPRESSLY ACKNOWLEDGE AND ASSUME ALL RISKS ASSOCIATE
 
 ## Installation
 
-### 1. Clone the Repository
+### Option A: Automated
 
 ```bash
 git clone https://github.com/bildobodo/lcnc-suite.git
 cd lcnc-suite
+./install.sh          # checks dependencies, creates venv, installs npm packages
+cd lcnc-webui && npm run build && cd ..   # build frontend for production
 ```
 
-### 2. Setup Gateway
+### Option B: Manual
+
+**Prerequisites:** LinuxCNC 2.8+ with Python bindings, Python 3.9+, Node.js 20.19+ or 22+, npm, git-lfs
 
 ```bash
-cd lcnc-gateway
-./setup-venv.sh  # Creates venv with system-site-packages for LinuxCNC
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+# 1. Clone
+git clone https://github.com/bildobodo/lcnc-suite.git
+cd lcnc-suite
+git lfs pull
 
-### 3. Setup Web UI (Optional)
+# 2. Python venv (--system-site-packages required for linuxcnc bindings)
+python3 -m venv lcnc-gateway/.venv --system-site-packages
+source lcnc-gateway/.venv/bin/activate
+pip install -r lcnc-gateway/requirements.txt
+deactivate
 
-```bash
-cd ../lcnc-webui
+# 3. Node.js dependencies
+cd lcnc-webui
 npm install
+
+# 4. Build frontend for production
+npm run build
+cd ..
 ```
+
+### Configure LinuxCNC
+
+After installing (either option), configure your machine:
+
+#### 1. Symlink launcher to PATH
+
+LinuxCNC does not expand `~` in DISPLAY paths — the launcher must be on PATH.
+
+```bash
+mkdir -p ~/.local/bin
+ln -sf "$(pwd)/lcnc-suite" ~/.local/bin/lcnc-suite
+
+# Verify:
+which lcnc-suite    # should print ~/.local/bin/lcnc-suite
+```
+
+#### 2. INI `[DISPLAY]` section
+
+Add these to your machine's INI file:
+
+```ini
+[DISPLAY]
+DISPLAY = lcnc-suite
+WEBUI_HOST = 0.0.0.0
+WEBUI_PORT = 8000
+WEBUI_BROWSER = 1
+WEBUI_DEV = 0
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEBUI_HOST` | `0.0.0.0` | `127.0.0.1` = localhost only, `0.0.0.0` = LAN accessible |
+| `WEBUI_PORT` | `8000` | HTTP and WebSocket port |
+| `WEBUI_BROWSER` | `1` | Auto-open browser on start (`0` to disable) |
+| `WEBUI_DEV` | `0` | `1` = Vite dev server on :5173 with hot-reload |
+
+Environment variables `LCNC_WEBUI_HOST`, `LCNC_WEBUI_PORT`, `LCNC_WEBUI_BROWSER`, `LCNC_WEBUI_DEV` override INI values.
+
+#### 3. HAL safety chain
+
+The gateway uses a HAL watchdog component for the e-stop safety chain. Copy the example HAL file to your machine config and add it to your INI:
+
+```bash
+cp examples/sim_config/hallib/lcnc_webui.hal /path/to/your/config/hallib/
+```
+
+Then add to your INI `[HAL]` section:
+
+```ini
+[HAL]
+HALFILE = hallib/lcnc_webui.hal
+```
+
+The HAL file wires three safety conditions into the e-stop chain:
+1. **E-stop clear** — user hasn't pressed e-stop
+2. **Client connected** — at least one web client is connected (or within 3s grace period)
+3. **Heartbeat alive** — gateway is responsive (watchdog trips after 0.5s if frozen)
+
+All three must be TRUE for the machine to stay enabled. See [Setting Up the HAL Watchdog](#setting-up-the-hal-watchdog) for the full wiring details and notes on adapting to non-sim configs.
+
+**Important:** The `unlinkp iocontrol.0.emc-enable-in` line in the HAL file must match your existing e-stop topology. Check your HAL files to see what currently drives this pin.
 
 ## Quick Start
 
-### Using the Launcher Script
-
-The easiest way to run both services:
+### Production
 
 ```bash
-# Localhost only (default)
-./restart.sh local
-
-# Accessible from LAN
-./restart.sh lan
+linuxcnc your_machine.ini    # single command — starts everything
 ```
 
-The script will:
-- Stop any existing instances
-- Start the gateway on port 8000
-- Start the web UI on port 5173
-- Perform health checks
-- Open your browser automatically
+The launcher serves the built frontend at `http://localhost:8000` (or your configured port). Other devices on the LAN can connect at `http://<machine-ip>:8000`.
 
-Logs are saved to `runlogs/`
+### Development (hot-reload)
 
-### Manual Start
+Set `WEBUI_DEV = 1` in your INI, then:
 
-**Gateway:**
 ```bash
-cd lcnc-gateway
-source .venv/bin/activate
-uvicorn gateway:app --host 127.0.0.1 --port 8000
+linuxcnc your_machine.ini
 ```
 
-**Web UI:**
+This starts both the Vite dev server on `:5173` (with hot-reload) and the gateway on `:8000`. The browser opens to `:5173` where Vite proxies API/WebSocket requests to the gateway.
+
+### Standalone (without LinuxCNC DISPLAY)
+
+If you prefer to manage processes separately:
+
 ```bash
-cd lcnc-webui
-npm run dev -- --host 127.0.0.1 --port 5173
+./restart.sh local    # localhost only
+./restart.sh lan      # LAN accessible
 ```
+
+This starts the gateway on :8000 and Vite dev server on :5173. Logs go to `runlogs/`.
 
 ## WebSocket API
 
@@ -931,8 +997,10 @@ lcnc-suite/
 │   ├── probe_basic/           # Probing routines (from kcjengr/probe_basic, GPL v3)
 │   ├── tool_length_probe/     # Tool measurement (from TooTall18T, GPL v3)
 │   └── surfacemap/            # Surface scanning + compensation (from mhubig/surfacemap_usertab, GPL v2+)
-├── restart.sh                 # Start/restart gateway + web UI
+├── lcnc-suite                 # LinuxCNC DISPLAY launcher (symlink to ~/.local/bin/)
+├── restart.sh                 # Start/restart gateway + web UI (standalone)
 ├── kill.sh                    # Stop gateway + web UI
+├── install.sh                 # Automated dependency installer
 ├── runlogs/                   # Application logs
 └── README.md
 ```

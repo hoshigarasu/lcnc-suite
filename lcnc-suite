@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# LinuxCNC DISPLAY launcher for lcnc-suite
+# Usage: lcnc-suite -ini /path/to/machine.ini
+#   or:  [DISPLAY] DISPLAY = lcnc-suite   in your INI file
+set -euo pipefail
+
+# Resolve real path (follows symlinks so PATH/symlink installs work)
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+GATEWAY_DIR="$SCRIPT_DIR/lcnc-gateway"
+WEBUI_DIR="$SCRIPT_DIR/lcnc-webui"
+DIST_DIR="$WEBUI_DIR/dist"
+
+# ── Parse -ini argument (LinuxCNC passes: lcnc-suite -ini /path/to.ini) ──
+INI_FILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -ini) INI_FILE="$2"; shift 2 ;;
+    *)    shift ;;
+  esac
+done
+
+# ── Read optional config from INI [DISPLAY] section ──
+ini_get() {
+  # Returns value or empty string if not found
+  inivar -ini "$INI_FILE" -sec DISPLAY -var "$1" 2>/dev/null || true
+}
+
+if [[ -n "$INI_FILE" ]]; then
+  HOST="${LCNC_WEBUI_HOST:-$(ini_get WEBUI_HOST)}"
+  PORT="${LCNC_WEBUI_PORT:-$(ini_get WEBUI_PORT)}"
+  BROWSER="${LCNC_WEBUI_BROWSER:-$(ini_get WEBUI_BROWSER)}"
+  DEV="${LCNC_WEBUI_DEV:-$(ini_get WEBUI_DEV)}"
+else
+  HOST="${LCNC_WEBUI_HOST:-}"
+  PORT="${LCNC_WEBUI_PORT:-}"
+  BROWSER="${LCNC_WEBUI_BROWSER:-}"
+  DEV="${LCNC_WEBUI_DEV:-}"
+fi
+
+# Apply defaults
+HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-8000}"
+BROWSER="${BROWSER:-1}"
+DEV="${DEV:-0}"
+
+VITE_PORT="5173"
+
+# Pass INI path if available
+[[ -n "$INI_FILE" ]] && export LCNC_INI_FILE="$INI_FILE"
+
+# ── Ensure NVM Node is on PATH (LinuxCNC may launch with minimal PATH) ──
+if [[ -s "$HOME/.nvm/nvm.sh" ]]; then
+  source "$HOME/.nvm/nvm.sh"
+fi
+
+# ── Activate Python venv ──
+source "$GATEWAY_DIR/.venv/bin/activate"
+
+# ── Dev mode: Vite hot-reload + gateway ──
+if [[ "$DEV" == "1" ]]; then
+  echo "lcnc-suite: DEV mode — Vite on :$VITE_PORT, gateway on :$PORT"
+
+  VITE_PID=""
+  GW_PID=""
+
+  cleanup() {
+    [[ -n "$VITE_PID" ]] && kill "$VITE_PID" 2>/dev/null || true
+    [[ -n "$GW_PID" ]]   && kill "$GW_PID"   2>/dev/null || true
+    wait 2>/dev/null || true
+  }
+  trap cleanup EXIT INT TERM
+
+  # Start Vite dev server in background
+  (cd "$WEBUI_DIR" && exec npm run dev -- --host "$HOST" --port "$VITE_PORT" --strictPort) &
+  VITE_PID=$!
+
+  # Open browser to Vite port
+  if [[ "$BROWSER" == "1" ]]; then
+    ( sleep 2 && xdg-open "http://localhost:$VITE_PORT" 2>/dev/null ) &
+  fi
+
+  # Run gateway in foreground (no DIST_DIR — Vite serves frontend)
+  python3 -m uvicorn gateway:app --host "$HOST" --port "$PORT" --app-dir "$GATEWAY_DIR"
+  exit $?
+fi
+
+# ── Production mode: gateway serves built frontend ──
+if [[ ! -f "$DIST_DIR/index.html" ]]; then
+  echo "ERROR: Built frontend not found at $DIST_DIR" >&2
+  echo "Run:  cd $WEBUI_DIR && npm run build" >&2
+  exit 1
+fi
+
+export LCNC_WEBUI_DIST_DIR="$DIST_DIR"
+
+if [[ "$BROWSER" == "1" ]]; then
+  ( sleep 1.5 && xdg-open "http://localhost:$PORT" 2>/dev/null ) &
+fi
+
+echo "lcnc-suite: serving on http://$HOST:$PORT"
+
+# exec replaces shell — signals go directly to uvicorn for clean shutdown
+exec python3 -m uvicorn gateway:app --host "$HOST" --port "$PORT" --app-dir "$GATEWAY_DIR"

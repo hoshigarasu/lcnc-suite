@@ -2350,12 +2350,13 @@ app.add_middleware(
 )
 
 class CacheStaticAssets:
-    """Pure ASGI middleware — adds Cache-Control to /assets/ responses without buffering."""
+    """Pure ASGI middleware — adds Cache-Control to /assets/ and /static/ responses."""
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or not scope["path"].startswith("/assets/"):
+        p = scope.get("path", "")
+        if scope["type"] != "http" or not (p.startswith("/assets/") or p.startswith("/static/")):
             await self.app(scope, receive, send)
             return
 
@@ -3249,3 +3250,11 @@ async def ws_endpoint(ws: WebSocket):
         else:
             # Grace period: delay dropping connected pin to allow page refresh
             _start_disconnect_grace()
+
+
+# ── Production SPA mount (only when LCNC_WEBUI_DIST_DIR is set) ──────────
+# MUST be after @app.websocket("/ws") — Starlette matches routes in order,
+# and mount("/") is a catch-all that would swallow WebSocket connections.
+_DIST_DIR = os.environ.get("LCNC_WEBUI_DIST_DIR")
+if _DIST_DIR and Path(_DIST_DIR).is_dir():
+    app.mount("/", StaticFiles(directory=_DIST_DIR, html=True), name="spa")

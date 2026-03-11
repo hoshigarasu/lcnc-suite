@@ -4,6 +4,9 @@ import vue from '@vitejs/plugin-vue'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  build: {
+    assetsDir: 'static',  // avoid conflict with gateway /assets mount (machine STLs)
+  },
   server: {
     proxy: {
       '/ws': {

@@ -175,15 +175,50 @@ The `tool_touch_off.ngc` subroutine reads parameters from the LinuxCNC var file 
 - `CMD.wait_complete()` in gateway blocks the WebSocket receive loop → heartbeat timeout → disarm. Use fire-and-forget instead.
 - Scoped CSS styles (e.g. `button.primary` in App.vue) don't apply in child components — put shared button styles in global `style.css`
 
-## Future: Production DISPLAY Integration
+## Production DISPLAY Integration
 
-Status: deferred (still in development — Vite hot-reload is more productive)
+The `lcnc-suite` launcher script lets LinuxCNC start the gateway as its native display:
 
-LinuxCNC can launch lcnc-suite as its native display:
-1. `npm run build` → static dist/ folder
-2. Gateway serves dist/ via `StaticFiles` mount (no Node at runtime)
-3. Launcher script on PATH accepts `-ini`, runs uvicorn in foreground
-4. INI: `[DISPLAY] DISPLAY = lcnc-webui`
-5. LinuxCNC blocks on display, cleans up when it exits
+```
+linuxcnc my_machine.ini    # single command — starts everything
+```
+
+**Setup:**
+```bash
+# 1. Build the frontend (once, and after any frontend changes)
+cd lcnc-webui && npm run build
+
+# 2. Symlink launcher to PATH so LinuxCNC can find it
+#    (LinuxCNC does not expand ~ in DISPLAY paths — must be on PATH)
+mkdir -p ~/.local/bin
+ln -sf "$(pwd)/../lcnc-suite" ~/.local/bin/lcnc-suite
+
+# 3. Verify
+which lcnc-suite    # should print ~/.local/bin/lcnc-suite
+
+# 4. Set DISPLAY in your machine INI [DISPLAY] section:
+#    DISPLAY = lcnc-suite
+```
+
+**How it works:**
+1. LinuxCNC launches `lcnc-suite -ini /path/to.ini` as a subprocess
+2. Launcher sources NVM (for correct Node version), activates Python venv
+3. Reads `WEBUI_*` config from INI `[DISPLAY]` section via `inivar`
+4. Production (`WEBUI_DEV=0`): exports `LCNC_WEBUI_DIST_DIR`, `exec`s uvicorn serving API + built frontend
+5. Dev (`WEBUI_DEV=1`): starts Vite on :5173 (hot-reload) + gateway on :8000, cleans up both on exit
+6. LinuxCNC blocks on the display process; SIGTERM triggers clean HAL shutdown
+
+**INI configuration** (`[DISPLAY]` section):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEBUI_HOST` | `0.0.0.0` | `127.0.0.1` for local, `0.0.0.0` for LAN |
+| `WEBUI_PORT` | `8000` | HTTP/WebSocket port |
+| `WEBUI_BROWSER` | `1` | Auto-open browser on start |
+| `WEBUI_DEV` | `0` | `1` = Vite dev server on :5173 (hot-reload) |
+
+Environment variables `LCNC_WEBUI_HOST`, `LCNC_WEBUI_PORT`, `LCNC_WEBUI_BROWSER`, `LCNC_WEBUI_DEV` override INI values.
+
+**Development mode:** Set `WEBUI_DEV = 1` — launcher starts Vite on :5173 (hot-reload) alongside the gateway on :8000. Browser opens to :5173 where Vite proxies API/WS to the gateway.
 
 For headless/no-UI: `DISPLAY = dummy` (zero overhead, gateway connects separately).

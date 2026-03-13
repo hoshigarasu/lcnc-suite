@@ -276,7 +276,7 @@ The HAL file wires three safety conditions into the e-stop chain:
 
 All three must be TRUE for the machine to stay enabled. See [Setting Up the HAL Watchdog](#setting-up-the-hal-watchdog) for the full wiring details and notes on adapting to non-sim configs.
 
-**Important:** The `unlinkp iocontrol.0.emc-enable-in` line in the HAL file must match your existing e-stop topology. Check your HAL files to see what currently drives this pin.
+**Important:** The example HAL file uses `unlinkp` + AND2 gates, which works for simple sim configs. On real machines with multi-input e-stop gates, expand the existing gate instead — see [Setting Up the HAL Watchdog](#setting-up-the-hal-watchdog) for details.
 
 ## Quick Start
 
@@ -585,7 +585,7 @@ Recovery: clear E-Stop → Machine On. Motion commands still require `require_ar
 | `webui-safety.compensation-enable` | BIT OUT | Enables surface compensation Z offsets |
 | `webui-safety.compensation-method` | U32 OUT | Interpolation method (0=nearest, 1=linear, 2=cubic) |
 | `webui-safety.tool-changed` | BIT OUT | Tool change confirmation from web UI |
-| `watchdog.ok-out-0` | BIT OUT | TRUE while heartbeat toggles within timeout; FALSE on gateway freeze |
+| `watchdog.ok-out` | BIT OUT | TRUE while heartbeat toggles within timeout; FALSE on gateway freeze |
 
 Because the watchdog is owned by LinuxCNC, the HAL pins survive gateway restarts. If the gateway crashes or disconnects, the watchdog immediately forces all pins LOW, triggering e-stop through the safety chain. If the gateway freezes, the heartbeat watchdog trips independently.
 
@@ -598,10 +598,11 @@ Add the following to a **HALFILE** in your LinuxCNC config (runs after the core 
 loadusr -Wn webui-safety /path/to/lcnc-suite/lcnc-gateway/hal_watchdog.py
 
 # 2. Heartbeat watchdog: trips if gateway stops toggling (freeze detection)
-loadrt watchdog num_chan=1
+loadrt watchdog num_inputs=1
 addf watchdog.set-timeouts servo-thread
 addf watchdog.process servo-thread
 setp watchdog.timeout-0 0.5
+setp watchdog.enable-in 1
 net webui-heartbeat webui-safety.heartbeat => watchdog.input-0
 
 # 3. Create two AND gates for the e-stop chain
@@ -620,11 +621,11 @@ unlinkp iocontrol.0.emc-enable-in
 net estop-loop                    => and2.0.in0
 net webui-connected webui-safety.connected => and2.0.in1
 net estop-connected and2.0.out    => and2.1.in0
-net webui-hb-ok watchdog.ok-out-0 => and2.1.in1
-net estop-out and2.1.out          => iocontrol.0.emc-enable-in
+net webui-hb-ok watchdog.ok-out   => and2.1.in1
+net webui-estop-final and2.1.out  => iocontrol.0.emc-enable-in
 ```
 
-**Notes for non-sim configs**: The `unlinkp` line must match whatever pin currently drives `iocontrol.0.emc-enable-in` in your setup. Check your existing HAL files to identify the current e-stop topology before inserting the AND gates.
+**Notes for non-sim configs**: The `unlinkp` + AND2 approach above works for simple e-stop loopbacks (sim configs). On real machines, the e-stop chain is typically already a multi-input gate (e.g., `lut5` or `logic` component with personality bits). The preferred approach is to **expand the existing gate** by adding `webui-safety.connected` and `watchdog.ok-out` as additional inputs — no `unlinkp`, no extra AND2 components. For example, if your e-stop uses a `logic` component with personality `0x106` (6 inputs), change it to `0x108` (8 inputs) and wire the two webui conditions as inputs 6 and 7.
 
 **Startup order does not matter**: The gateway and LinuxCNC can start in any order. The gateway retries the watchdog socket connection automatically, and the watchdog defaults both pins to FALSE until the gateway connects and reports an armed client.
 
@@ -634,7 +635,7 @@ halcmd show pin webui-safety
 halcmd show pin watchdog
 halcmd show sig webui-connected
 halcmd show sig webui-hb-ok
-halcmd show sig estop-out
+halcmd show sig webui-estop-final
 ```
 
 ## Building Your Own UI

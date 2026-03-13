@@ -86,7 +86,7 @@ Recovery: clear E-Stop → Machine On. Motion commands still require `require_ar
 
 - **`webui-safety.connected`**: TRUE when `bool(clients)` or during disconnect grace period — keeps machine alive; armed state gates motion commands via `require_armed()`, not the HAL pin
 - **`webui-safety.heartbeat`**: toggles every ~33ms (30Hz) while gateway has active clients or during grace period; monitored by `watchdog` component (0.5s timeout)
-- **`watchdog.ok-out-0`**: TRUE while heartbeat keeps toggling within timeout; FALSE if gateway freezes or stops sending
+- **`watchdog.ok-out`**: TRUE while heartbeat keeps toggling within timeout; FALSE if gateway freezes or stops sending
 
 Additional safety mechanisms:
 - **Server-authoritative arming**: Each WebSocket client independently armed/disarmed; gateway is the source of truth

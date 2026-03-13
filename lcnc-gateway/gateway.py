@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 import re
 import shutil
 import tempfile
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -550,6 +550,75 @@ _TOOL_META_FIELDS = (
     "tip_diameter", "material", "holder", "holder_segments",
     "assembly_gauge_length", "profile",
 )
+
+
+# ---- Server-Side Settings ----
+SETTINGS_PATH = BASE_DIR / "settings.json"
+_settings_version = 0
+_settings_cache: Optional[dict] = None
+_VALID_SETTINGS_SECTIONS = {"macros", "machine", "viewer", "camera", "mdi"}
+
+
+def _load_settings_all() -> dict:
+    """Load the full settings.json (all configs)."""
+    global _settings_cache
+    if _settings_cache is not None:
+        return _settings_cache
+    if SETTINGS_PATH.exists():
+        try:
+            with open(SETTINGS_PATH, "r") as f:
+                _settings_cache = json.load(f)
+                return _settings_cache
+        except Exception:
+            pass
+    _settings_cache = {}
+    return _settings_cache
+
+
+def _save_settings_all(all_data: dict):
+    """Write settings.json atomically."""
+    global _settings_cache
+    fd, tmp = tempfile.mkstemp(dir=str(SETTINGS_PATH.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(all_data, f, indent=2)
+        os.rename(tmp, str(SETTINGS_PATH))
+        _settings_cache = all_data
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        raise
+
+
+def load_settings() -> dict:
+    """Load settings for the current INI config."""
+    all_data = _load_settings_all()
+    return all_data.get(_current_ini_path(), {})
+
+
+def save_settings_section(section: str, data):
+    """Save a single settings section for the current INI config."""
+    global _settings_version
+    all_data = _load_settings_all()
+    ini = _current_ini_path()
+    if ini not in all_data:
+        all_data[ini] = {}
+    all_data[ini][section] = data
+    _save_settings_all(all_data)
+    _settings_version += 1
+
+
+def reset_settings():
+    """Reset all settings for the current INI config."""
+    global _settings_version
+    all_data = _load_settings_all()
+    ini = _current_ini_path()
+    if ini in all_data:
+        del all_data[ini]
+        _save_settings_all(all_data)
+    _settings_version += 1
 
 
 def _merge_tool_data(tbl_tools: list, library: dict) -> list:
@@ -2896,6 +2965,7 @@ async def ws_endpoint(ws: WebSocket):
         nonlocal last_file, armed, viewer_init_sent, _poll_fails, _probe_results, _prev_tc_req, _prev_tool_num
         global lcnc_connected, STAT, CMD, ERR, _hal_last_hb, _reconnect_fails, _tool_meta_dirty
         loop = asyncio.get_event_loop()
+        _last_settings_ver = _settings_version
         while True:
             try:
                 # If not connected to LinuxCNC, try to reconnect
@@ -3014,6 +3084,19 @@ async def ws_endpoint(ws: WebSocket):
                             pass
 
                 await ws_send_json(ws, status_msg)
+
+                # Settings broadcast: send full settings when version changes
+                if _last_settings_ver != _settings_version:
+                    _last_settings_ver = _settings_version
+                    try:
+                        _ss = await loop.run_in_executor(None, load_settings)
+                        await ws_send_json(ws, {
+                            "type": "settings_changed",
+                            "settings": _ss,
+                            "armed": armed,
+                        })
+                    except Exception:
+                        pass
 
                 # Tool change: auto-deassert when request clears
                 if _prev_tc_req and not st.tool_change_requested:
@@ -3157,6 +3240,16 @@ async def ws_endpoint(ws: WebSocket):
                     _clients[client_id]["armed"] = armed
                     _clients[client_id]["last_hb"] = time.time()  # reset on arm change
                 await ws_send_json(ws, {"type": "reply", "ok": True, "armed": armed})
+                continue
+
+            if msg.get("cmd") == "save_settings":
+                section = msg.get("section", "")
+                if section not in _VALID_SETTINGS_SECTIONS:
+                    await ws_send_json(ws, {"type": "reply", "ok": False, "error": f"Unknown settings section: {section}"})
+                    continue
+                _loop = asyncio.get_event_loop()
+                await _loop.run_in_executor(None, save_settings_section, section, msg.get("data"))
+                await ws_send_json(ws, {"type": "reply", "ok": True})
                 continue
 
             if msg.get("cmd") == "simulate_probe_trip":
@@ -3311,6 +3404,33 @@ def _camera_release():
         if _camera is not None:
             _camera.release()
             _camera = None
+
+# ---- Server-Side Settings Endpoints ----
+
+@app.get("/settings")
+async def get_settings():
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, load_settings)
+    return {"ok": True, "settings": data}
+
+
+@app.put("/settings/{section}")
+async def put_settings_section(section: str, request: Request):
+    if section not in _VALID_SETTINGS_SECTIONS:
+        return {"ok": False, "error": f"Unknown section: {section}"}
+    body = await request.json()
+    data = body.get("data")
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, save_settings_section, section, data)
+    return {"ok": True}
+
+
+@app.delete("/settings")
+async def delete_settings():
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, reset_settings)
+    return {"ok": True}
+
 
 from starlette.responses import StreamingResponse, JSONResponse
 

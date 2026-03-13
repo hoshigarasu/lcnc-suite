@@ -100,4 +100,6 @@ export type WsCommand =
   // Heartbeat
   | { cmd: "heartbeat" }
   // Shutdown
-  | { cmd: "shutdown" };
+  | { cmd: "shutdown" }
+  // Settings
+  | { cmd: "save_settings"; section: string; data: any };

@@ -125,6 +125,27 @@ export async function fetchG30(): Promise<G30Response> {
   return resp.json();
 }
 
+/** ---------- Server-side settings ---------- */
+
+export async function fetchSettings(): Promise<Record<string, any>> {
+  const resp = await fetch(`${getBaseUrl()}/settings`);
+  if (!resp.ok) return {};
+  const json = await resp.json();
+  return json.settings ?? {};
+}
+
+export async function saveSettingsSection(section: string, data: any): Promise<void> {
+  await fetch(`${getBaseUrl()}/settings/${section}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data }),
+  }).catch(() => {});
+}
+
+export async function resetServerSettings(): Promise<void> {
+  await fetch(`${getBaseUrl()}/settings`, { method: "DELETE" }).catch(() => {});
+}
+
 export async function uploadFile(file: File): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("file", file);

@@ -1,5 +1,6 @@
 import { ref, shallowRef } from "vue";
 import { type WsCommand, OPERATOR_ERROR } from "./lcnc";
+import { updateServerCache } from "./defaults";
 
 export interface LcncMessage {
   id: number;
@@ -161,6 +162,8 @@ export function connectWs() {
       viewerInit.value = msg.data;
     } else if (msg.type === "viewer_gcode") {
       viewerGcode.value = msg.data;
+    } else if (msg.type === "settings_changed") {
+      updateServerCache(msg.settings);
     }
   };
 
@@ -174,6 +177,10 @@ export function send(obj: WsCommand) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(obj));
   }
+}
+
+export function saveSettings(section: string, data: any) {
+  send({ cmd: "save_settings", section, data });
 }
 
 export function dismissMessage(id: number) {

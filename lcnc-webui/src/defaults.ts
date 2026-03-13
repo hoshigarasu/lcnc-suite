@@ -68,8 +68,35 @@ export function registerSection<T>(key: string, fallback: T, merge: (saved: any,
 
 // ─── Storage I/O ─────────────────────────────────────────────────
 
+/** Sections stored on the server (shared across all clients). */
+const SERVER_SECTIONS = new Set(["macros", "machine", "viewer", "camera", "mdi"]);
+
 /** In-memory cache — localStorage is read at most once per page load. */
 let _cache: Record<string, any> | null = null;
+
+/** Server-side data populated before app mount. */
+let _serverData: Record<string, any> = {};
+
+/** Debounce timers for server saves. */
+const _saveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+/** Called once from main.ts before createApp().mount(). */
+export function initServerDefaults(data: Record<string, any>): void {
+  _serverData = data;
+  if (!_cache) _cache = {};
+  for (const [key, val] of Object.entries(data)) {
+    _cache[key] = val;
+  }
+}
+
+/** Called from lcncWs.ts when another client changes settings. */
+export function updateServerCache(data: Record<string, any>): void {
+  _serverData = data;
+  if (!_cache) _cache = {};
+  for (const [key, val] of Object.entries(data)) {
+    _cache[key] = val;
+  }
+}
 
 function readAll(): Record<string, any> {
   if (_cache) return _cache;
@@ -82,14 +109,20 @@ function readAll(): Record<string, any> {
       // → wrap under "viewer" section
       if (parsed && typeof parsed === "object" && !parsed.viewer && parsed.layers) {
         _cache = { viewer: parsed };
-        return _cache;
+      } else {
+        _cache = (parsed as Record<string, any>) ?? {};
       }
-      _cache = (parsed as Record<string, any>) ?? {};
-      return _cache;
+    } else {
+      _cache = {};
     }
-  } catch { /* ignore corrupt data */ }
+  } catch {
+    _cache = {};
+  }
 
-  _cache = {};
+  // Server sections override localStorage
+  for (const [key, val] of Object.entries(_serverData)) {
+    _cache[key] = val;
+  }
   return _cache;
 }
 
@@ -103,12 +136,27 @@ export function loadSection<T>(key: string): T {
   return def.merge(saved, def.fallback);
 }
 
-/** Save a section. Preserves other sections. */
+/** Save a section. Routes server sections through WS, local sections to localStorage. */
 export function saveSection(key: string, data: any): void {
   const all = readAll();
   all[key] = data;
   _cache = all;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+
+  if (SERVER_SECTIONS.has(key)) {
+    // Debounce server saves (camera sliders fire rapidly)
+    clearTimeout(_saveTimers[key]);
+    _saveTimers[key] = setTimeout(() => {
+      // Dynamic import to avoid circular dependency at module load time
+      import("./lcncWs").then(({ saveSettings }) => saveSettings(key, data));
+    }, 300);
+  } else {
+    // Only persist local-only sections to localStorage
+    const localOnly: Record<string, any> = {};
+    for (const [k, v] of Object.entries(all)) {
+      if (!SERVER_SECTIONS.has(k)) localOnly[k] = v;
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(localOnly));
+  }
 }
 
 // ─── Viewer section ──────────────────────────────────────────────
@@ -390,4 +438,7 @@ export function resetAllDefaults(): void {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem("lcnc-toolsetter-params");
   _cache = null;
+  _serverData = {};
+  // Fire-and-forget server reset
+  import("./lcncApi").then(({ resetServerSettings }) => resetServerSettings());
 }

@@ -3,9 +3,10 @@ import { ref, reactive, computed, inject, onMounted, onUnmounted, type Ref, type
 import TabPanel from "./TabPanel.vue";
 import {
   loadViewerDefaults, saveViewerDefaults,
-  loadMachineDefaults, saveMachineDefaults, resetAllDefaults,
+  loadMachineDefaults, saveMachineDefaults,
   loadMacrosDefaults, saveMacrosDefaults, extractParams,
   loadCameraDefaults, saveCameraDefaults, type CameraDefaults,
+  saveDisplayDefaults,
   type Vec3, type Layer, type ColorDefaults, type OpacityDefaults,
   type TrackMode, type Projection, type ToolChangeMode, type SpindleDir,
   type ThemeMode, type MacroDef, type MacroParam,
@@ -101,35 +102,57 @@ const emit = defineEmits<{
   (e: "setRunFromLine", on: boolean): void;
 }>();
 
-const showResetConfirm = ref(false);
-function confirmReset() {
-  showResetConfirm.value = false;
-  resetAllDefaults();
+// ─── Per-tab reset ──────────────────────────────────────────────
+const resetTarget = ref<string | null>(null);
 
-  // Reload viewer defaults from fresh fallbacks
+const resetLabels: Record<string, string> = {
+  viewer: "3D Viewer", machine: "Machine", toolsetter: "Toolsetter",
+  display: "Display", camera: "Camera",
+};
+
+function resetViewer() {
+  saveViewerDefaults({
+    workpieceSize: [100, 100, 20], workpieceOffset: [0, 0, -20],
+    layers: { backplot: true, toolpath: true, machine: true, workpiece: true, bounds: true, workzero: true, hud: true, surface: true, tool: true },
+    colors: { feed: "#22b8cf", rapid: "#f5a623", backplot: "#ff00ff", bounds: "#ffffff", workpiece: "#ffffff", tool: "#c0c0c0", cutter: "#ffdd00" },
+    opacities: { workpiece: 0.16, bounds: 0.10, machine: 1.0, toolpath: 1.0, backplot: 0.55, hud: 1.0 },
+    machineColors: {}, machineEdges: true, trackingMode: "none", pathOnTop: false, projection: "parallel",
+  });
   const vd = loadViewerDefaults();
   wpSize.splice(0, 3, ...vd.workpieceSize);
   wpOffset.splice(0, 3, ...vd.workpieceOffset);
   Object.assign(layers, vd.layers);
   Object.assign(colors, vd.colors);
   Object.assign(opacities, vd.opacities);
-  // Clear custom machine colors — reset to empty
   for (const k of Object.keys(machineColors)) delete machineColors[k];
   Object.assign(machineColors, vd.machineColors);
   trackingMode.value = vd.trackingMode;
   pathOnTop.value = vd.pathOnTop;
   machineEdgesOn.value = vd.machineEdges;
   projection.value = vd.projection;
+  emit("setPathOnTop", vd.pathOnTop);
+  emit("setProjection", vd.projection);
+  setMachineEdges(vd.machineEdges);
+  setToolColors(null, null);
+  for (const p of machineParts.value) setMachinePartColor(p.id, null);
+}
 
-  // Reload machine defaults
+function resetMachine() {
+  saveMachineDefaults({
+    toolChangeMode: "m6g43", runFromLine: false,
+    rflSpindleDir: "forward", rflSpindleRpm: 10000, keyboardJog: false,
+  });
   const md = loadMachineDefaults();
   toolChangeMode.value = md.toolChangeMode;
   runFromLine.value = md.runFromLine;
   rflSpindleDir.value = md.rflSpindleDir;
   rflSpindleRpm.value = md.rflSpindleRpm;
   keyboardJog.value = md.keyboardJog;
+  emit("setKeyboardJog", md.keyboardJog);
+  emit("setRunFromLine", md.runFromLine);
+}
 
-  // Reset toolsetter params
+function resetToolsetter() {
   Object.assign(tsParams.value, {
     fastFeed: 500, slowFeed: 50, traverseFeed: 6000, maxZTravel: 150,
     retractDist: 2, spindleZeroHeight: 180, offsetDirection: 0,
@@ -138,16 +161,32 @@ function confirmReset() {
     addReps: 0, lastTry: 0, offsetDiameter: 0, offsetValue: 50,
     finderTouchX: 0, finderTouchY: 0, finderDiffZ: 0,
   });
+  saveTsParams();
+}
 
-  // Push changes to live components
-  emit("setPathOnTop", vd.pathOnTop);
-  emit("setProjection", vd.projection);
-  emit("setKeyboardJog", md.keyboardJog);
-  emit("setRunFromLine", md.runFromLine);
-  setMachineEdges(vd.machineEdges);
-  setToolColors(null, null);
-  for (const p of machineParts.value) setMachinePartColor(p.id, null);
+function resetDisplay() {
   setTheme("auto");
+  saveDisplayDefaults({ theme: "auto" });
+}
+
+function resetCamera() {
+  saveCameraDefaults({
+    showCrosshair: true, showCircle: true, showGrid: false,
+    circleRadius: 50, gridSpacing: 50, overlayOpacity: 0.8, overlayColor: "#00ff00",
+  });
+  const cd = loadCameraDefaults();
+  Object.assign(cam, cd);
+}
+
+const resetActions: Record<string, () => void> = {
+  viewer: resetViewer, machine: resetMachine, toolsetter: resetToolsetter,
+  display: resetDisplay, camera: resetCamera,
+};
+
+function confirmReset() {
+  const target = resetTarget.value;
+  resetTarget.value = null;
+  if (target && resetActions[target]) resetActions[target]();
 }
 
 // ─── Viewer defaults ───────────────────────
@@ -683,6 +722,9 @@ const halStats = computed(() => ({
           </div>
         </div>
 
+        <div class="resetRow">
+          <button class="danger" :disabled="!can.idle" @click="resetTarget = 'viewer'">Reset 3D Viewer</button>
+        </div>
         </fieldset>
         </div>
       </template>
@@ -774,6 +816,9 @@ const halStats = computed(() => ({
                 <span class="modeDesc">Arrow/Page/bracket keys jog the machine</span>
               </button>
             </div>
+          </div>
+          <div class="resetRow">
+            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'machine'">Reset Machine</button>
           </div>
           </fieldset>
         </div>
@@ -914,6 +959,9 @@ const halStats = computed(() => ({
               <span class="varRef">{{ tipDesc[activeTip]?.var }}</span>
             </div>
           </template>
+          <div class="resetRow">
+            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'toolsetter'">Reset Toolsetter</button>
+          </div>
           </fieldset>
         </div>
       </template>
@@ -932,6 +980,9 @@ const halStats = computed(() => ({
               <button class="optBtn" :class="{ active: themeMode === 'hc-light' }" @click="setTheme('hc-light')">HC Light</button>
               <button class="optBtn" :class="{ active: themeMode === 'hc-dark' }" @click="setTheme('hc-dark')">HC Dark</button>
             </div>
+          </div>
+          <div class="resetRow">
+            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'display'">Reset Display</button>
           </div>
           </fieldset>
         </div>
@@ -981,6 +1032,9 @@ const halStats = computed(() => ({
                 <span class="colorLabel">Overlay Color</span>
               </div>
             </div>
+          </div>
+          <div class="resetRow">
+            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'camera'">Reset Camera</button>
           </div>
           </fieldset>
         </div>
@@ -1190,17 +1244,13 @@ const halStats = computed(() => ({
       </template>
     </TabPanel>
 
-    <div class="resetRow">
-      <button class="danger" :disabled="!can.idle" @click="showResetConfirm = true">Reset All Settings</button>
-    </div>
-
     <Teleport to="body">
-      <div v-if="showResetConfirm" class="dialogOverlay" @click.self="showResetConfirm = false">
+      <div v-if="resetTarget" class="dialogOverlay" @click.self="resetTarget = null">
         <div class="dialog">
-          <div class="dialogTitle danger">Reset All Settings</div>
-          <div class="dialogBody">Restore all settings to factory defaults? This cannot be undone.</div>
+          <div class="dialogTitle danger">Reset {{ resetLabels[resetTarget] }}</div>
+          <div class="dialogBody">Restore {{ resetLabels[resetTarget] }} settings to defaults? This cannot be undone.</div>
           <div class="dialogActions">
-            <button @click="showResetConfirm = false">Cancel</button>
+            <button @click="resetTarget = null">Cancel</button>
             <button class="danger" @click="confirmReset">Reset</button>
           </div>
         </div>
@@ -1269,6 +1319,11 @@ const halStats = computed(() => ({
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.inputRow input[type="text"] {
+  flex: 1;
+  min-width: 0;
 }
 
 .inputLabel {

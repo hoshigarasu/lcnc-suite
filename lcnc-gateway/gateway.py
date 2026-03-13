@@ -1342,7 +1342,10 @@ def read_errors_nonblocking() -> list:
 
 async def ws_send_json(ws: WebSocket, obj: Dict[str, Any]):
     # default=str prevents weird types from killing the WS during development
-    await ws.send_text(json.dumps(obj, separators=(",", ":"), default=str))
+    try:
+        await ws.send_text(json.dumps(obj, separators=(",", ":"), default=str))
+    except RuntimeError:
+        pass  # client already disconnected — cleanup handled in finally block
 
 
 def set_mode(mode: int):

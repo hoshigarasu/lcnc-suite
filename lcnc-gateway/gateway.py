@@ -133,6 +133,31 @@ def _cancel_disconnect_grace():
     _disconnect_grace_task = None
 
 
+_heartbeat_task: Optional[asyncio.Task] = None
+
+
+async def _heartbeat_loop():
+    """Independent HAL heartbeat — decoupled from status processing.
+
+    Toggles at POLL_HZ while clients are connected.  When no clients remain
+    the loop yields to _disconnect_grace which manages the grace period.
+    E-Stop is handled via the independent command path (ws.receive_text →
+    handle_command) so a stuck status_loop does not block safety controls.
+    """
+    global _hal_last_hb
+    while True:
+        if _clients:
+            _hal_last_hb = not _hal_last_hb
+            _hal_send({"heartbeat": _hal_last_hb, "connected": not _estop_hold})
+        await asyncio.sleep(1.0 / POLL_HZ)
+
+
+def _start_heartbeat():
+    global _heartbeat_task
+    if _heartbeat_task is None or _heartbeat_task.done():
+        _heartbeat_task = asyncio.get_event_loop().create_task(_heartbeat_loop())
+
+
 def _get_lcnc_pid() -> Optional[int]:
     """Return PID of linuxcncsvr if running, else None."""
     try:
@@ -2893,6 +2918,7 @@ async def ws_endpoint(ws: WebSocket):
     client_ip = ws.client.host if ws.client else "unknown"
     _clients[client_id] = {"ip": client_ip, "armed": False, "last_hb": time.time()}
     _cancel_disconnect_grace()
+    _start_heartbeat()
 
     # Restore lcnc_connected if LinuxCNC is still running but the flag was
     # cleared by a previous connection's WebSocket error
@@ -2967,7 +2993,7 @@ async def ws_endpoint(ws: WebSocket):
 
     async def status_loop():
         nonlocal last_file, armed, viewer_init_sent, _poll_fails, _probe_results, _prev_tc_req, _prev_tool_num
-        global lcnc_connected, STAT, CMD, ERR, _hal_last_hb, _reconnect_fails, _tool_meta_dirty
+        global lcnc_connected, STAT, CMD, ERR, _reconnect_fails, _tool_meta_dirty
         loop = asyncio.get_event_loop()
         _last_settings_ver = _settings_version
         while True:
@@ -3104,14 +3130,8 @@ async def ws_endpoint(ws: WebSocket):
 
                 # Tool change: auto-deassert when request clears
                 if _prev_tc_req and not st.tool_change_requested:
-                    await loop.run_in_executor(None, _hal_send, {"tool_changed": False})
+                    _hal_send({"tool_changed": False})
                 _prev_tc_req = st.tool_change_requested
-
-                # HAL watchdog: send pin updates to subprocess
-                has_clients = bool(_clients)
-                _hal_last_hb = not _hal_last_hb
-                hal_msg = {"heartbeat": _hal_last_hb, "connected": has_clients and not _estop_hold}
-                await loop.run_in_executor(None, _hal_send, hal_msg)
 
                 # Viewer: gcode preview only when the file changes
                 if st.active_file and st.active_file != last_file:

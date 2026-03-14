@@ -82,10 +82,30 @@ Machine stays enabled only when ALL THREE: user hasn't pressed e-stop, at least 
 
 Recovery: clear E-Stop → Machine On. Motion commands still require `require_armed()`.
 
+### Heartbeat Architecture
+
+The HAL heartbeat runs in an **independent asyncio task** (`_heartbeat_loop`), decoupled from status processing. This prevents `poll_status` delays (NML IPC, HAL reads, WebSocket backpressure) from starving the heartbeat and causing false watchdog trips.
+
+**Two independent concurrent paths per client:**
+1. **Command path** (`ws.receive_text` → `handle_command`): processes E-Stop, abort, jog, MDI — always responsive
+2. **Status path** (`status_loop`): polls LinuxCNC state, sends updates to UI — can be slow without affecting safety
+
+**Failure mode coverage:**
+
+| Failure | Heartbeat | Watchdog | E-Stop | Outcome |
+|---------|-----------|----------|--------|---------|
+| Gateway process crash | stops | trips | N/A | ESTOP |
+| Gateway process freeze (GIL) | stops | trips | N/A | ESTOP |
+| All clients disconnect | grace period | alive during grace | N/A | Machine off after 3s |
+| `poll_status` slow/blocked | keeps toggling | alive | works | Stale display, controls work |
+| WebSocket backpressure | keeps toggling | alive | works | Delayed status, controls work |
+
+**Design trade-off**: a stuck `status_loop` (NML hang, executor blocked) results in frozen UI numbers, but all controls (E-Stop, abort, jog stop) remain functional via the independent command path. This is preferable to false watchdog trips from normal processing delays.
+
 ### Pin Semantics
 
 - **`webui-safety.connected`**: TRUE when `bool(clients)` or during disconnect grace period — keeps machine alive; armed state gates motion commands via `require_armed()`, not the HAL pin
-- **`webui-safety.heartbeat`**: toggles every ~33ms (30Hz) while gateway has active clients or during grace period; monitored by `watchdog` component (0.5s timeout)
+- **`webui-safety.heartbeat`**: toggles every ~33ms (30Hz) via independent `_heartbeat_loop` task while gateway has active clients, or via `_disconnect_grace` during grace period; monitored by `watchdog` component (0.5s timeout)
 - **`watchdog.ok-out`**: TRUE while heartbeat keeps toggling within timeout; FALSE if gateway freezes or stops sending
 
 Additional safety mechanisms:

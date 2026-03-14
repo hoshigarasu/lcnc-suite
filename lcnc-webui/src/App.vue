@@ -93,8 +93,8 @@ const tabs = [
   { id: "viewer", label: "3D Viewer" },
   { id: "manual", label: "Manual Control" },
   { id: "gcode", label: "Program" },
-  { id: "camera", label: "Camera" },
   { id: "probe", label: "Probing" },
+  { id: "camera", label: "Camera" },
 ];
 
 /** ---------- dynamic panels ---------- */
@@ -2702,8 +2702,9 @@ watch(isHomed, (nowHomed, wasHomed) => {
   .panel           { flex: 0 0 var(--panel-min-w); min-height: var(--panel-min-h); }
   .panel-viewer    { flex: 1; min-width: var(--panel-min-w-wide); overflow: hidden; }
   .panel-manual,
-  .panel-probe { min-width: var(--panel-min-w-wide); }
-  .panel-gcode     { flex: 0.5; min-width: var(--panel-min-w); }
+  .panel-probe { flex: 0.5; min-width: var(--panel-min-w-wide); }
+  .panel-gcode,
+  .panel-camera    { flex: 0.5; min-width: var(--panel-min-w); }
 }
 
 /* ---- Portrait layout — panels stacked vertically ---- */

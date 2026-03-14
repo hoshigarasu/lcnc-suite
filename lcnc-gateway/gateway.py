@@ -58,6 +58,7 @@ _hal_sock: Optional[_socket.socket] = None
 _hal_last_hb = False
 _disconnect_grace_task: Optional[asyncio.Task] = None
 _DISCONNECT_GRACE_SEC = 3.0  # covers 2s frontend reconnect delay
+_estop_hold = False  # hold connected=FALSE during UI e-stop
 
 def _hal_connect():
     """Connect to the HAL watchdog Unix socket. Non-fatal if unavailable."""
@@ -1395,6 +1396,7 @@ def require_armed(armed: bool):
 
 
 def handle_command(msg: Dict[str, Any], armed: bool):
+    global _estop_hold
     cmd = msg.get("cmd")
     if not cmd:
         return {"ok": False, "error": "Missing cmd"}
@@ -1445,12 +1447,15 @@ def handle_command(msg: Dict[str, Any], armed: bool):
 
         if cmd == "estop":
             CMD.state(linuxcnc.STATE_ESTOP)
-            _hal_send({"connected": False})  # HAL-level defense-in-depth
+            _estop_hold = True
+            _hal_send({"connected": False})  # hold via _estop_hold
             return {"ok": True}
 
         if cmd == "estop_reset":
             require_armed(armed)
             CMD.state(linuxcnc.STATE_ESTOP_RESET)
+            _estop_hold = False
+            _hal_send({"connected": True})
             return {"ok": True}
 
         if cmd == "machine_on":
@@ -3105,7 +3110,7 @@ async def ws_endpoint(ws: WebSocket):
                 # HAL watchdog: send pin updates to subprocess
                 has_clients = bool(_clients)
                 _hal_last_hb = not _hal_last_hb
-                hal_msg = {"heartbeat": _hal_last_hb, "connected": has_clients}
+                hal_msg = {"heartbeat": _hal_last_hb, "connected": has_clients and not _estop_hold}
                 await loop.run_in_executor(None, _hal_send, hal_msg)
 
                 # Viewer: gcode preview only when the file changes
@@ -3345,6 +3350,9 @@ async def ws_endpoint(ws: WebSocket):
             except Exception:
                 pass
         status_task.cancel()
+        # Clear estop hold if no clients remain
+        if not _clients:
+            _estop_hold = False
         # Update HAL pins to reflect this client is gone
         has_clients = bool(_clients)
         if has_clients:

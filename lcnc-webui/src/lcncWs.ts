@@ -37,6 +37,81 @@ export const unreadCount = ref(_stored.length);
 export const latency = ref<number | null>(null);        // round-trip: heartbeat → next status
 export const networkLatency = ref<number | null>(null);  // pure network: heartbeat → pong
 
+export interface TimingComponentStats {
+  last: number; min: number; max: number; mean: number; std: number;
+}
+
+export interface TimingStats {
+  rt: TimingComponentStats;
+  network: TimingComponentStats;
+  server: TimingComponentStats;
+  cycle: TimingComponentStats;
+  poll: TimingComponentStats;
+  errors: TimingComponentStats;
+  parse: TimingComponentStats;
+  overhead: TimingComponentStats;
+  count: number;
+}
+
+export const timingStats = ref<TimingStats | null>(null);
+
+const TIMING_MAX_SAMPLES = 300;
+
+type TimingKey = "rt" | "network" | "server" | "cycle" | "poll" | "errors" | "parse" | "overhead";
+const _timingSamples: Record<TimingKey, number[]> = {
+  rt: [], network: [], server: [], cycle: [], poll: [], errors: [], parse: [], overhead: [],
+};
+
+function _computeComponentStats(arr: number[]): TimingComponentStats {
+  if (arr.length === 0) return { last: 0, min: 0, max: 0, mean: 0, std: 0 };
+  const last = arr[arr.length - 1]!;
+  let min = Infinity, max = -Infinity, sum = 0, sumSq = 0;
+  for (const v of arr) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    sumSq += v * v;
+  }
+  const mean = sum / arr.length;
+  const variance = sumSq / arr.length - mean * mean;
+  const std = Math.sqrt(Math.max(0, variance));
+  return {
+    last: Math.round(last * 10) / 10,
+    min: Math.round(min * 10) / 10,
+    max: Math.round(max * 10) / 10,
+    mean: Math.round(mean * 10) / 10,
+    std: Math.round(std * 10) / 10,
+  };
+}
+
+function _pushSample(key: TimingKey, value: number) {
+  const arr = _timingSamples[key];
+  arr.push(value);
+  if (arr.length > TIMING_MAX_SAMPLES) arr.shift();
+}
+
+function _recomputeTimingStats() {
+  const keys: TimingKey[] = ["rt", "network", "server", "cycle", "poll", "errors", "parse", "overhead"];
+  const stats = {} as Record<TimingKey, TimingComponentStats>;
+  for (const k of keys) stats[k] = _computeComponentStats(_timingSamples[k]);
+  timingStats.value = { ...stats, count: _timingSamples.rt.length };
+}
+
+export function resetTimingStats() {
+  for (const k of Object.keys(_timingSamples) as TimingKey[]) _timingSamples[k] = [];
+  timingStats.value = null;
+}
+
+export function getTimingCsv(): string {
+  const keys: TimingKey[] = ["rt", "network", "server", "cycle", "poll", "errors", "parse", "overhead"];
+  const maxLen = Math.max(...keys.map(k => _timingSamples[k].length));
+  const lines = [keys.join(",")];
+  for (let i = 0; i < maxLen; i++) {
+    lines.push(keys.map(k => _timingSamples[k][i] ?? "").join(","));
+  }
+  return lines.join("\n");
+}
+
 export const viewerInit = ref<any>(null);
 export const viewerGcode = ref<any>(null);
 
@@ -97,7 +172,7 @@ export function connectWs() {
     if (msg.armed !== undefined) armed.value = msg.armed;
 
     if (msg.type === "pong") {
-      // Pure network latency: heartbeat → immediate pong reply
+      // Pure network latency: heartbeat → immediate pong reply (diagnostic only)
       if (_heartbeatSentAt > 0) {
         networkLatency.value = Math.round(performance.now() - _heartbeatSentAt);
         _heartbeatSentAt = 0;
@@ -106,10 +181,24 @@ export function connectWs() {
     }
 
     if (msg.type === "status") {
-      // Round-trip latency: heartbeat → next status (includes poll wait)
-      if (_rtSentAt > 0) {
-        latency.value = Math.round(performance.now() - _rtSentAt);
-        _rtSentAt = 0;
+      // Only act on status messages that carry timing (heartbeat-triggered).
+      // Plain status messages arrive first and must NOT consume _rtSentAt.
+      if (msg.timing) {
+        if (_rtSentAt > 0) {
+          const rtMs = performance.now() - _rtSentAt;
+          latency.value = Math.round(rtMs);
+          _rtSentAt = 0;
+          _pushSample("rt", rtMs);
+          _pushSample("server", msg.timing.server_ms);
+          _pushSample("network", rtMs - msg.timing.server_ms);
+        }
+        const t = msg.timing;
+        if (t.cycle_ms != null) _pushSample("cycle", t.cycle_ms);
+        if (t.poll_ms != null) _pushSample("poll", t.poll_ms);
+        if (t.errors_ms != null) _pushSample("errors", t.errors_ms);
+        if (t.parse_ms != null) _pushSample("parse", t.parse_ms);
+        if (t.overhead_ms != null) _pushSample("overhead", t.overhead_ms);
+        _recomputeTimingStats();
       }
 
       // Extract errors BEFORE rAF buffer to prevent message loss when

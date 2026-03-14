@@ -102,4 +102,6 @@ export type WsCommand =
   // Shutdown
   | { cmd: "shutdown" }
   // Settings
-  | { cmd: "save_settings"; section: string; data: any };
+  | { cmd: "save_settings"; section: string; data: any }
+  // Timing
+  | { cmd: "timing_log"; enable: boolean };

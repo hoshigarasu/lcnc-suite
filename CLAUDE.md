@@ -114,6 +114,15 @@ Additional safety mechanisms:
 - **Busy gate**: `fire()` 200ms anti-spam cooldown prevents double-execution
 - **Focus loss**: Auto-stop jogs on window blur / tab hidden
 
+### HAL Monitor Component (`webui-monitor`)
+
+`poll_status()` needs 6 HAL pin values not available through `STAT`. `hal.get_value(name)` acquires a mutex + linear search (~6-8ms each, ~40ms total). The `webui-monitor` HAL component creates input pins and wires them to the source signals, enabling direct pointer reads (<1μs each).
+
+- **Config**: `_HAL_MONITOR_PINS` list in `gateway.py` — add new pins here as `(source_pin, local_name, hal_type)` tuples
+- **Init**: `_init_hal_monitor()` called once from `try_connect_lcnc()` — creates component, connects pins via `halcmd net`
+- **Read**: `_hal_read(local_pin, default)` — falls back to default if component unavailable
+- **Fallback**: if component creation fails, `poll_status()` falls back to `hal_get()` (original slow path)
+
 ## Permission System
 
 **File**: `permissions.ts` — single source of truth for all button enable/disable logic.
@@ -196,6 +205,7 @@ The `tool_touch_off.ngc` subroutine reads parameters from the LinuxCNC var file 
 - Don't use CSS grid overlay (visibility:hidden) for tab panes with ThreeViewer — ResizeObserver feedback loops
 - `CMD.wait_complete()` in gateway blocks the WebSocket receive loop → heartbeat timeout → disarm. Use fire-and-forget instead.
 - Scoped CSS styles (e.g. `button.primary` in App.vue) don't apply in child components — put shared button styles in global `style.css`
+- `hal.get_value(name)` takes ~6-8ms (mutex + linear search). Use HAL component input pins (`comp['pin']`) for hot-path reads (<1μs)
 
 ## Production DISPLAY Integration
 

@@ -93,6 +93,127 @@ def _shutdown_signal_handler(signum, frame):
 signal.signal(signal.SIGTERM, _shutdown_signal_handler)
 signal.signal(signal.SIGINT, _shutdown_signal_handler)
 
+
+# ---- HAL monitor component for fast pin reads ----
+# hal.get_value(name) does mutex + linear search (~6-8ms per call).
+# A HAL component's h['pin'] is a direct pointer dereference (<1μs).
+# We create input pins and connect them to the source pins' signals.
+_hal_comp = None  # type: Optional[hal.component]
+
+# (source_pin, local_pin_name, hal_type)
+_HAL_MONITOR_PINS = [
+    ("iocontrol.0.tool-change",      "tool-change",      hal.HAL_BIT),
+    ("iocontrol.0.tool-prep-number", "tool-prep-number", hal.HAL_S32),
+    ("spindle.0.speed-in",           "spindle-speed-in", hal.HAL_FLOAT),
+    ("axis.z.eoffset",               "z-eoffset",        hal.HAL_FLOAT),
+    ("axis.z.eoffset-enable",        "z-eoffset-enable", hal.HAL_BIT),
+    ("compensation.method",          "comp-method",       hal.HAL_U32),
+]
+
+
+def _init_hal_monitor():
+    """Create webui-monitor HAL component with input pins for fast reads.
+
+    Called once on first successful LinuxCNC connection.  Each input pin is
+    connected to the same signal as the corresponding source pin so reads
+    go through a direct pointer instead of the slow hal.get_value() path.
+    """
+    global _hal_comp
+    if _hal_comp is not None:
+        return
+    try:
+        comp = hal.component("webui-monitor")
+        for _, pin_name, pin_type in _HAL_MONITOR_PINS:
+            comp.newpin(pin_name, pin_type, hal.HAL_IN)
+        comp.ready()
+        _hal_comp = comp
+        print("[HAL] webui-monitor component ready", flush=True)
+    except Exception as e:
+        print(f"[HAL] webui-monitor creation failed: {e}", flush=True)
+        _hal_comp = None
+        return
+
+    # Connect each input pin to the source pin's signal
+    for source_pin, local_pin, _ in _HAL_MONITOR_PINS:
+        _hal_connect_monitor_pin(source_pin, local_pin)
+
+    # Benchmark: compare hal.get_value() vs component pin read
+    if _hal_comp is not None:
+        _n = 50
+        t0 = time.monotonic()
+        for _ in range(_n):
+            try:
+                hal.get_value("iocontrol.0.tool-change")
+            except Exception:
+                break
+        t_get = (time.monotonic() - t0) * 1000
+        t0 = time.monotonic()
+        for _ in range(_n):
+            _v = _hal_comp["tool-change"]
+        t_comp = (time.monotonic() - t0) * 1000
+        print(f"[BENCH] hal.get_value() {_n}x: {t_get:.1f}ms  "
+              f"comp['pin'] {_n}x: {t_comp:.3f}ms  "
+              f"speedup: {t_get / max(t_comp, 0.001):.0f}x", flush=True)
+
+
+def _hal_connect_monitor_pin(source_pin: str, local_pin: str):
+    """Connect webui-monitor.<local_pin> to the same signal as <source_pin>."""
+    full_local = f"webui-monitor.{local_pin}"
+    try:
+        # Check if source pin exists and what signal it's on
+        result = subprocess.run(
+            ['halcmd', '-s', 'show', 'pin', source_pin],
+            capture_output=True, text=True, timeout=2
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            print(f"[HAL] pin {source_pin} not found, skipping", flush=True)
+            return
+
+        # halcmd -s output: "owner type dir value name [signal_name]"
+        parts = result.stdout.strip().split('\n')[0].split()
+        if len(parts) < 5:
+            print(f"[HAL] unexpected halcmd output for {source_pin}", flush=True)
+            return
+
+        if len(parts) >= 6:
+            # Source pin already connected to a signal — join it
+            signal_name = parts[5]
+        else:
+            # Source pin not connected — create a new signal
+            signal_name = f"webui-mon-{local_pin}"
+            r = subprocess.run(
+                ['halcmd', 'net', signal_name, source_pin],
+                capture_output=True, text=True, timeout=2
+            )
+            if r.returncode != 0:
+                print(f"[HAL] net {signal_name} {source_pin} failed: "
+                      f"{r.stderr.strip()}", flush=True)
+                return
+
+        # Connect our input pin to the signal
+        r = subprocess.run(
+            ['halcmd', 'net', signal_name, full_local],
+            capture_output=True, text=True, timeout=2
+        )
+        if r.returncode != 0:
+            print(f"[HAL] net {signal_name} {full_local} failed: "
+                  f"{r.stderr.strip()}", flush=True)
+        else:
+            print(f"[HAL] {full_local} <= {signal_name}", flush=True)
+    except Exception as e:
+        print(f"[HAL] connect {source_pin} failed: {e}", flush=True)
+
+
+def _hal_read(local_pin: str, default=None):
+    """Fast read from webui-monitor component. Returns default if unavailable."""
+    if _hal_comp is not None:
+        try:
+            return _hal_comp[local_pin]
+        except Exception:
+            pass
+    return default
+
+
 def _hal_send(msg: dict):
     """Send a pin-update message to the HAL watchdog via socket."""
     global _hal_sock
@@ -158,8 +279,181 @@ def _start_heartbeat():
         _heartbeat_task = asyncio.get_event_loop().create_task(_heartbeat_loop())
 
 
+# ---- Shared status poller ----
+# Single global task that calls poll_status() + read_errors_nonblocking() once
+# per cycle for all clients, eliminating redundant STAT.poll() / hal_get() / GIL
+# contention when multiple clients are connected.
+
+_shared_status: Optional["StatusPayload"] = None
+_shared_status_dict: Optional[dict] = None  # cached asdict(_shared_status)
+_shared_errors: list = []
+_shared_probe_updates: dict = {}
+_shared_timing: dict = {}  # poll_ms, errors_ms, parse_ms, poller_ts
+_status_gen = 0  # incremented each poll; clients compare to skip redundant sends
+_status_poller_task: Optional[asyncio.Task] = None
+
+# Timing log (toggled via "timing_log" WS command from Debug tab)
+_timing_log: Optional[Any] = None
+_timing_log_enabled = False
+_timing_log_path: Optional[str] = None
+
+
+def _log_timing(timing: dict):
+    """Append one JSON line to the current timestamped log file."""
+    global _timing_log
+    if not _timing_log_enabled or not _timing_log_path:
+        return
+    try:
+        if _timing_log is None:
+            _timing_log = open(_timing_log_path, "a")
+        timing["ts"] = time.time()
+        _timing_log.write(json.dumps(timing) + "\n")
+        _timing_log.flush()
+    except Exception:
+        pass
+
+
+_PID_CHECK_INTERVAL = 5.0  # seconds between pgrep PID checks
+
+
+async def _status_poller():
+    """Single global poller — polls LinuxCNC once per cycle for all clients.
+
+    All LinuxCNC C extension calls (STAT.poll(), hal.get_value(), NML reads)
+    hold the GIL and never release it — run_in_executor provides zero
+    parallelism, only thread dispatch overhead (1-5ms per call). Every
+    successful LinuxCNC UI (AXIS 50Hz, GMOCCAPY 10Hz, QtVCP 10Hz) polls
+    synchronously. We do the same, yielding to the event loop between
+    blocking sections so heartbeats and sends can proceed.
+    """
+    global _shared_status, _shared_status_dict, _shared_errors, _shared_probe_updates
+    global _status_gen, lcnc_connected, STAT, CMD, ERR, _reconnect_fails, _shared_timing
+    loop = asyncio.get_event_loop()
+    _poll_fails = 0
+    _last_pid_check = 0.0
+    _cycle_start = time.monotonic()
+    while True:
+        try:
+            _cycle_start = time.monotonic()
+
+            if not _clients:
+                await asyncio.sleep(0.5)
+                continue
+
+            # ---- Reconnection logic (moved from per-client status_loop) ----
+            if not lcnc_connected:
+                pid = _get_lcnc_pid()
+                if pid is not None and try_connect_lcnc():
+                    _reconnect_fails = 0
+                    _hal_connect()
+                    _poll_fails = 0
+                else:
+                    if pid is not None and _ever_connected:
+                        _reconnect_fails += 1
+                        if _reconnect_fails >= _NML_POISON_THRESHOLD:
+                            print(f"NML reconnect failed {_reconnect_fails} times with linuxcncsvr alive — restarting gateway")
+                            _self_restart()
+                    else:
+                        _reconnect_fails = 0
+                    await asyncio.sleep(2.0)
+                    continue
+
+            # ---- Process-level detection: rate-limited PID check ----
+            now = time.monotonic()
+            if now - _last_pid_check >= _PID_CHECK_INTERVAL:
+                _last_pid_check = now
+                if check_lcnc_instance():
+                    if _lcnc_pid is not None:
+                        if try_connect_lcnc():
+                            _reconnect_fails = 0
+                            _hal_connect()
+                    else:
+                        STAT = CMD = ERR = None
+                        lcnc_connected = False
+                        continue
+
+            # poll_status() blocks ~40ms (GIL held by C extensions).
+            # run_in_executor lets the event loop serve HTTP (STL files)
+            # between GIL switches during that time.
+            t0 = time.monotonic()
+            st = await loop.run_in_executor(None, poll_status)
+            t1 = time.monotonic()
+            raw_errs = read_errors_nonblocking()
+            t2 = time.monotonic()
+            _poll_fails = 0
+
+            # Parse probe results from DEBUG EVAL messages
+            errs = []
+            probe_updates = {}
+            OPERATOR_DISPLAY = 13
+            for kind, text in raw_errs:
+                if kind == OPERATOR_DISPLAY:
+                    m = _PROBE_EVAL_RE.search(text)
+                    if m:
+                        key = _PROBE_WIDGET_MAP.get(m.group(1))
+                        if key:
+                            try:
+                                probe_updates[key] = float(m.group(2))
+                            except ValueError:
+                                pass
+                            continue
+                errs.append((kind, text))
+
+            # Cache results for per-client loops
+            _shared_status = st
+            _shared_status_dict = asdict(st)
+            t3 = time.monotonic()
+            _shared_errors = errs
+            _shared_probe_updates = probe_updates
+            poll_ms = round((t1 - t0) * 1000, 2)
+            errors_ms = round((t2 - t1) * 1000, 2)
+            parse_ms = round((t3 - t2) * 1000, 2)
+            cycle_ms = round((t3 - _cycle_start) * 1000, 2)
+            # overhead = cycle - measured work (exact by construction).
+            overhead_ms = round(cycle_ms - poll_ms - errors_ms - parse_ms, 2)
+            _shared_timing = {
+                "cycle_ms": cycle_ms,
+                "overhead_ms": overhead_ms,
+                "poll_ms": poll_ms,
+                "errors_ms": errors_ms,
+                "parse_ms": parse_ms,
+                "poller_ts": t3,
+            }
+            _status_gen += 1
+
+        except Exception as e:
+            _poll_fails += 1
+            if _poll_fails >= 5:
+                lcnc_connected = False
+                STAT = CMD = ERR = None
+                _poll_fails = 0
+                print(f"[POLLER] persistent poll failure: {type(e).__name__}: {e}", flush=True)
+
+        # Adaptive sleep: subtract time already spent polling this cycle
+        elapsed = time.monotonic() - _cycle_start
+        await asyncio.sleep(max(0, (1.0 / POLL_HZ) - elapsed))
+
+
+def _start_status_poller():
+    global _status_poller_task
+    if _status_poller_task is None or _status_poller_task.done():
+        _status_poller_task = asyncio.get_event_loop().create_task(_status_poller())
+
+
 def _get_lcnc_pid() -> Optional[int]:
-    """Return PID of linuxcncsvr if running, else None."""
+    """Return PID of linuxcncsvr if running, else None.
+    Fast path: check /proc/<pid>/comm for known PID (<0.1ms).
+    Slow path: pgrep subprocess only for initial discovery (~42ms).
+    """
+    # Fast path: verify known PID is still alive and correct process
+    if _lcnc_pid is not None:
+        try:
+            with open(f"/proc/{_lcnc_pid}/comm") as f:
+                if f.read().strip() == "linuxcncsvr":
+                    return _lcnc_pid
+        except (OSError, IOError):
+            pass
+    # Slow path: discover PID via pgrep (only when PID unknown or stale)
     try:
         result = subprocess.run(
             ['pgrep', '-x', 'linuxcncsvr'],
@@ -189,7 +483,7 @@ def _nml_connectable() -> bool:
 # ---- NML poisoning detection ----
 _reconnect_fails = 0
 _ever_connected = False     # set True on first successful connection
-_NML_POISON_THRESHOLD = 60  # consecutive probe-pass + main-fail = poisoned (high: N client loops share counter)
+_NML_POISON_THRESHOLD = 60  # consecutive probe-pass + main-fail = poisoned NML (single global poller)
 
 
 def _self_restart():
@@ -215,6 +509,21 @@ def try_connect_lcnc() -> bool:
         lcnc_connected = True
         _ever_connected = True
         _lcnc_pid = _get_lcnc_pid()
+        # Benchmark STAT.poll() isolation cost (NML semaphore + ~170KB memcpy)
+        _bench_n = 20
+        _bench_times = []
+        for _ in range(_bench_n):
+            _bt0 = time.monotonic()
+            STAT.poll()
+            _bench_times.append((time.monotonic() - _bt0) * 1000)
+        _bench_times.sort()
+        _bp50 = _bench_times[_bench_n // 2]
+        _bp95 = _bench_times[int(_bench_n * 0.95)]
+        _bmax = _bench_times[-1]
+        print(f"[BENCH] STAT.poll() isolation ({_bench_n} samples): "
+              f"p50={_bp50:.2f}ms  p95={_bp95:.2f}ms  max={_bmax:.2f}ms", flush=True)
+        # Create HAL monitor component for fast pin reads (once)
+        _init_hal_monitor()
         print(f"[VINIT] try_connect_lcnc OK, pid={_lcnc_pid}", flush=True)
         return True
     except Exception as e:
@@ -1258,12 +1567,12 @@ def poll_status() -> StatusPayload:
 
 
     # Tool change request from HAL iocontrol
-    _tc_req = hal_get('iocontrol.0.tool-change', 0)
+    _tc_req = _hal_read('tool-change', None) if _hal_comp else hal_get('iocontrol.0.tool-change', 0)
     tool_change_requested = bool(_tc_req) if _tc_req else False
     tool_change_tool = None
     tool_change_info = None
     if tool_change_requested:
-        _tc_num = hal_get('iocontrol.0.tool-prep-number', 0)
+        _tc_num = _hal_read('tool-prep-number', 0) if _hal_comp else hal_get('iocontrol.0.tool-prep-number', 0)
         tool_change_tool = int(_tc_num) if _tc_num else None
         if tool_change_tool is not None:
             try:
@@ -1319,7 +1628,7 @@ def poll_status() -> StatusPayload:
         max_jog_velocity=get_max_jog_velocity(),
         current_vel=current_vel,
         spindle_speed=spindle_speed,
-        spindle_speed_actual=hal_get('spindle.0.speed-in', 0) * 60,
+        spindle_speed_actual=(_hal_read('spindle-speed-in', 0) if _hal_comp else hal_get('spindle.0.speed-in', 0)) * 60,
         spindle_direction=spindle_direction,
         active_file=safe_get("file", None),
         motion_line=safe_get("motion_line", None),
@@ -1337,9 +1646,9 @@ def poll_status() -> StatusPayload:
         probed_position=to_float_list(safe_get("probed_position", None)),
         flood=bool(safe_get("flood", 0)),
         mist=bool(safe_get("mist", 0)),
-        eoffset_z=hal_get("axis.z.eoffset", None),
-        eoffset_enabled=bool(hal_get("axis.z.eoffset-enable", False)),
-        comp_method=hal_get("compensation.method", None),
+        eoffset_z=_hal_read("z-eoffset", None) if _hal_comp else hal_get("axis.z.eoffset", None),
+        eoffset_enabled=bool(_hal_read("z-eoffset-enable", False) if _hal_comp else hal_get("axis.z.eoffset-enable", False)),
+        comp_method=_hal_read("comp-method", None) if _hal_comp else hal_get("compensation.method", None),
         linear_units=ini_cfg.get("linear_units"),
         default_jog_velocity=ini_cfg.get("default_jog_velocity"),
         min_jog_velocity=ini_cfg.get("min_jog_velocity"),
@@ -2922,9 +3231,10 @@ async def ws_endpoint(ws: WebSocket):
     client_id = _next_client_id
     _next_client_id += 1
     client_ip = ws.client.host if ws.client else "unknown"
-    _clients[client_id] = {"ip": client_ip, "armed": False, "last_hb": time.time()}
+    _clients[client_id] = {"ip": client_ip, "armed": False, "last_hb": time.time(), "hb_mono": 0.0}
     _cancel_disconnect_grace()
     _start_heartbeat()
+    _start_status_poller()
 
     # Restore lcnc_connected if LinuxCNC is still running but the flag was
     # cleared by a previous connection's WebSocket error
@@ -2991,76 +3301,54 @@ async def ws_endpoint(ws: WebSocket):
 
     last_file: Optional[str] = None
     viewer_init_sent = False
-    _poll_fails = 0  # consecutive poll failures (tolerates NML startup transient)
-    _probe_results: dict = {}  # populated from DEBUG EVAL messages in real-time
+    _probe_results: dict = {}  # populated from shared poller probe updates
     _prev_tc_req = False  # previous tool-change-requested state for edge detection
     _prev_tool_num = None  # previous tool_number for metadata edge detection
 
 
     async def status_loop():
-        nonlocal last_file, armed, viewer_init_sent, _poll_fails, _probe_results, _prev_tc_req, _prev_tool_num
-        global lcnc_connected, STAT, CMD, ERR, _reconnect_fails, _tool_meta_dirty
+        nonlocal last_file, armed, viewer_init_sent, _probe_results, _prev_tc_req, _prev_tool_num
+        global _tool_meta_dirty
         loop = asyncio.get_event_loop()
         _last_settings_ver = _settings_version
+        _last_gen = 0  # tracks which _status_gen we last processed
+        _prev_send_ms = 0.0  # send_ms from previous cycle (sent in next message)
         while True:
             try:
-                # If not connected to LinuxCNC, try to reconnect
+                # Not connected — disarm and send error to this client
                 if not lcnc_connected:
-                    viewer_init_sent = False
-                    # Disarm — gateway can't execute commands without LinuxCNC
+                    if viewer_init_sent:
+                        viewer_init_sent = False
+                        last_file = None
                     if armed:
                         armed = False
                         if client_id in _clients:
                             _clients[client_id]["armed"] = False
-                    pid = await loop.run_in_executor(None, _get_lcnc_pid)
-                    if pid is not None and await loop.run_in_executor(None, try_connect_lcnc):
-                        _reconnect_fails = 0
-                        _hal_connect()
-                        last_file = None
-                        # viewer_init will be sent after first successful poll_status()
-                    else:
-                        if pid is not None and _ever_connected:
-                            _reconnect_fails += 1
-                            if _reconnect_fails >= _NML_POISON_THRESHOLD:
-                                print(f"NML reconnect failed {_reconnect_fails} times with linuxcncsvr alive — restarting gateway")
-                                _self_restart()
-                        else:
-                            _reconnect_fails = 0
-                        try:
-                            await ws_send_json(ws, {
-                                "type": "status_error",
-                                "error": "LinuxCNC not connected",
-                                "clients": [{"ip": c["ip"], "armed": c["armed"]} for c in _clients.values()],
-                                "armed": armed,
-                            })
-                        except Exception:
-                            break
-                        await asyncio.sleep(2.0)
-                        continue
+                    try:
+                        await ws_send_json(ws, {
+                            "type": "status_error",
+                            "error": "LinuxCNC not connected",
+                            "clients": [{"ip": c["ip"], "armed": c["armed"]} for c in _clients.values()],
+                            "armed": armed,
+                        })
+                    except Exception:
+                        break
+                    await asyncio.sleep(2.0)
+                    continue
 
-                # Process-level detection: check if linuxcncsvr PID changed
-                if await loop.run_in_executor(None, check_lcnc_instance):
-                    if _lcnc_pid is not None:
-                        # New instance detected — reconnect
-                        if await loop.run_in_executor(None, try_connect_lcnc):
-                            _reconnect_fails = 0
-                            _hal_connect()
-                        viewer_init_sent = False
-                        last_file = None  # force re-send of gcode
-                        # viewer_init will be sent after first successful poll_status()
-                    else:
-                        # Process gone — null handles, disarm, let top-of-loop handle reconnection
-                        STAT = CMD = ERR = None
-                        if armed:
-                            armed = False
-                            if client_id in _clients:
-                                _clients[client_id]["armed"] = False
-                        continue
+                # Wait for new data from shared poller (skip if same generation)
+                if _status_gen == _last_gen:
+                    await asyncio.sleep(0.002)  # 2ms check — negligible CPU, low latency
+                    continue
+                _last_gen = _status_gen
+                pickup_ts = time.monotonic()
 
-                st = await loop.run_in_executor(None, poll_status)
-                _poll_fails = 0  # reset on success
+                st = _shared_status
+                if st is None:
+                    await asyncio.sleep(0.5)
+                    continue
 
-                # Send viewer_init AFTER a successful poll (STAT confirmed working)
+                # Send viewer_init on first successful poll for this client
                 if not viewer_init_sent:
                     print(f"[VINIT] client#{client_id} sending viewer_init (post-poll), STAT={'OK' if STAT else 'None'}", flush=True)
                     try:
@@ -3070,29 +3358,16 @@ async def ws_endpoint(ws: WebSocket):
                     except Exception as e:
                         print(f"[VINIT] client#{client_id} viewer_init FAILED: {e}", flush=True)
 
-                raw_errs = await loop.run_in_executor(None, read_errors_nonblocking)
+                # Merge shared probe updates into per-client results
+                if _shared_probe_updates:
+                    _probe_results.update(_shared_probe_updates)
 
-                # Parse probe results from DEBUG EVAL messages and filter them out
-                errs = []
-                OPERATOR_DISPLAY = 13
-                for kind, text in raw_errs:
-                    if kind == OPERATOR_DISPLAY:
-                        m = _PROBE_EVAL_RE.search(text)
-                        if m:
-                            widget_name = m.group(1)
-                            key = _PROBE_WIDGET_MAP.get(widget_name)
-                            if key:
-                                try:
-                                    _probe_results[key] = float(m.group(2))
-                                except ValueError:
-                                    pass
-                                continue  # don't forward EVAL messages to UI
-                    errs.append((kind, text))
-
+                # Build status message — use cached asdict from poller
+                status_data = _shared_status_dict.copy() if _shared_status_dict else asdict(st)
                 status_msg: dict = {
                     "type": "status",
-                    "data": asdict(st),
-                    "errors": errs,
+                    "data": status_data,
+                    "errors": _shared_errors,
                     "clients": [{"ip": c["ip"], "armed": c["armed"]} for c in _clients.values()],
                     "armed": armed,
                 }
@@ -3119,7 +3394,31 @@ async def ws_endpoint(ws: WebSocket):
                         except Exception:
                             pass
 
+                # Timing: only on first status after heartbeat so all
+                # components share the same ~1Hz sample rate.
+                # Two exact sums:
+                #   RT = Network + Server  (client-side, by construction)
+                #   Cycle = Poll + Errors + Parse + Overhead  (server-side)
+                hb_mono = _clients.get(client_id, {}).get("hb_mono", 0.0)
+                if hb_mono > 0:
+                    status_msg["timing"] = {
+                        "server_ms": round((time.monotonic() - hb_mono) * 1000, 2),
+                        "cycle_ms": _shared_timing.get("cycle_ms", 0),
+                        "poll_ms": _shared_timing.get("poll_ms", 0),
+                        "errors_ms": _shared_timing.get("errors_ms", 0),
+                        "parse_ms": _shared_timing.get("parse_ms", 0),
+                        "overhead_ms": _shared_timing.get("overhead_ms", 0),
+                    }
+                    if client_id in _clients:
+                        _clients[client_id]["hb_mono"] = 0.0
+
+                pre_send = time.monotonic()
                 await ws_send_json(ws, status_msg)
+                _prev_send_ms = round((time.monotonic() - pre_send) * 1000, 2)
+
+                # Log timing to file if enabled
+                if _timing_log_enabled and "timing" in status_msg:
+                    _log_timing({**status_msg["timing"], "send_ms": _prev_send_ms})
 
                 # Settings broadcast: send full settings when version changes
                 if _last_settings_ver != _settings_version:
@@ -3221,30 +3520,8 @@ async def ws_endpoint(ws: WebSocket):
                                 pass
                             return  # exit status_loop; finally block handles cleanup
 
-                await asyncio.sleep(1.0 / POLL_HZ)
             except Exception as e:
-                _poll_fails += 1
-                print(f"[VINIT] client#{client_id} status_loop EXCEPTION ({_poll_fails}): {type(e).__name__}: {e}", flush=True)
-                if _poll_fails >= 5:
-                    # Persistent failure — disconnect, disarm, let reconnect logic handle it
-                    lcnc_connected = False
-                    STAT = CMD = ERR = None
-                    _poll_fails = 0
-                    viewer_init_sent = False
-                    if armed:
-                        armed = False
-                        if client_id in _clients:
-                            _clients[client_id]["armed"] = False
-                    try:
-                        await ws_send_json(ws, {
-                            "type": "status_error",
-                            "error": f"{type(e).__name__}: {e}",
-                            "clients": [{"ip": c["ip"], "armed": c["armed"]} for c in _clients.values()],
-                            "armed": armed,
-                        })
-                    except Exception:
-                        break  # WebSocket is dead — exit loop cleanly
-                # Transient — retry after short delay (NML startup window)
+                print(f"[STATUS] client#{client_id} status_loop exception: {type(e).__name__}: {e}", flush=True)
                 await asyncio.sleep(0.5)
 
     status_task = asyncio.create_task(status_loop())
@@ -3261,6 +3538,7 @@ async def ws_endpoint(ws: WebSocket):
             if msg.get("cmd") == "heartbeat":
                 if client_id in _clients:
                     _clients[client_id]["last_hb"] = time.time()
+                    _clients[client_id]["hb_mono"] = time.monotonic()
                 await ws_send_json(ws, {"type": "pong"})
                 continue
 
@@ -3280,6 +3558,27 @@ async def ws_endpoint(ws: WebSocket):
                 _loop = asyncio.get_event_loop()
                 await _loop.run_in_executor(None, save_settings_section, section, msg.get("data"))
                 await ws_send_json(ws, {"type": "reply", "ok": True})
+                continue
+
+            if msg.get("cmd") == "timing_log":
+                global _timing_log_enabled, _timing_log, _timing_log_path
+                _timing_log_enabled = bool(msg.get("enable", False))
+                if _timing_log_enabled:
+                    from datetime import datetime
+                    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    _timing_log_path = f"/tmp/lcnc-timing-{stamp}.jsonl"
+                    _timing_log = None  # opened on first write
+                    print(f"[TIMING] Log started: {_timing_log_path}", flush=True)
+                else:
+                    if _timing_log:
+                        try:
+                            _timing_log.close()
+                        except Exception:
+                            pass
+                    _timing_log = None
+                    if _timing_log_path:
+                        print(f"[TIMING] Log stopped: {_timing_log_path}", flush=True)
+                await ws_send_json(ws, {"type": "reply", "ok": True, "enabled": _timing_log_enabled})
                 continue
 
             if msg.get("cmd") == "simulate_probe_trip":

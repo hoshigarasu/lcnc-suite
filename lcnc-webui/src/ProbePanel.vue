@@ -143,43 +143,6 @@ const params = ref({
 
 const autoZero = ref(false);
 
-// ─── Context help ────────────────────────────────────────────────
-const activeTip = ref<string | null>(null);
-
-function toggleTip(key: string) {
-  activeTip.value = activeTip.value === key ? null : key;
-}
-
-const tipDesc: Record<string, { text: string; var: string }> = {
-  probeTool:      { text: "Tool number of the probe. Must match the tool loaded in the spindle before any probing operation.", var: "#3014" },
-  slowFr:         { text: "Feed rate for the refined slow probe pass. Set to 0 to skip the slow pass entirely — faster but less accurate.", var: "#3015" },
-  fastFr:         { text: "Feed rate for initial fast probe contact. Higher values are faster but reduce repeatability.", var: "#3016" },
-  traverseFr:     { text: "Feed rate for non-probing positioning moves between probe points. Does not affect probe accuracy.", var: "#3017" },
-  maxXYDistance:   { text: "Maximum lateral travel before probe aborts if no contact is made. Safety limit — set slightly larger than the expected edge distance.", var: "#3018" },
-  xyClearance:    { text: "Retract distance in X/Y after each edge contact before the next move. Prevents the probe tip from scraping the feature wall.", var: "#3019" },
-  maxZDistance:    { text: "Maximum downward travel before probe aborts if no contact. Safety limit to prevent crashes. Set slightly larger than expected distance to surface.", var: "#3020" },
-  zClearance:     { text: "Retract height above the workpiece between Z probe passes. Also controls slow probe depth (2× this value).", var: "#3021" },
-  extraProbeDepth:{ text: "Additional depth added to the slow probe pass beyond Z clearance. Ensures solid re-contact on rough surfaces. Increase if slow probe misses contact.", var: "#3022" },
-  stepOffWidth:   { text: "Distance the probe steps away from an edge before approaching perpendicular for measurement. Ensures a clean, straight-on contact.", var: "#3023" },
-  calOffset:      { text: "Probe tip radius calibration offset. Compensates for the difference between electrical trigger point and true tip center. Set via calibration routines — do not guess.", var: "#3032" },
-  edgeWidth:      { text: "Width of the ridge or valley feature being probed. Used to position probes on opposite sides of the feature. Set to actual measured width.", var: "#3024" },
-  diameterHint:   { text: "Approximate pocket/bore diameter for initial positioning. Extends max XY travel to reach the far edge. Set to 0 for blind probing, or to the approximate diameter to speed up the cycle.", var: "#3025" },
-  xHintBP:        { text: "Approximate X size of a boss or pocket feature. Helps pre-position probes for faster measurement. Set to 0 for fully blind probing.", var: "#3026" },
-  yHintBP:        { text: "Approximate Y size of a boss or pocket feature. Helps pre-position probes for faster measurement. Set to 0 for fully blind probing.", var: "#3027" },
-  xHintRV:        { text: "Approximate X width of the ridge or valley feature. Used to position probes on opposite sides. Set to approximate feature width.", var: "#3028" },
-  yHintRV:        { text: "Approximate Y width of the ridge or valley feature. Used to position probes on opposite sides. Set to approximate feature width.", var: "#3029" },
-  calDiameter:    { text: "Known diameter of the calibration ring or pocket. Used by calibration routines to compute the probe tip offset. Use a precision ring gauge for best results.", var: "#3033" },
-  xCalWidth:      { text: "Known X width of a rectangular calibration reference block.", var: "#3034" },
-  yCalWidth:      { text: "Known Y width of a rectangular calibration reference block.", var: "#3035" },
-  scanX0:         { text: "Scan grid minimum X bound in work coordinates. Must be less than X Max. Defines the left edge of the probing area.", var: "#3050" },
-  scanX1:         { text: "Scan grid maximum X bound in work coordinates. Must be greater than X Min. Defines the right edge of the probing area.", var: "#3051" },
-  scanY0:         { text: "Scan grid minimum Y bound in work coordinates. Must be less than Y Max. Defines the front edge of the probing area.", var: "#3052" },
-  scanY1:         { text: "Scan grid maximum Y bound in work coordinates. Must be greater than Y Min. Defines the back edge of the probing area.", var: "#3053" },
-  scanXProbes:    { text: "Number of probe points along X. Minimum 2. Point spacing = (X Max − X Min) / (count − 1).", var: "#3054" },
-  scanYProbes:    { text: "Number of probe points along Y. Minimum 2. Point spacing = (Y Max − Y Min) / (count − 1).", var: "#3055" },
-  scanSafeZ:      { text: "Safe Z height in work coordinates for retraction between scan probe points. Set above the highest point of the workpiece plus clearance for clamps.", var: "#3058" },
-  scanDepthZ:     { text: "Maximum downward probe distance from current Z. Always positive. Set larger than the deepest surface valley expected.", var: "#3059" },
-};
 
 /** Map UI params → LinuxCNC var numbers (writes both XY and Z distance/clearance) */
 function buildVarMap(probeMode: number): Record<string, number> {
@@ -250,11 +213,7 @@ watch(() => props.probeResults?.cal_offset, (v) => {
 
 onMounted(() => {
   loadParams();
-  document.addEventListener("click", dismissTip);
 });
-onUnmounted(() => document.removeEventListener("click", dismissTip));
-
-function dismissTip() { activeTip.value = null; }
 
 // ─── Status ───────────────────────────────────────────────────────
 const probeStatus = computed(() => {
@@ -889,11 +848,11 @@ function fmtR(key: string): string {
 
       <!-- Hint parameters (inline) -->
       <div class="inlineParams">
-        <label>Diameter <span class="tip" @click.stop="toggleTip('diameterHint')">?</span></label>
+        <label title="Approximate pocket/bore diameter for initial positioning. Extends max XY travel to reach the far edge. Set to 0 for blind probing, or to the approximate diameter to speed up the cycle. (#3025)">Diameter</label>
         <input type="number" v-model.number="params.diameterHint" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-        <label>X Hint <span class="tip" @click.stop="toggleTip('xHintBP')">?</span></label>
+        <label title="Approximate X size of a boss or pocket feature. Helps pre-position probes for faster measurement. Set to 0 for fully blind probing. (#3026)">X Hint</label>
         <input type="number" v-model.number="params.xHintBP" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-        <label>Y Hint <span class="tip" @click.stop="toggleTip('yHintBP')">?</span></label>
+        <label title="Approximate Y size of a boss or pocket feature. Helps pre-position probes for faster measurement. Set to 0 for fully blind probing. (#3027)">Y Hint</label>
         <input type="number" v-model.number="params.yHintBP" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
       </div>
       </div>
@@ -995,7 +954,7 @@ function fmtR(key: string): string {
 
       <!-- Angle parameters (inline) -->
       <div class="inlineParams">
-        <label>Edge Width <span class="tip" @click.stop="toggleTip('edgeWidth')">?</span></label>
+        <label title="Width of the ridge or valley feature being probed. Used to position probes on opposite sides of the feature. Set to actual measured width. (#3024)">Edge Width</label>
         <input type="number" v-model.number="params.edgeWidth" min="0.1" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
       </div>
       </div>
@@ -1034,7 +993,7 @@ function fmtR(key: string): string {
           </div>
           <div class="calParamStacked">
             <div class="calParamRow">
-              <label>Diameter <span class="tip" @click.stop="toggleTip('calDiameter')">?</span></label>
+              <label title="Known diameter of the calibration ring or pocket. Used by calibration routines to compute the probe tip offset. Use a precision ring gauge for best results. (#3033)">Diameter</label>
               <input type="number" v-model.number="params.calDiameter" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
             </div>
           </div>
@@ -1071,11 +1030,11 @@ function fmtR(key: string): string {
           </div>
           <div class="calParamStacked">
             <div class="calParamRow">
-              <label>X Width <span class="tip" @click.stop="toggleTip('xCalWidth')">?</span></label>
+              <label title="Known X width of a rectangular calibration reference block. (#3034)">X Width</label>
               <input type="number" v-model.number="params.xCalWidth" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
             </div>
             <div class="calParamRow">
-              <label>Y Width <span class="tip" @click.stop="toggleTip('yCalWidth')">?</span></label>
+              <label title="Known Y width of a rectangular calibration reference block. (#3035)">Y Width</label>
               <input type="number" v-model.number="params.yCalWidth" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
             </div>
           </div>
@@ -1167,9 +1126,9 @@ function fmtR(key: string): string {
 
       <!-- Hint parameters (inline) -->
       <div class="inlineParams">
-        <label>X Hint <span class="tip" @click.stop="toggleTip('xHintRV')">?</span></label>
+        <label title="Approximate X width of the ridge or valley feature. Used to position probes on opposite sides. Set to approximate feature width. (#3028)">X Hint</label>
         <input type="number" v-model.number="params.xHintRV" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-        <label>Y Hint <span class="tip" @click.stop="toggleTip('yHintRV')">?</span></label>
+        <label title="Approximate Y width of the ridge or valley feature. Used to position probes on opposite sides. Set to approximate feature width. (#3029)">Y Hint</label>
         <input type="number" v-model.number="params.yHintRV" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
       </div>
       </div>
@@ -1180,21 +1139,21 @@ function fmtR(key: string): string {
       <div class="section" :style="{ opacity: can.ready ? 1 : 'var(--opacity-disabled)' }">
         <div class="sub">Scan Grid</div>
         <div class="paramGrid twoCol">
-          <label>X0 <span class="tip" @click.stop="toggleTip('scanX0')">?</span></label>
+          <label title="Scan grid minimum X bound in work coordinates. Must be less than X Max. Defines the left edge of the probing area. (#3050)">X0</label>
           <input type="number" v-model.number="params.scanX0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-          <label>X1 <span class="tip" @click.stop="toggleTip('scanX1')">?</span></label>
+          <label title="Scan grid maximum X bound in work coordinates. Must be greater than X Min. Defines the right edge of the probing area. (#3051)">X1</label>
           <input type="number" v-model.number="params.scanX1" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-          <label>Y0 <span class="tip" @click.stop="toggleTip('scanY0')">?</span></label>
+          <label title="Scan grid minimum Y bound in work coordinates. Must be less than Y Max. Defines the front edge of the probing area. (#3052)">Y0</label>
           <input type="number" v-model.number="params.scanY0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-          <label>Y1 <span class="tip" @click.stop="toggleTip('scanY1')">?</span></label>
+          <label title="Scan grid maximum Y bound in work coordinates. Must be greater than Y Min. Defines the back edge of the probing area. (#3053)">Y1</label>
           <input type="number" v-model.number="params.scanY1" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-          <label>X Probes <span class="tip" @click.stop="toggleTip('scanXProbes')">?</span></label>
+          <label title="Number of probe points along X. Minimum 2. Point spacing = (X Max - X Min) / (count - 1). (#3054)">X Probes</label>
           <input type="number" v-model.number="params.scanXProbes" min="2" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-          <label>Y Probes <span class="tip" @click.stop="toggleTip('scanYProbes')">?</span></label>
+          <label title="Number of probe points along Y. Minimum 2. Point spacing = (Y Max - Y Min) / (count - 1). (#3055)">Y Probes</label>
           <input type="number" v-model.number="params.scanYProbes" min="2" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-          <label>Safe Z <span class="tip" @click.stop="toggleTip('scanSafeZ')">?</span></label>
+          <label title="Safe Z height in work coordinates for retraction between scan probe points. Set above the highest point of the workpiece plus clearance for clamps. (#3058)">Safe Z</label>
           <input type="number" v-model.number="params.scanSafeZ" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
-          <label>Probe Depth <span class="tip" @click.stop="toggleTip('scanDepthZ')">?</span></label>
+          <label title="Maximum downward probe distance from current Z. Always positive. Set larger than the deepest surface valley expected. (#3059)">Probe Depth</label>
           <input type="number" v-model.number="params.scanDepthZ" min="0.1" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
         </div>
       </div>
@@ -1227,37 +1186,37 @@ function fmtR(key: string): string {
     <div class="section" :style="{ opacity: can.ready ? 1 : 'var(--opacity-disabled)' }">
       <div class="sub">Parameters</div>
       <div class="paramGrid twoCol">
-        <label>Probe Tool # <span class="tip" @click.stop="toggleTip('probeTool')">?</span></label>
+        <label title="Tool number of the probe. Must match the tool loaded in the spindle before any probing operation. (#3014)">Probe Tool #</label>
         <input type="number" v-model.number="params.probeTool" min="1" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
 
-        <label>Probe Slow FRate <span class="tip" @click.stop="toggleTip('slowFr')">?</span></label>
+        <label title="Feed rate for the refined slow probe pass. Set to 0 to skip the slow pass entirely — faster but less accurate. (#3015)">Probe Slow FRate</label>
         <input type="number" v-model.number="params.slowFr" min="0" :step="STEP_FEED" :disabled="!can.ready" @change="saveParams" />
 
-        <label>Probe Traverse FR <span class="tip" @click.stop="toggleTip('traverseFr')">?</span></label>
+        <label title="Feed rate for non-probing positioning moves between probe points. Does not affect probe accuracy. (#3017)">Probe Traverse FR</label>
         <input type="number" v-model.number="params.traverseFr" min="1" :step="STEP_FEED" :disabled="!can.ready" @change="saveParams" />
 
-        <label>Probe Fast FRate <span class="tip" @click.stop="toggleTip('fastFr')">?</span></label>
+        <label title="Feed rate for initial fast probe contact. Higher values are faster but reduce repeatability. (#3016)">Probe Fast FRate</label>
         <input type="number" v-model.number="params.fastFr" min="1" :step="STEP_FEED" :disabled="!can.ready" @change="saveParams" />
 
-        <label>Max X/Y Distance <span class="tip" @click.stop="toggleTip('maxXYDistance')">?</span></label>
+        <label title="Maximum lateral travel before probe aborts if no contact is made. Safety limit — set slightly larger than the expected edge distance. (#3018)">Max X/Y Distance</label>
         <input type="number" v-model.number="params.maxXYDistance" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
 
-        <label>X/Y Clearance <span class="tip" @click.stop="toggleTip('xyClearance')">?</span></label>
+        <label title="Retract distance in X/Y after each edge contact before the next move. Prevents the probe tip from scraping the feature wall. (#3019)">X/Y Clearance</label>
         <input type="number" v-model.number="params.xyClearance" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
 
-        <label>Max Z Distance <span class="tip" @click.stop="toggleTip('maxZDistance')">?</span></label>
+        <label title="Maximum downward travel before probe aborts if no contact. Safety limit to prevent crashes. Set slightly larger than expected distance to surface. (#3020)">Max Z Distance</label>
         <input type="number" v-model.number="params.maxZDistance" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
 
-        <label>Z Clearance <span class="tip" @click.stop="toggleTip('zClearance')">?</span></label>
+        <label title="Retract height above the workpiece between Z probe passes. Also controls slow probe depth (2x this value). (#3021)">Z Clearance</label>
         <input type="number" v-model.number="params.zClearance" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
 
-        <label>Extra Probe Depth <span class="tip" @click.stop="toggleTip('extraProbeDepth')">?</span></label>
+        <label title="Additional depth added to the slow probe pass beyond Z clearance. Ensures solid re-contact on rough surfaces. Increase if slow probe misses contact. (#3022)">Extra Probe Depth</label>
         <input type="number" v-model.number="params.extraProbeDepth" min="0" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
 
-        <label>Step Off Width <span class="tip" @click.stop="toggleTip('stepOffWidth')">?</span></label>
+        <label title="Distance the probe steps away from an edge before approaching perpendicular for measurement. Ensures a clean, straight-on contact. (#3023)">Step Off Width</label>
         <input type="number" v-model.number="params.stepOffWidth" min="0.1" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
 
-        <label>Cal Offset <span class="tip" @click.stop="toggleTip('calOffset')">?</span></label>
+        <label title="Probe tip radius calibration offset. Compensates for the difference between electrical trigger point and true tip center. Set via calibration routines — do not guess. (#3032)">Cal Offset</label>
         <span class="calOffsetReadonly">{{ fmt(params.calOffset) }} <button class="calResetBtn" :disabled="!can.ready || probing" @click="resetCal">Reset</button></span>
       </div>
     </div>
@@ -1285,15 +1244,6 @@ function fmtR(key: string): string {
         <div class="prCell"><span class="label">Y Center</span><span class="prVal">{{ fmtR("y_center") }}</span></div>
       </div>
     </div>
-
-    <!-- Context help card -->
-    <template v-if="activeTip && tipDesc[activeTip]">
-      <div class="sep"></div>
-      <div class="tipCard" @click.stop>
-        {{ tipDesc[activeTip]?.text }}
-        <span class="varRef">{{ tipDesc[activeTip]?.var }}</span>
-      </div>
-    </template>
 
   </div>
 

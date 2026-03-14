@@ -435,12 +435,69 @@ export function saveCameraDefaults(data: CameraDefaults): void {
 
 // ─── Gamepad section ─────────────────────────────────────────────
 
+/** Actions assignable to gamepad buttons. */
+export type GamepadAction = "start" | "pause" | "resume" | "abort" | "z_mod" | "none";
+
+export const GAMEPAD_ACTIONS: { value: GamepadAction; label: string }[] = [
+  { value: "start", label: "Cycle Start / Resume" },
+  { value: "pause", label: "Pause" },
+  { value: "resume", label: "Resume" },
+  { value: "abort", label: "Abort" },
+  { value: "z_mod", label: "Z Modifier (D-pad)" },
+  { value: "none", label: "Unassigned" },
+];
+
+export interface GamepadMapping {
+  btn_a: GamepadAction;
+  btn_b: GamepadAction;
+  btn_x: GamepadAction;
+  btn_y: GamepadAction;
+  btn_lb: GamepadAction;
+  btn_rb: GamepadAction;
+  btn_back: GamepadAction;
+  btn_start: GamepadAction;
+}
+
+export const DEFAULT_MAPPING: GamepadMapping = {
+  btn_a: "start",
+  btn_b: "abort",
+  btn_x: "pause",
+  btn_y: "resume",
+  btn_lb: "z_mod",
+  btn_rb: "none",
+  btn_back: "none",
+  btn_start: "none",
+};
+
+/** Map standard gamepad button index → mapping key. */
+export const BTN_INDEX_TO_KEY: Record<number, keyof GamepadMapping> = {
+  0: "btn_a",
+  1: "btn_b",
+  2: "btn_x",
+  3: "btn_y",
+  4: "btn_lb",
+  5: "btn_rb",
+  8: "btn_back",
+  9: "btn_start",
+};
+
+/** Short display labels for actions (used in diagram). */
+export const ACTION_LABELS: Record<GamepadAction, string> = {
+  start: "Start",
+  pause: "Pause",
+  resume: "Resume",
+  abort: "Abort",
+  z_mod: "Z Mod",
+  none: "",
+};
+
 export interface GamepadDefaults {
   enabled: boolean;
   deadZone: number;
   invertX: boolean;
   invertY: boolean;
   invertZ: boolean;
+  mapping: GamepadMapping;
 }
 
 const GAMEPAD_FALLBACK: GamepadDefaults = {
@@ -449,16 +506,29 @@ const GAMEPAD_FALLBACK: GamepadDefaults = {
   invertX: false,
   invertY: false,
   invertZ: false,
+  mapping: { ...DEFAULT_MAPPING },
 };
 
+function mergeMapping(saved: any, fb: GamepadMapping): GamepadMapping {
+  if (!saved || typeof saved !== "object") return { ...fb };
+  const valid = new Set<string>(GAMEPAD_ACTIONS.map(a => a.value));
+  const result: any = {};
+  for (const key of Object.keys(fb)) {
+    const v = saved[key];
+    result[key] = (typeof v === "string" && valid.has(v)) ? v : (fb as any)[key];
+  }
+  return result as GamepadMapping;
+}
+
 registerSection<GamepadDefaults>("gamepad", GAMEPAD_FALLBACK, (saved, fb) => {
-  if (!saved) return { ...fb };
+  if (!saved) return { ...fb, mapping: { ...fb.mapping } };
   return {
     enabled: saved.enabled ?? fb.enabled,
     deadZone: typeof saved.deadZone === "number" ? saved.deadZone : fb.deadZone,
     invertX: saved.invertX ?? fb.invertX,
     invertY: saved.invertY ?? fb.invertY,
     invertZ: saved.invertZ ?? fb.invertZ,
+    mapping: mergeMapping(saved.mapping, fb.mapping),
   };
 });
 

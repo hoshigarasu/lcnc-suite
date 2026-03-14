@@ -1061,6 +1061,7 @@ function onKeyUp(e: KeyboardEvent) {
 
 /** ---------- gamepad jogging ---------- */
 const gamepadConfig = ref<GamepadDefaults>(loadGamepadDefaults());
+const gamepadGated = computed(() => panels.value.some(p => p.tab === "settings"));
 const gamepad = useGamepad({
   jogVel,
   angularJogVel,
@@ -1071,12 +1072,16 @@ const gamepad = useGamepad({
   activeFile: computed(() => activeFile.value),
   config: gamepadConfig,
   axisCount: computed(() => axes.value.length),
+  gated: gamepadGated,
 });
 
 function setGamepadConfig(cfg: GamepadDefaults) {
   gamepadConfig.value = cfg;
   saveGamepadDefaults(cfg);
 }
+
+provide("gamepadAxes", gamepad.gamepadAxesState);
+provide("gamepadButtons", gamepad.gamepadButtonsState);
 
 /** ---------- safety: stop jog on focus loss ---------- */
 function stopAllJog() {
@@ -1804,12 +1809,10 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <button class="btn-icon" @click="settingsDialogOpen = false">&times;</button>
         </div>
         <div class="settingsDialogBody">
-          <SettingsPanel :lastReply="lastReply" :status="status"
+          <SettingsPanel
             :gamepadConnected="gamepad.gamepadConnected.value"
             :gamepadName="gamepad.gamepadName.value"
             :gamepadConfig="gamepadConfig"
-            :gamepadAxes="gamepad.gamepadAxesState.value"
-            :gamepadButtons="gamepad.gamepadButtonsState.value"
             @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
             @mdi="send({ cmd: 'mdi', text: $event })"
             @setPathOnTop="setPathOnTop"

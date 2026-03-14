@@ -4,14 +4,14 @@
 // Left stick → XY continuous jog (proportional to deflection).
 // Right stick Y → Z continuous jog (proportional).
 // D-pad → discrete jog at full jogVel (or incremental when jogIncrement > 0).
-// Button presses → cycle start, abort, pause, resume (edge-triggered).
+// Button presses → configurable actions (edge-triggered).
 //
 // All jog commands go through the same send() as keyboard jog.
-// Safety: stops all axes on disconnect, blur, permission loss.
+// Safety: stops all axes on disconnect, blur, permission loss, settings open.
 
 import { ref, watch, type Ref, type ComputedRef } from "vue";
 import type { WsCommand } from "./lcnc";
-import type { GamepadDefaults } from "./defaults";
+import { BTN_INDEX_TO_KEY, type GamepadAction, type GamepadDefaults } from "./defaults";
 
 interface Permissions {
   jog: boolean;
@@ -21,15 +21,7 @@ interface Permissions {
   resume: boolean;
 }
 
-// Xbox standard button indices
-const BTN_A = 0;
-const BTN_B = 1;
-const BTN_X = 2;
-const BTN_Y = 3;
-const BTN_LB = 4;
-// const BTN_RB = 5;
-// const BTN_LT = 6;
-// const BTN_RT = 7;
+// D-pad button indices (standard gamepad mapping)
 const DPAD_UP = 12;
 const DPAD_DOWN = 13;
 const DPAD_LEFT = 14;
@@ -51,6 +43,7 @@ export function useGamepad(deps: {
   activeFile: ComputedRef<string | null>;
   config: Ref<GamepadDefaults>;
   axisCount: ComputedRef<number>;
+  gated: Ref<boolean>;
 }) {
   const gamepadConnected = ref(false);
   const gamepadName = ref("");
@@ -126,6 +119,38 @@ export function useGamepad(deps: {
     lastSendTime[axis] = now;
   }
 
+  /** Dispatch a configurable button action. */
+  function dispatchAction(action: GamepadAction) {
+    const perms = deps.permissions.value;
+    switch (action) {
+      case "start":
+        if (perms.resume) deps.fire({ cmd: "cycle_resume" });
+        else if (perms.ready && deps.activeFile.value) deps.fire({ cmd: "cycle_start" });
+        break;
+      case "pause":
+        if (perms.pause) deps.fire({ cmd: "cycle_pause" });
+        break;
+      case "resume":
+        if (perms.resume) deps.fire({ cmd: "cycle_resume" });
+        break;
+      case "abort":
+        if (perms.abort) deps.fire({ cmd: "abort" });
+        break;
+      // z_mod and none are not dispatchable actions
+    }
+  }
+
+  /** Check if any button assigned to z_mod is currently held. */
+  function isZModHeld(currButtons: boolean[]): boolean {
+    const mapping = deps.config.value.mapping;
+    for (const [idxStr, key] of Object.entries(BTN_INDEX_TO_KEY)) {
+      if (mapping[key] === "z_mod" && (currButtons[Number(idxStr)] ?? false)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function pollLoop() {
     rafId = requestAnimationFrame(pollLoop);
 
@@ -135,12 +160,21 @@ export function useGamepad(deps: {
     if (!gp) return;
 
     const cfg = deps.config.value;
-    const canJog = deps.permissions.value.jog;
+    const gated = deps.gated.value;
+    const canJog = !gated && deps.permissions.value.jog;
     const now = performance.now();
 
-    // Update reactive axis state for UI
+    // Update reactive axis state for UI (always, even when gated)
     gamepadAxesState.value = Array.from(gp.axes);
     gamepadButtonsState.value = Array.from(gp.buttons).map(b => b.pressed);
+
+    // When gated (settings open), stop any active jogs and skip all commands
+    if (gated) {
+      stopAllJog();
+      // Still update prevButtons for edge detection continuity
+      prevButtons = Array.from(gp.buttons).map(b => b.pressed);
+      return;
+    }
 
     // ── Analog sticks → continuous jog ──
     // Left stick: axes 0 (X), 1 (Y)
@@ -166,8 +200,7 @@ export function useGamepad(deps: {
     }
 
     // ── D-pad → discrete jog ──
-    const buttons = gp.buttons;
-    const currButtons = buttons.map(b => b.pressed);
+    const currButtons = Array.from(gp.buttons).map(b => b.pressed);
 
     if (canJog) {
       // D-pad: full-speed jog or incremental
@@ -178,15 +211,15 @@ export function useGamepad(deps: {
         [DPAD_DOWN, 1, -1],   // Down → Y-
       ];
 
-      // If LB is held, D-pad Up/Down control Z instead of Y
-      const lbHeld = currButtons[BTN_LB] ?? false;
+      // Check if z_mod button is held
+      const zModHeld = isZModHeld(currButtons);
 
       for (const [btnIdx, axis, dir] of dpadAxes) {
         const pressed = currButtons[btnIdx] ?? false;
         const wasPressed = prevButtons[btnIdx] ?? false;
 
-        if (lbHeld && (btnIdx === DPAD_UP || btnIdx === DPAD_DOWN)) {
-          // Z axis via D-pad + LB
+        if (zModHeld && (btnIdx === DPAD_UP || btnIdx === DPAD_DOWN)) {
+          // Z axis via D-pad + z_mod
           if (pressed && !wasPressed && deps.axisCount.value >= 3) {
             const zDir = btnIdx === DPAD_UP ? 1 : -1;
             const vel = deps.jogVel.value * zDir;
@@ -218,20 +251,18 @@ export function useGamepad(deps: {
       }
     }
 
-    // ── Face buttons → actions (edge-triggered) ──
-    const perms = deps.permissions.value;
-    if ((currButtons[BTN_A] ?? false) && !(prevButtons[BTN_A] ?? false)) {
-      if (perms.resume) deps.fire({ cmd: "cycle_resume" });
-      else if (perms.ready && deps.activeFile.value) deps.fire({ cmd: "cycle_start" });
-    }
-    if ((currButtons[BTN_B] ?? false) && !(prevButtons[BTN_B] ?? false)) {
-      if (perms.abort) deps.fire({ cmd: "abort" });
-    }
-    if ((currButtons[BTN_X] ?? false) && !(prevButtons[BTN_X] ?? false)) {
-      if (perms.pause) deps.fire({ cmd: "cycle_pause" });
-    }
-    if ((currButtons[BTN_Y] ?? false) && !(prevButtons[BTN_Y] ?? false)) {
-      if (perms.resume) deps.fire({ cmd: "cycle_resume" });
+    // ── Configurable button actions (edge-triggered) ──
+    const mapping = cfg.mapping;
+    for (const [idxStr, key] of Object.entries(BTN_INDEX_TO_KEY)) {
+      const idx = Number(idxStr);
+      const pressed = currButtons[idx] ?? false;
+      const wasPressed = prevButtons[idx] ?? false;
+      if (pressed && !wasPressed) {
+        const action = mapping[key];
+        if (action && action !== "none" && action !== "z_mod") {
+          dispatchAction(action);
+        }
+      }
     }
 
     prevButtons = currButtons;
@@ -256,9 +287,12 @@ export function useGamepad(deps: {
     prevButtons = [];
   }
 
-  // Stop jog when permissions drop
+  // Stop jog when permissions drop or when gated
   watch(() => deps.permissions.value.jog, (canJog) => {
     if (!canJog) stopAllJog();
+  });
+  watch(deps.gated, (gated) => {
+    if (gated) stopAllJog();
   });
 
   function start() {

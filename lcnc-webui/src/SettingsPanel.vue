@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, inject, onMounted, type Ref, type ComputedRef } from "vue";
+import { ref, reactive, computed, inject, onMounted, watch, type Ref, type ComputedRef } from "vue";
 import TabPanel from "./TabPanel.vue";
 import {
   loadViewerDefaults, saveViewerDefaults,
@@ -10,12 +10,15 @@ import {
   type Vec3, type Layer, type ColorDefaults, type OpacityDefaults,
   type TrackMode, type Projection, type ToolChangeMode, type SpindleDir,
   type ThemeMode, type MacroDef, type MacroParam, type GamepadDefaults,
+  type GamepadMapping, type GamepadAction, GAMEPAD_ACTIONS, DEFAULT_MAPPING,
   STEP_DEFAULT, STEP_FEED, STEP_RPM,
 } from "./defaults";
 import { fetchHal, fetchG30, type HalPin, type HalSignal, type HalParam } from "./lcncApi";
-import { timingStats, resetTimingStats, getTimingCsv, send, type TimingComponentStats } from "./lcncWs";
+import { send, status } from "./lcncWs";
 import { usePermissions } from "./permissions";
 import { ChevronUp, ChevronDown, Pencil, Trash2 } from "lucide-vue-next";
+import GamepadLiveInput from "./GamepadLiveInput.vue";
+import DebugTab from "./DebugTab.vue";
 
 const can = usePermissions();
 
@@ -91,13 +94,9 @@ function persistMacros() {
 }
 
 const props = defineProps<{
-  lastReply?: unknown;
-  status?: unknown;
   gamepadConnected?: boolean;
   gamepadName?: string;
   gamepadConfig?: GamepadDefaults;
-  gamepadAxes?: number[];
-  gamepadButtons?: boolean[];
 }>();
 
 const emit = defineEmits<{
@@ -337,7 +336,7 @@ async function loadG30() {
 function setG30() {
   emit("mdi", "G30.1");
   // After G30.1 saves current position, read back from machine position
-  const st = props.status as any;
+  const st = status.value as any;
   if (st?.position) {
     g30X.value = st.position[0];
     g30Y.value = st.position[1];
@@ -369,37 +368,6 @@ const subTabs = [
 ];
 const activeTab = ref("viewer");
 
-// ─── Timing / Debug ────────────────────────────────────────────
-const timingLogActive = ref(false);
-
-function toggleTimingLog() {
-  timingLogActive.value = !timingLogActive.value;
-  send({ cmd: "timing_log", enable: timingLogActive.value });
-}
-
-function downloadTimingCsv() {
-  const csv = getTimingCsv();
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "lcnc-latency.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-const timingComponents: { key: keyof Omit<import("./lcncWs").TimingStats, "count">; label: string }[] = [
-  // RT = Network + Server  (exact, client-side)
-  { key: "rt",        label: "RT (total)" },
-  { key: "network",   label: "\u2003Network" },
-  { key: "server",    label: "\u2003Server" },
-  // Cycle = Poll + Errors + Parse + Overhead  (exact, server-side)
-  { key: "cycle",     label: "Cycle" },
-  { key: "poll",      label: "\u2003Poll" },
-  { key: "errors",    label: "\u2003Errors" },
-  { key: "parse",     label: "\u2003Parse" },
-  { key: "overhead",  label: "\u2003Overhead" },
-];
 
 function updateSize(axis: number, value: number) {
   if (isNaN(value) || value < 0) return;
@@ -472,6 +440,26 @@ function resetMachineColor(id: string) {
   delete machineColors[id];
   save();
   setMachinePartColor(id, null);
+}
+
+// ─── Gamepad button mapping ─────────────────
+const GP_BTN_LABELS: Record<keyof GamepadMapping, string> = {
+  btn_a: "A", btn_b: "B", btn_x: "X", btn_y: "Y",
+  btn_lb: "LB", btn_rb: "RB", btn_back: "Back", btn_start: "Start",
+};
+
+const gpMapping = reactive<GamepadMapping>({ ...(props.gamepadConfig?.mapping ?? DEFAULT_MAPPING) });
+
+watch(() => props.gamepadConfig?.mapping, (m) => {
+  if (!m) return;
+  for (const k of Object.keys(gpMapping) as (keyof GamepadMapping)[]) {
+    if (gpMapping[k] !== m[k]) gpMapping[k] = m[k];
+  }
+});
+
+function onGpMappingChanged() {
+  if (!props.gamepadConfig) return;
+  emit("setGamepadConfig", { ...props.gamepadConfig, mapping: { ...gpMapping } });
 }
 
 // ─── HAL viewer ─────────────────────────────
@@ -1095,6 +1083,7 @@ const halStats = computed(() => ({
 
       <template #gamepad>
         <div class="scrollContent scroll-thin">
+        <fieldset :disabled="!can.idle" class="fs-reset">
           <div class="section">
             <div class="sub">Gamepad Jogging</div>
             <div class="settingDesc">Use an Xbox, PlayStation, or standard gamepad to jog the machine.</div>
@@ -1149,42 +1138,32 @@ const halStats = computed(() => ({
           <div v-if="props.gamepadConfig?.enabled && props.gamepadConnected" class="section">
             <div class="sub">Live Input</div>
             <div class="settingDesc">Move sticks and press buttons to verify mapping.</div>
-            <div class="gpLive">
-              <div class="gpStick">
-                <div class="gpStickLabel">Left Stick (XY)</div>
-                <div class="gpStickBox">
-                  <div class="gpDot" :style="{ left: `${50 + (props.gamepadAxes?.[0] ?? 0) * 40}%`, top: `${50 + (props.gamepadAxes?.[1] ?? 0) * 40}%` }"></div>
-                </div>
-              </div>
-              <div class="gpStick">
-                <div class="gpStickLabel">Right Stick (Z)</div>
-                <div class="gpStickBox">
-                  <div class="gpDot" :style="{ left: '50%', top: `${50 + (props.gamepadAxes?.[3] ?? 0) * 40}%` }"></div>
-                </div>
-              </div>
-              <div class="gpButtons">
-                <div class="gpStickLabel">Buttons</div>
-                <div class="gpBtnGrid">
-                  <span v-for="(label, i) in ['A','B','X','Y','LB','RB','LT','RT','Back','Start','LS','RS','▲','▼','◄','►']" :key="i"
-                    class="gpBtn" :class="{ active: props.gamepadButtons?.[i] }">{{ label }}</span>
-                </div>
-              </div>
-            </div>
+            <GamepadLiveInput />
           </div>
 
           <div v-if="props.gamepadConfig?.enabled" class="section">
             <div class="sub">Button Mapping</div>
             <table class="gpMapTable">
-              <tr><td class="gpMapKey">Left Stick</td><td>XY continuous jog (proportional)</td></tr>
-              <tr><td class="gpMapKey">Right Stick Y</td><td>Z continuous jog (proportional)</td></tr>
-              <tr><td class="gpMapKey">D-pad</td><td>XY discrete jog (full speed)</td></tr>
-              <tr><td class="gpMapKey">LB + D-pad ▲▼</td><td>Z discrete jog</td></tr>
-              <tr><td class="gpMapKey">A</td><td>Cycle Start / Resume</td></tr>
-              <tr><td class="gpMapKey">B</td><td>Abort</td></tr>
-              <tr><td class="gpMapKey">X</td><td>Pause</td></tr>
-              <tr><td class="gpMapKey">Y</td><td>Resume</td></tr>
+              <tbody>
+                <tr><td class="gpMapKey">Left Stick</td><td>XY continuous jog (proportional)</td></tr>
+                <tr><td class="gpMapKey">Right Stick Y</td><td>Z continuous jog (proportional)</td></tr>
+                <tr><td class="gpMapKey">D-pad</td><td>XY discrete jog (full speed)</td></tr>
+                <tr v-for="(label, key) in GP_BTN_LABELS" :key="key">
+                  <td class="gpMapKey">{{ label }}</td>
+                  <td>
+                    <select
+                      class="gpActionSelect"
+                      v-model="gpMapping[key]"
+                      @change="onGpMappingChanged"
+                    >
+                      <option v-for="a in GAMEPAD_ACTIONS" :key="a.value" :value="a.value">{{ a.label }}</option>
+                    </select>
+                  </td>
+                </tr>
+              </tbody>
             </table>
           </div>
+        </fieldset>
         </div>
       </template>
 
@@ -1320,38 +1299,7 @@ const halStats = computed(() => ({
       </template>
 
       <template #debug>
-        <div class="scrollContent scroll-thin">
-          <div class="section">
-            <div class="sub">Latency Breakdown <span v-if="timingStats" style="opacity:0.6">({{ timingStats.count }} samples)</span></div>
-            <div v-if="timingStats" class="timingTable">
-              <div class="timingRow timingHeader">
-                <span>Component</span><span>Last</span><span>Min</span><span>Max</span><span>Mean</span><span>Std</span>
-              </div>
-              <div v-for="comp in timingComponents" :key="comp.key" class="timingRow" :class="{ timingTotal: comp.key === 'rt' || comp.key === 'cycle' }">
-                <span>{{ comp.label }}</span>
-                <span>{{ (timingStats[comp.key] as TimingComponentStats).last }}ms</span>
-                <span>{{ (timingStats[comp.key] as TimingComponentStats).min }}ms</span>
-                <span>{{ (timingStats[comp.key] as TimingComponentStats).max }}ms</span>
-                <span>{{ (timingStats[comp.key] as TimingComponentStats).mean }}ms</span>
-                <span>{{ (timingStats[comp.key] as TimingComponentStats).std }}ms</span>
-              </div>
-            </div>
-            <div v-else style="opacity:0.5">Waiting for data…</div>
-            <div class="row" style="gap: var(--gap-controls); margin-top: var(--gap-section)">
-              <button @click="toggleTimingLog">{{ timingLogActive ? 'Stop Log' : 'Start Log' }}</button>
-              <button @click="resetTimingStats">Reset</button>
-              <button @click="downloadTimingCsv" :disabled="!timingStats">Download CSV</button>
-            </div>
-          </div>
-          <div class="section">
-            <div class="sub">Last reply</div>
-            <pre class="debugPre">{{ props.lastReply }}</pre>
-          </div>
-          <div class="section">
-            <div class="sub">Raw status</div>
-            <pre class="debugPre">{{ props.status }}</pre>
-          </div>
-        </div>
+        <DebugTab />
       </template>
     </TabPanel>
 
@@ -1606,59 +1554,6 @@ const halStats = computed(() => ({
 
 .rflRpm input {
   width: 90px;
-}
-
-.timingTable {
-  font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-}
-
-.timingRow {
-  display: grid;
-  grid-template-columns: 100px repeat(5, 1fr);
-  gap: var(--gap-tight);
-  padding: 2px 0;
-}
-
-.timingRow span {
-  text-align: right;
-}
-
-.timingRow span:first-child {
-  text-align: left;
-}
-
-.timingHeader {
-  opacity: 0.6;
-  font-weight: 600;
-  border-bottom: 1px solid currentColor;
-  padding-bottom: 4px;
-  margin-bottom: 2px;
-}
-
-.timingTotal {
-  border-bottom: 1px solid currentColor;
-  padding-bottom: 4px;
-  margin-bottom: 2px;
-  font-weight: 600;
-}
-
-.timingTotal + .timingRow:not(.timingTotal) ~ .timingTotal {
-  border-top: 1px solid currentColor;
-  padding-top: 4px;
-  margin-top: var(--gap-controls);
-}
-
-.debugPre {
-  font-size: var(--fs-sm);
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 300px;
-  overflow: auto;
-  margin: 0;
-  padding: 6px;
-  background: color-mix(in oklab, var(--fg) 5%, var(--bg));
-  border-radius: var(--radius-md);
 }
 
 /* ─── Toolsetter sub-tab ───── */
@@ -1986,67 +1881,6 @@ const halStats = computed(() => ({
   cursor: pointer;
 }
 
-.gpLive {
-  display: flex;
-  gap: var(--gap-panel);
-  flex-wrap: wrap;
-}
-
-.gpStick {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--gap-tight);
-}
-
-.gpStickLabel {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  opacity: 0.7;
-}
-
-.gpStickBox {
-  width: 80px;
-  height: 80px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--button-bg);
-  position: relative;
-}
-
-.gpDot {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--ok);
-  transform: translate(-50%, -50%);
-  transition: left 0.05s, top 0.05s;
-}
-
-.gpBtnGrid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
-}
-
-.gpBtn {
-  padding: 2px 4px;
-  font-size: var(--fs-xs);
-  font-family: var(--font-mono);
-  text-align: center;
-  border-radius: var(--radius-sm);
-  background: var(--button-bg);
-  border: 1px solid var(--border);
-  opacity: 0.5;
-}
-
-.gpBtn.active {
-  background: color-mix(in oklab, var(--ok) 25%, var(--button-bg));
-  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
-  opacity: 1;
-}
-
 .gpMapTable {
   width: 100%;
   border-collapse: collapse;
@@ -2062,5 +1896,9 @@ const halStats = computed(() => ({
   font-weight: 600;
   white-space: nowrap;
   width: 1%;
+}
+
+.gpActionSelect {
+  width: 100%;
 }
 </style>

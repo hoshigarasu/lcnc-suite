@@ -1,0 +1,93 @@
+<script setup lang="ts">
+import { inject, ref, type Ref } from "vue";
+
+const axes = inject<Ref<number[]>>("gamepadAxes", ref([]));
+const buttons = inject<Ref<boolean[]>>("gamepadButtons", ref([]));
+</script>
+
+<template>
+  <div class="gpLive">
+    <div class="gpStick">
+      <div class="gpStickLabel">Left Stick (XY)</div>
+      <div class="gpStickBox">
+        <div class="gpDot" :style="{ left: `${50 + (axes[0] ?? 0) * 40}%`, top: `${50 + (axes[1] ?? 0) * 40}%` }"></div>
+      </div>
+    </div>
+    <div class="gpStick">
+      <div class="gpStickLabel">Right Stick (Z)</div>
+      <div class="gpStickBox">
+        <div class="gpDot" :style="{ left: '50%', top: `${50 + (axes[3] ?? 0) * 40}%` }"></div>
+      </div>
+    </div>
+    <div class="gpButtons">
+      <div class="gpStickLabel">Buttons</div>
+      <div class="gpBtnGrid">
+        <span v-for="(label, i) in ['A','B','X','Y','LB','RB','LT','RT','Back','Start','LS','RS','▲','▼','◄','►']" :key="i"
+          class="gpBtn" :class="{ active: buttons[i] }">{{ label }}</span>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.gpLive {
+  display: flex;
+  gap: var(--gap-panel);
+  flex-wrap: wrap;
+}
+
+.gpStick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-tight);
+}
+
+.gpStickLabel {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.gpStickBox {
+  width: 80px;
+  height: 80px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  position: relative;
+}
+
+.gpDot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ok);
+  transform: translate(-50%, -50%);
+  transition: left 0.05s, top 0.05s;
+}
+
+.gpBtnGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+}
+
+.gpBtn {
+  padding: 2px 4px;
+  font-size: var(--fs-xs);
+  font-family: var(--font-mono);
+  text-align: center;
+  border-radius: var(--radius-sm);
+  background: var(--button-bg);
+  border: 1px solid var(--border);
+  opacity: 0.5;
+}
+
+.gpBtn.active {
+  background: color-mix(in oklab, var(--ok) 25%, var(--button-bg));
+  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+  opacity: 1;
+}
+</style>

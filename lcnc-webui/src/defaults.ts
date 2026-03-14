@@ -436,14 +436,23 @@ export function saveCameraDefaults(data: CameraDefaults): void {
 // ─── Gamepad section ─────────────────────────────────────────────
 
 /** Actions assignable to gamepad buttons. */
-export type GamepadAction = "start" | "pause" | "resume" | "abort" | "z_mod" | "none";
+export type GamepadAction =
+  | "start" | "pause" | "resume" | "abort"
+  | "estop" | "spindle_stop" | "flood_toggle" | "mist_toggle" | "home_all"
+  | "z_mod" | "dead_man" | "none";
 
 export const GAMEPAD_ACTIONS: { value: GamepadAction; label: string }[] = [
   { value: "start", label: "Cycle Start / Resume" },
   { value: "pause", label: "Pause" },
   { value: "resume", label: "Resume" },
   { value: "abort", label: "Abort" },
+  { value: "estop", label: "E-Stop" },
+  { value: "spindle_stop", label: "Spindle Stop" },
+  { value: "flood_toggle", label: "Flood Toggle" },
+  { value: "mist_toggle", label: "Mist Toggle" },
+  { value: "home_all", label: "Home All" },
   { value: "z_mod", label: "Z Modifier (D-pad)" },
+  { value: "dead_man", label: "Dead Man (hold to jog)" },
   { value: "none", label: "Unassigned" },
 ];
 
@@ -454,8 +463,12 @@ export interface GamepadMapping {
   btn_y: GamepadAction;
   btn_lb: GamepadAction;
   btn_rb: GamepadAction;
+  btn_lt: GamepadAction;
+  btn_rt: GamepadAction;
   btn_back: GamepadAction;
   btn_start: GamepadAction;
+  btn_ls: GamepadAction;
+  btn_rs: GamepadAction;
 }
 
 export const DEFAULT_MAPPING: GamepadMapping = {
@@ -465,8 +478,12 @@ export const DEFAULT_MAPPING: GamepadMapping = {
   btn_y: "resume",
   btn_lb: "z_mod",
   btn_rb: "none",
+  btn_lt: "none",
+  btn_rt: "none",
   btn_back: "none",
   btn_start: "none",
+  btn_ls: "none",
+  btn_rs: "none",
 };
 
 /** Map standard gamepad button index → mapping key. */
@@ -477,8 +494,12 @@ export const BTN_INDEX_TO_KEY: Record<number, keyof GamepadMapping> = {
   3: "btn_y",
   4: "btn_lb",
   5: "btn_rb",
+  6: "btn_lt",
+  7: "btn_rt",
   8: "btn_back",
   9: "btn_start",
+  10: "btn_ls",
+  11: "btn_rs",
 };
 
 /** Short display labels for actions (used in diagram). */
@@ -487,7 +508,13 @@ export const ACTION_LABELS: Record<GamepadAction, string> = {
   pause: "Pause",
   resume: "Resume",
   abort: "Abort",
+  estop: "E-Stop",
+  spindle_stop: "Spdl Stop",
+  flood_toggle: "Flood",
+  mist_toggle: "Mist",
+  home_all: "Home",
   z_mod: "Z Mod",
+  dead_man: "Dead Man",
   none: "",
 };
 
@@ -500,7 +527,7 @@ export interface GamepadDefaults {
   mapping: GamepadMapping;
 }
 
-const GAMEPAD_FALLBACK: GamepadDefaults = {
+export const GAMEPAD_FALLBACK: GamepadDefaults = {
   enabled: false,
   deadZone: 0.15,
   invertX: false,

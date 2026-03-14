@@ -12,9 +12,11 @@
 import { ref, watch, type Ref, type ComputedRef } from "vue";
 import type { WsCommand } from "./lcnc";
 import { BTN_INDEX_TO_KEY, type GamepadAction, type GamepadDefaults } from "./defaults";
+import { status } from "./lcncWs";
 
 interface Permissions {
   jog: boolean;
+  idle: boolean;
   ready: boolean;
   abort: boolean;
   pause: boolean;
@@ -136,20 +138,59 @@ export function useGamepad(deps: {
       case "abort":
         if (perms.abort) deps.fire({ cmd: "abort" });
         break;
-      // z_mod and none are not dispatchable actions
+      case "estop":
+        deps.send({ cmd: "estop" }); // no permission gate — E-Stop must always work
+        break;
+      case "spindle_stop":
+        if (perms.ready) deps.fire({ cmd: "spindle_stop" });
+        break;
+      case "flood_toggle": {
+        if (!perms.ready) break;
+        const st = status.value as any;
+        deps.fire({ cmd: st?.flood ? "flood_off" : "flood_on" });
+        break;
+      }
+      case "mist_toggle": {
+        if (!perms.ready) break;
+        const st = status.value as any;
+        deps.fire({ cmd: st?.mist ? "mist_off" : "mist_on" });
+        break;
+      }
+      case "home_all":
+        if (perms.idle) deps.fire({ cmd: "home_all" });
+        break;
+      // z_mod, dead_man, none are not dispatchable actions
     }
   }
 
-  /** Check if any button assigned to z_mod is currently held. */
-  function isZModHeld(currButtons: boolean[]): boolean {
+  /** Check if any button assigned to the given action is currently held. */
+  function isActionHeld(currButtons: boolean[], action: GamepadAction): boolean {
     const mapping = deps.config.value.mapping;
     for (const [idxStr, key] of Object.entries(BTN_INDEX_TO_KEY)) {
-      if (mapping[key] === "z_mod" && (currButtons[Number(idxStr)] ?? false)) {
+      if (mapping[key] === action && (currButtons[Number(idxStr)] ?? false)) {
         return true;
       }
     }
     return false;
   }
+
+  /** Check if any button is assigned to the given action. */
+  function hasActionMapped(action: GamepadAction): boolean {
+    const mapping = deps.config.value.mapping;
+    for (const key of Object.values(BTN_INDEX_TO_KEY)) {
+      if (mapping[key] === action) return true;
+    }
+    return false;
+  }
+
+  /** Dead man satisfied: no dead_man mapped, or any dead_man button is held. */
+  function isDeadManSatisfied(currButtons: boolean[]): boolean {
+    if (!hasActionMapped("dead_man")) return true;
+    return isActionHeld(currButtons, "dead_man");
+  }
+
+  // Track previous dead man state for release detection
+  let prevDeadManOk = true;
 
   function pollLoop() {
     rafId = requestAnimationFrame(pollLoop);
@@ -176,6 +217,18 @@ export function useGamepad(deps: {
       return;
     }
 
+    // ── Dead man switch check ──
+    const currButtons = Array.from(gp.buttons).map(b => b.pressed);
+    const deadManOk = isDeadManSatisfied(currButtons);
+
+    // Dead man released → stop all jog immediately
+    if (prevDeadManOk && !deadManOk) {
+      stopAllJog();
+    }
+    prevDeadManOk = deadManOk;
+
+    const canJogNow = canJog && deadManOk;
+
     // ── Analog sticks → continuous jog ──
     // Left stick: axes 0 (X), 1 (Y)
     const rawLX = gp.axes[0] ?? 0;
@@ -187,22 +240,20 @@ export function useGamepad(deps: {
     const ly = applyDeadZone(rawLY, cfg.deadZone) * (cfg.invertY ? 1 : -1); // Y axis inverted by default (stick down = positive)
     const rz = applyDeadZone(rawRY, cfg.deadZone) * (cfg.invertZ ? 1 : -1); // Same inversion
 
-    if (canJog) {
+    if (canJogNow) {
       const maxVel = deps.jogVel.value;
       sendJog(0, lx * maxVel, now); // X
       sendJog(1, ly * maxVel, now); // Y
       if (deps.axisCount.value >= 3) {
         sendJog(2, rz * maxVel, now); // Z
       }
-    } else {
-      // Lost permission — stop everything
+    } else if (!deadManOk || !canJog) {
+      // Lost permission or dead man released — stop everything
       stopAllJog();
     }
 
     // ── D-pad → discrete jog ──
-    const currButtons = Array.from(gp.buttons).map(b => b.pressed);
-
-    if (canJog) {
+    if (canJogNow) {
       // D-pad: full-speed jog or incremental
       const dpadAxes: [number, number, number][] = [
         [DPAD_RIGHT, 0, 1],   // Right → X+
@@ -212,7 +263,7 @@ export function useGamepad(deps: {
       ];
 
       // Check if z_mod button is held
-      const zModHeld = isZModHeld(currButtons);
+      const zModHeld = isActionHeld(currButtons, "z_mod");
 
       for (const [btnIdx, axis, dir] of dpadAxes) {
         const pressed = currButtons[btnIdx] ?? false;
@@ -259,7 +310,7 @@ export function useGamepad(deps: {
       const wasPressed = prevButtons[idx] ?? false;
       if (pressed && !wasPressed) {
         const action = mapping[key];
-        if (action && action !== "none" && action !== "z_mod") {
+        if (action && action !== "none" && action !== "z_mod" && action !== "dead_man") {
           dispatchAction(action);
         }
       }

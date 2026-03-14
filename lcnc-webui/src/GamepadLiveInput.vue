@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { inject, ref, type Ref } from "vue";
 
+defineProps<{ deadZone?: number }>();
+
 const axes = inject<Ref<number[]>>("gamepadAxes", ref([]));
 const buttons = inject<Ref<boolean[]>>("gamepadButtons", ref([]));
 </script>
@@ -10,13 +12,19 @@ const buttons = inject<Ref<boolean[]>>("gamepadButtons", ref([]));
     <div class="gpStick">
       <div class="gpStickLabel">Left Stick (XY)</div>
       <div class="gpStickBox">
-        <div class="gpDot" :style="{ left: `${50 + (axes[0] ?? 0) * 40}%`, top: `${50 + (axes[1] ?? 0) * 40}%` }"></div>
+        <div class="gpDeadZone" :style="{ width: `${(deadZone ?? 0.15) * 80}%`, height: `${(deadZone ?? 0.15) * 80}%` }"></div>
+        <div class="gpDot"
+          :class="{ inside: Math.hypot(axes[0] ?? 0, axes[1] ?? 0) < (deadZone ?? 0.15) }"
+          :style="{ left: `${50 + (axes[0] ?? 0) * 40}%`, top: `${50 + (axes[1] ?? 0) * 40}%` }"></div>
       </div>
     </div>
     <div class="gpStick">
       <div class="gpStickLabel">Right Stick (Z)</div>
       <div class="gpStickBox">
-        <div class="gpDot" :style="{ left: '50%', top: `${50 + (axes[3] ?? 0) * 40}%` }"></div>
+        <div class="gpDeadZone" :style="{ width: `${(deadZone ?? 0.15) * 80}%`, height: `${(deadZone ?? 0.15) * 80}%` }"></div>
+        <div class="gpDot"
+          :class="{ inside: Math.abs(axes[3] ?? 0) < (deadZone ?? 0.15) }"
+          :style="{ left: '50%', top: `${50 + (axes[3] ?? 0) * 40}%` }"></div>
       </div>
     </div>
     <div class="gpButtons">
@@ -58,6 +66,16 @@ const buttons = inject<Ref<boolean[]>>("gamepadButtons", ref([]));
   position: relative;
 }
 
+.gpDeadZone {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px dashed color-mix(in oklab, var(--fg) 25%, transparent);
+  pointer-events: none;
+}
+
 .gpDot {
   position: absolute;
   width: 10px;
@@ -66,6 +84,10 @@ const buttons = inject<Ref<boolean[]>>("gamepadButtons", ref([]));
   background: var(--ok);
   transform: translate(-50%, -50%);
   transition: left 0.05s, top 0.05s;
+}
+
+.gpDot.inside {
+  opacity: 0.35;
 }
 
 .gpBtnGrid {

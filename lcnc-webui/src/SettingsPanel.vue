@@ -10,7 +10,7 @@ import {
   type Vec3, type Layer, type ColorDefaults, type OpacityDefaults,
   type TrackMode, type Projection, type ToolChangeMode, type SpindleDir,
   type ThemeMode, type MacroDef, type MacroParam, type GamepadDefaults,
-  type GamepadMapping, type GamepadAction, GAMEPAD_ACTIONS, DEFAULT_MAPPING,
+  type GamepadMapping, type GamepadAction, GAMEPAD_ACTIONS, DEFAULT_MAPPING, GAMEPAD_FALLBACK,
   STEP_DEFAULT, STEP_FEED, STEP_RPM,
 } from "./defaults";
 import { fetchHal, fetchG30, type HalPin, type HalSignal, type HalParam } from "./lcncApi";
@@ -114,7 +114,7 @@ const resetTarget = ref<string | null>(null);
 
 const resetLabels: Record<string, string> = {
   viewer: "3D Viewer", machine: "Machine", toolsetter: "Toolsetter",
-  display: "Display", camera: "Camera",
+  display: "Display", camera: "Camera", gamepad: "Gamepad",
 };
 
 function resetViewer() {
@@ -185,9 +185,17 @@ function resetCamera() {
   Object.assign(cam, cd);
 }
 
+function resetGamepad() {
+  const fb = { ...GAMEPAD_FALLBACK, mapping: { ...GAMEPAD_FALLBACK.mapping } };
+  for (const k of Object.keys(gpMapping) as (keyof GamepadMapping)[]) {
+    gpMapping[k] = fb.mapping[k];
+  }
+  emit("setGamepadConfig", fb);
+}
+
 const resetActions: Record<string, () => void> = {
   viewer: resetViewer, machine: resetMachine, toolsetter: resetToolsetter,
-  display: resetDisplay, camera: resetCamera,
+  display: resetDisplay, camera: resetCamera, gamepad: resetGamepad,
 };
 
 function confirmReset() {
@@ -445,7 +453,8 @@ function resetMachineColor(id: string) {
 // ─── Gamepad button mapping ─────────────────
 const GP_BTN_LABELS: Record<keyof GamepadMapping, string> = {
   btn_a: "A", btn_b: "B", btn_x: "X", btn_y: "Y",
-  btn_lb: "LB", btn_rb: "RB", btn_back: "Back", btn_start: "Start",
+  btn_lb: "LB", btn_rb: "RB", btn_lt: "LT", btn_rt: "RT",
+  btn_back: "Back", btn_start: "Start", btn_ls: "LS", btn_rs: "RS",
 };
 
 const gpMapping = reactive<GamepadMapping>({ ...(props.gamepadConfig?.mapping ?? DEFAULT_MAPPING) });
@@ -1138,7 +1147,7 @@ const halStats = computed(() => ({
           <div v-if="props.gamepadConfig?.enabled && props.gamepadConnected" class="section">
             <div class="sub">Live Input</div>
             <div class="settingDesc">Move sticks and press buttons to verify mapping.</div>
-            <GamepadLiveInput />
+            <GamepadLiveInput :deadZone="props.gamepadConfig?.deadZone ?? 0.15" />
           </div>
 
           <div v-if="props.gamepadConfig?.enabled" class="section">
@@ -1162,6 +1171,10 @@ const halStats = computed(() => ({
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <div class="resetRow">
+            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'gamepad'">Reset Gamepad</button>
           </div>
         </fieldset>
         </div>

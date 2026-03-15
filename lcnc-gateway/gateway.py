@@ -902,6 +902,7 @@ _TOOL_META_FIELDS = (
 SETTINGS_PATH = BASE_DIR / "settings.json"
 _settings_version = 0
 _settings_cache: Optional[dict] = None
+_fb_scale = 60  # spindle feedback scale: 60 (RPS→RPM) or 1 (already RPM)
 _VALID_SETTINGS_SECTIONS = {"macros", "machine", "viewer", "camera", "mdi", "gamepad", "probe", "toolsetter"}
 
 
@@ -3319,7 +3320,7 @@ async def ws_endpoint(ws: WebSocket):
 
     async def status_loop():
         nonlocal last_file, armed, viewer_init_sent, _probe_results, _prev_tc_req, _prev_tool_num
-        global _tool_meta_dirty
+        global _tool_meta_dirty, _fb_scale
         loop = asyncio.get_event_loop()
         _last_settings_ver = _settings_version
         _last_gen = 0  # tracks which _status_gen we last processed

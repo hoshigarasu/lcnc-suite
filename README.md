@@ -126,25 +126,46 @@ BY USING THIS SOFTWARE, YOU EXPRESSLY ACKNOWLEDGE AND ASSUME ALL RISKS ASSOCIATE
 - **G-code File Management**: Upload, browse, and load G-code files via REST API
 - **Probe Support**: Real-time probe results and calibration offset parsed from DEBUG EVAL messages on the error channel
 - **Camera Streaming**: MJPEG stream from USB or network cameras (OpenCV) via `GET /camera/stream`
+- **Server Settings**: JSON-backed settings store (`settings.json`) with per-INI sections, shared across all clients with real-time sync via WebSocket
 - **Error Channel**: Real-time LinuxCNC error/message forwarding
 - **STL Model Serving**: Static file server for 3D machine models
 
 ### Reference UI (lcnc-webui)
 
 - Modern Vue 3 + TypeScript single-page interface
-- Real-time DRO with G5x work coordinate selector and DTG display
+- Real-time DRO with G5x work coordinate selector, touch-off to value, and DTG display
+- Offset table editor (G54–G59.3) with direct value editing
 - XY + Z jogging with diagonal support and World/Joint mode toggle
 - Keyboard jog with visual key highlights and incremental jog mode
+- Gamepad jogging (Xbox/PS/standard) with proportional analog sticks, D-pad discrete jog, dead man switch, 12 configurable button actions, deadzone visualization
 - Sidebar spindle popover (FWD/REV/STOP, RPM input, live actual speed, override slider)
 - Feed, spindle, and rapid override popovers with sliders and presets
-- MDI command interface with history
+- MDI command interface with persistent history
 - G-code file browser with drag-and-drop upload
-- G-code viewer with syntax highlighting, program controls, and progress bar
-- 3D machine visualization with Three.js (colorized toolpath, backplot, HUD overlays)
-- Probe panel with 6 views: Outside/Inside Corners (3x3 grid), Boss/Pocket, Ridge/Valley, Edge Angle, and Calibrate (round/rect)
+- G-code viewer with syntax highlighting, inline editor with save, program controls, progress bar, and run-from-line
+- G-code context help: hover any G/M-code token for instant tooltip, click to open searchable reference dialog
+- Single-block step mode
+- Optional stop / block delete toggles
+- 3D machine visualization with Three.js (colorized toolpath, backplot, HUD overlays, STL machine model with per-part coloring/opacity)
+- HUD overlay pills on 3D viewer: jog, gcode, spindle, override, and setup controls
+- 9-layer visibility/opacity control: backplot, toolpath, machine, workpiece, bounds, work zero, HUD, surface, tool
+- Probe panel with 7 views: Outside/Inside Corners (3x3 grid), Boss/Pocket, Ridge/Valley, Edge Angle, Calibrate (round/rect), and Surface Scan
 - Probe results grid (X/Y/Z probed, diameter, width, center, edge angle) from real-time DEBUG EVAL messages
 - Calibration offset display with reset in always-visible control bar
-- HUD overlay pills on 3D viewer: jog, gcode, spindle, override, and setup controls
+- Surface map 3D visualization (probe grid rendered as point cloud in the viewer)
+- Toolsetter integration with 24 configurable parameters and tool change position (G30)
+- Tool table editor with tool library metadata (15+ fields: flutes, material, OAL, corner radius, etc.), filter/sort, and spreadsheet import
+- 3D tool model auto-generated from tool table diameter/length
+- Camera tab with MJPEG feed, configurable crosshair/circle/grid SVG overlay (USB and IP cameras)
+- User-configurable macro buttons with `{param}` parameter prompts (sidebar popover + Settings editor)
+- HAL inspector built into Settings tab (tree view with search, live pin values)
+- Server-authoritative settings with multi-client sync (probe, toolsetter, gamepad, macros, machine, camera, MDI settings shared across all connected UIs)
+- 5 theme modes (auto/light/dark/high-contrast light/high-contrast dark)
+- Responsive auto-layout (1–4 panels based on viewport) with portrait and landscape modes
+- Connected clients display with IP and armed status
+- Dynamic connection label (local vs. LAN hostname)
+- Error/message panel with persistent log (survives reload), unread count badge, per-message and bulk copy to clipboard, date+time timestamps
+- UI shutdown with confirmation dialog and clean gateway exit
 - Centralized permission system via Vue provide/inject — all button enable/disable logic defined once:
 
 | Class | Rule | Buttons / Actions |
@@ -158,14 +179,6 @@ BY USING THIS SOFTWARE, YOU EXPRESSLY ACKNOWLEDGE AND ASSUME ALL RISKS ASSOCIATE
 | `abort` | armed | Abort |
 
 `base` = armed, not estopped, enabled
-
-- Camera tab with MJPEG feed, configurable crosshair/circle/grid SVG overlay (USB and IP cameras)
-- User-configurable macro buttons with `{param}` parameter prompts (sidebar popover + Settings editor)
-- Persistent settings (colors, opacities, layers, workpiece defaults)
-- Responsive auto-layout (1–4 panels based on viewport) with portrait and landscape modes
-- Connected clients display with IP and armed status
-- Dynamic connection label (local vs. LAN hostname)
-- Error/message panel with unread count badge
 
 ## Requirements
 
@@ -975,6 +988,8 @@ lcnc-suite/
 │   ├── hal_watchdog.py        # HAL safety component (loaded by LinuxCNC)
 │   ├── requirements.txt       # Python dependencies
 │   ├── setup-venv.sh          # Virtual environment setup
+│   ├── settings.json          # Server-side settings (auto-created, per-INI)
+│   ├── tool_library.json      # Extended tool metadata (auto-created)
 │   └── machine/               # Machine model config + STL files (Git LFS)
 │       ├── machine.json       # Kinematic hierarchy and part definitions
 │       └── *.stl              # STL mesh files for machine components
@@ -982,10 +997,14 @@ lcnc-suite/
 │   ├── src/
 │   │   ├── App.vue            # Root component, state, layout, sidebar popovers
 │   │   ├── permissions.ts     # Centralized button permission system
-│   │   ├── defaults.ts        # Persistent settings (sections, localStorage)
-│   │   ├── lcnc.ts            # LinuxCNC constants
-│   │   ├── lcncWs.ts          # WebSocket client
-│   │   ├── lcncApi.ts         # REST API helpers (file ops)
+│   │   ├── defaults.ts        # Persistent settings (section registry, server sync)
+│   │   ├── lcnc.ts            # LinuxCNC constants and WsCommand types
+│   │   ├── lcncWs.ts          # WebSocket client with heartbeat
+│   │   ├── lcncApi.ts         # REST API helpers (file ops, settings)
+│   │   ├── useGamepad.ts      # Gamepad polling composable (analog + buttons)
+│   │   ├── gcodeReference.ts  # G/M-code reference data + lookup map
+│   │   ├── main.ts            # App bootstrap with settings migration
+│   │   ├── style.css          # Global styles, design tokens, theme vars
 │   │   ├── TabPanel.vue       # Tab selector for content panels
 │   │   ├── Toolbar.vue        # 3D viewer toolbar (view presets, layer toggles)
 │   │   ├── ThreeViewer.vue    # 3D machine visualization (Three.js)
@@ -994,10 +1013,13 @@ lcnc-suite/
 │   │   ├── JogPanel.vue       # Jog wheel + speed/increment controls
 │   │   ├── JogButton.vue      # Press-and-hold jog button with pointer capture
 │   │   ├── GcodePanel.vue     # G-code viewer + editor + program controls
+│   │   ├── GcodeReferenceDialog.vue # Searchable G/M-code reference dialog
 │   │   ├── ProbePanel.vue     # Probe operations + calibration + results
-│   │   ├── ToolTablePanel.vue # Tool table editor
+│   │   ├── ToolTablePanel.vue # Tool table editor with library metadata
 │   │   ├── CameraViewer.vue   # Camera feed with SVG overlay (MJPEG)
 │   │   ├── SettingsPanel.vue  # Application settings (sub-tabbed)
+│   │   ├── GamepadLiveInput.vue # Live gamepad axis/button visualization
+│   │   ├── DebugTab.vue       # Debug/diagnostics tab
 │   │   ├── JogHUD.vue         # Jog overlay on 3D viewer
 │   │   ├── GcodeHUD.vue       # G-code overlay on 3D viewer
 │   │   ├── SpindleHUD.vue     # Spindle overlay on 3D viewer

@@ -35,7 +35,7 @@ const timingComponents: { key: keyof Omit<import("./lcncWs").TimingStats, "count
 <template>
   <div class="scrollContent scroll-thin">
     <div class="section">
-      <div class="sub">Latency Breakdown <span v-if="timingStats" style="opacity:0.6">({{ timingStats.count }} samples)</span></div>
+      <div class="sub">Latency Breakdown <span v-if="timingStats" class="muted">({{ timingStats.count }} samples)</span></div>
       <div v-if="timingStats" class="timingTable">
         <div class="timingRow timingHeader">
           <span>Component</span><span>Last</span><span>Min</span><span>Max</span><span>Mean</span><span>Std</span>
@@ -49,7 +49,7 @@ const timingComponents: { key: keyof Omit<import("./lcncWs").TimingStats, "count
           <span>{{ (timingStats[comp.key] as TimingComponentStats).std }}ms</span>
         </div>
       </div>
-      <div v-else style="opacity:0.5">Waiting for data…</div>
+      <div v-else class="muted">Waiting for data…</div>
       <div class="row" style="gap: var(--gap-controls); margin-top: var(--gap-section)">
         <button @click="toggleTimingLog">{{ timingLogActive ? 'Stop Log' : 'Start Log' }}</button>
         <button @click="resetTimingStats">Reset</button>
@@ -109,6 +109,9 @@ const timingComponents: { key: keyof Omit<import("./lcncWs").TimingStats, "count
   margin-top: var(--gap-controls);
 }
 
+.muted {
+  opacity: var(--opacity-muted);
+}
 .debugPre {
   font-size: var(--fs-sm);
   white-space: pre-wrap;

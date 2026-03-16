@@ -93,7 +93,7 @@ const buttons = inject<Ref<boolean[]>>("gamepadButtons", ref([]));
 .gpBtnGrid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
+  gap: var(--gap-micro);
 }
 
 .gpBtn {

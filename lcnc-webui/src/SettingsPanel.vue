@@ -1575,7 +1575,7 @@ const halStats = computed(() => ({
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--gap-micro);
   padding: 10px 14px;
   text-align: left;
 }
@@ -1646,7 +1646,7 @@ const halStats = computed(() => ({
 
 .tsBtnRow {
   display: flex;
-  gap: 3px;
+  gap: var(--gap-micro);
 }
 
 .tsToggle {
@@ -1877,7 +1877,7 @@ const halStats = computed(() => ({
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--gap-micro);
 }
 .macroSettingsName {
   font-weight: 600;

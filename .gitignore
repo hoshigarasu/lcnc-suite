@@ -10,6 +10,10 @@ venv/
 *.log
 *.tmp
 
+# Machine-specific runtime configs (not portable)
+lcnc-gateway/settings.json
+lcnc-gateway/tool_library.json
+
 # If you have generated artifacts:
 dist/
 build/

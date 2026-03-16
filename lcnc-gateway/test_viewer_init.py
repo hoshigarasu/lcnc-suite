@@ -12,8 +12,8 @@ Usage
     cd lcnc-gateway
     .venv/bin/python test_viewer_init.py
 
-    # LinuxCNC config used (hardcoded):
-    #   /home/cnc/linuxcnc/configs/probe_basic_no_vtk/probe_basic.ini
+    # LinuxCNC config (override via LCNC_TEST_INI env var):
+    #   defaults to examples/sim_config/lcnc_suite_sim.ini
 
 Scenarios
 ---------
@@ -155,8 +155,10 @@ import websockets
 GATEWAY_URL = "ws://127.0.0.1:8000/ws"
 GATEWAY_HEALTH = "http://127.0.0.1:8000/health"
 GATEWAY_PORT = 8000
-GATEWAY_DIR = "/home/cnc/lcnc-suite/lcnc-gateway"
-LCNC_INI = "/home/cnc/linuxcnc/configs/probe_basic_no_vtk/probe_basic.ini"
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(_SCRIPT_DIR)
+GATEWAY_DIR = os.environ.get("LCNC_TEST_GATEWAY_DIR", _SCRIPT_DIR)
+LCNC_INI = os.environ.get("LCNC_TEST_INI", os.path.join(_REPO_ROOT, "examples", "sim_config", "lcnc_suite_sim.ini"))
 NUM_CLIENTS = 3
 TIMEOUT = 30  # seconds per scenario
 

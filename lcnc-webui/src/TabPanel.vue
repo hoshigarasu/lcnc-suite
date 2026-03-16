@@ -88,7 +88,7 @@ const emit = defineEmits<{
   font-size: var(--fs-2xs);
   font-weight: 700;
   background: var(--err);
-  color: #fff;
+  color: var(--fg-on-accent);
   line-height: 1;
 }
 </style>

@@ -1632,7 +1632,7 @@ function fmtR(key: string): string {
 }
 .surfaceActions .btn.active {
   background: var(--ok);
-  color: #fff;
+  color: var(--fg-on-accent);
 }
 .compStatus {
   display: flex;
@@ -1672,7 +1672,7 @@ function fmtR(key: string): string {
 }
 .methodBtn.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--fg-on-accent);
   border-color: var(--accent);
 }
 .surface3d {

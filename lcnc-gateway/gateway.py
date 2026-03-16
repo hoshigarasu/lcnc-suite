@@ -904,6 +904,7 @@ _settings_version = 0
 _settings_cache: Optional[dict] = None
 _fb_scale = 60  # spindle feedback scale: 60 (RPS→RPM) or 1 (already RPM)
 _spindle_load_pin = ""  # HAL pin for spindle load %, empty = disabled
+_HAL_PIN_RE = re.compile(r'^[a-zA-Z0-9_][a-zA-Z0-9_.:-]*$')
 _VALID_SETTINGS_SECTIONS = {"macros", "machine", "viewer", "camera", "mdi", "gamepad", "probe", "toolsetter"}
 
 
@@ -1582,7 +1583,7 @@ def poll_status() -> StatusPayload:
 
     # Tool change request from HAL iocontrol
     _tc_req = _hal_fast('tool-change', 0)
-    tool_change_requested = bool(_tc_req) if _tc_req else False
+    tool_change_requested = bool(_tc_req)
     tool_change_tool = None
     tool_change_info = None
     if tool_change_requested:
@@ -2286,7 +2287,8 @@ def handle_command(msg: Dict[str, Any], armed: bool):
                         var_file = os.path.join(os.path.dirname(ini_path), var_file)
                     str_vars = {str(k): float(v) for k, v in vars_to_set.items()}
                     print(f"[probe] set_probe_vars: {str_vars}", flush=True)
-                    lines = open(var_file).readlines()
+                    with open(var_file) as f:
+                        lines = f.readlines()
                     found = set()
                     for i, line in enumerate(lines):
                         parts = line.split()
@@ -2302,7 +2304,15 @@ def handle_command(msg: Dict[str, Any], armed: bool):
                             try: return int(line.split()[0])
                             except Exception: return 999999
                         lines.sort(key=_var_key)
-                    open(var_file, "w").writelines(lines)
+                    # Atomic write: tempfile + rename prevents corruption on crash
+                    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(var_file), suffix=".tmp")
+                    try:
+                        with os.fdopen(fd, "w") as f:
+                            f.writelines(lines)
+                        os.replace(tmp_path, var_file)
+                    except Exception:
+                        os.unlink(tmp_path)
+                        raise
                     file_ok = True
             # 2) Best-effort: set in interpreter memory via MDI (requires armed + machine on + idle)
             # Split into chunks ≤250 chars to fit LinuxCNC's 256-char MDI buffer
@@ -3331,7 +3341,8 @@ async def ws_endpoint(ws: WebSocket):
         _ss_init = load_settings()
         _machine_s = _ss_init.get("machine", {})
         _fb_scale = 1 if _machine_s.get("spindleFeedbackUnit") == "rpm" else 60
-        _spindle_load_pin = _machine_s.get("spindleLoadPin", "")
+        _slp = _machine_s.get("spindleLoadPin", "")
+        _spindle_load_pin = _slp if isinstance(_slp, str) and _HAL_PIN_RE.match(_slp) else ""
         _prev_send_ms = 0.0  # send_ms from previous cycle (sent in next message)
         while True:
             try:
@@ -3447,7 +3458,8 @@ async def ws_endpoint(ws: WebSocket):
                         _ss = await loop.run_in_executor(None, load_settings)
                         _machine_s = _ss.get("machine", {})
                         _fb_scale = 1 if _machine_s.get("spindleFeedbackUnit") == "rpm" else 60
-                        _spindle_load_pin = _machine_s.get("spindleLoadPin", "")
+                        _slp = _machine_s.get("spindleLoadPin", "")
+                        _spindle_load_pin = _slp if isinstance(_slp, str) and _HAL_PIN_RE.match(_slp) else ""
                         await ws_send_json(ws, {
                             "type": "settings_changed",
                             "settings": _ss,

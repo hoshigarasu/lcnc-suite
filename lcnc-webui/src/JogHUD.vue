@@ -352,7 +352,7 @@ function onAngularVelInput(ev: Event) {
 /* ---- Increment buttons ---- */
 .incrGroup {
   display: flex;
-  gap: 3px;
+  gap: var(--gap-micro);
 }
 
 .incrBtn {

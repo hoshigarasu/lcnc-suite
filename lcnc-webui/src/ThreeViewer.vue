@@ -2389,7 +2389,7 @@ defineExpose({
 .hudCol {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--gap-micro);
 }
 .hudCoord {
   color: var(--fg);

@@ -324,6 +324,6 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside));
 }
 
 .sep {
-  margin: 4px 0;
+  margin: var(--gap-tight) 0;
 }
 </style>

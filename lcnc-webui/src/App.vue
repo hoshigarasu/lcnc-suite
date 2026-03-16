@@ -2233,7 +2233,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: var(--gap-micro);
   padding: 10px;
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);

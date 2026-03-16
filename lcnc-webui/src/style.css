@@ -22,6 +22,7 @@
   --highlight: #ffa500;
   --display: #22b8cf;
   --active-tool: #ffdd00;
+  --fg-on-accent: #ffffff; /* text on colored backgrounds (--ok, --accent, --err) */
 
   /* Panel sizing */
   --panel-min-w: 460px;
@@ -46,6 +47,7 @@
   --fs-3xl: 24px;
 
   /* Opacity */
+  --opacity-muted: 0.6;   /* secondary/dimmed text, sample counts, waiting states */
   --opacity-disabled: 0.4;
 
   /* Highlight tiers (fg mixed into button-bg) */
@@ -65,6 +67,7 @@
   --radius-round: 50%;
 
   /* Spacing scale */
+  --gap-micro:    2px;   /* ultra-tight: HUD columns, chip internals, dense grids */
   --gap-tight:    4px;   /* tightly grouped toggles, icon grids, increment buttons */
   --gap-controls: 8px;   /* buttons in a row, form fields, standard control spacing */
   --gap-section:  12px;  /* between sections within a panel, card gaps */
@@ -159,20 +162,6 @@ body {
   overflow: hidden;
   min-width: 0;
   min-height: 0;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
 }
 
 button {

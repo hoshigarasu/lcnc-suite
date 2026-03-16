@@ -820,12 +820,26 @@ The HAL pins the gateway reads at runtime via `hal_get()`:
 
 | Pin | Description |
 |-----|-------------|
-| `spindle.0.speed-in` | Actual spindle RPM (from encoder or VFD feedback) |
+| `spindle.0.speed-in` | Actual spindle speed (RPS or RPM depending on config — see below) |
 | `iocontrol.0.tool-change` | Tool change request from interpreter |
 | `iocontrol.0.tool-prep-number` | Requested tool number during tool change |
 | `axis.z.eoffset` | Current Z external offset (surface compensation) |
 | `axis.z.eoffset-enable` | Whether compensation is active |
 | `compensation.method` | Active interpolation method (0=nearest, 1=linear, 2=cubic) |
+
+#### Spindle Feedback
+
+The gateway reads `spindle.0.speed-in` for actual spindle speed display. LinuxCNC defines this pin as **RPS** (revolutions per second), so by default the gateway multiplies by 60 to display RPM. However, some VFD drivers and encoder configurations output **RPM** directly on this pin.
+
+**Settings → Machine → Spindle Feedback Unit** lets you select:
+- **RPS (default)** — pin outputs revolutions per second (×60 for display). Correct for simulators and standard LinuxCNC configs.
+- **RPM** — pin outputs RPM directly (×1). Use this if your VFD or `cia402` component scales to RPM.
+
+**No encoder/VFD feedback?** If your machine has no speed feedback, `spindle.0.speed-in` stays at 0 and the UI shows 0 RPM actual. To display commanded speed instead, wire the commanded output to the feedback pin in your HAL config:
+
+```hal
+net spindle-speed-faked spindle.0.speed-out-rps => spindle.0.speed-in
+```
 
 A complete working example is in the sim config at `hallib/lcnc_webui.hal` (referenced by the sim INI).
 

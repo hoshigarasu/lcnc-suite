@@ -5,6 +5,7 @@ import { usePermissions } from "./permissions";
 import { loadMachineDefaults, STEP_RPM } from "./defaults";
 import { GCODE_LOOKUP, GCODE_REFERENCE } from "./gcodeReference";
 import { Play, SkipForward, Pause, Square } from "lucide-vue-next";
+import Btn from "./Btn.vue";
 export interface GcodeStats {
   feedMoves: number;
   rapidMoves: number;
@@ -429,18 +430,18 @@ async function saveEdit() {
   <div class="container" @dragover.prevent="onDragOver" @dragleave="onDragLeave" @drop.prevent="onDrop">
     <div class="header">
       <div class="headerActions">
-        <button class="actionBtn" @click="enterEdit" :disabled="!activeFile || !can.idle || editing">
+        <Btn class="actionBtn" size="sm" @click="enterEdit" :disabled="!activeFile || !can.idle || editing">
           Edit
-        </button>
-        <button class="actionBtn" @click="reloadFile" :disabled="!activeFile || loading || !can.idle || editing">
+        </Btn>
+        <Btn class="actionBtn" size="sm" @click="reloadFile" :disabled="!activeFile || loading || !can.idle || editing">
           Reload
-        </button>
-        <button class="actionBtn" @click="unloadFile" :disabled="!activeFile || loading || !can.idle">
+        </Btn>
+        <Btn class="actionBtn" size="sm" @click="unloadFile" :disabled="!activeFile || loading || !can.idle">
           Unload
-        </button>
-        <button class="actionBtn" @click="toggleBrowser" :disabled="loading || !can.idle">
+        </Btn>
+        <Btn class="actionBtn" size="sm" @click="toggleBrowser" :disabled="loading || !can.idle">
           {{ showBrowser ? 'Hide Files' : 'Browse' }}
-        </button>
+        </Btn>
         <label class="actionBtn uploadBtn" :class="{ disabled: !can.idle }">
           Upload
           <input type="file" accept=".ngc,.nc,.gcode,.tap,.txt" @change="onFileSelect" hidden :disabled="!can.idle" />
@@ -451,7 +452,7 @@ async function saveEdit() {
         <div class="fileName">{{ fileName }}</div>
         <span class="fileMeta" v-if="gcodeContent">{{ lineCount }} lines</span>
         <div v-if="gcodeStats" class="statsAnchor">
-          <button class="actionBtn" @click.stop="showStats = !showStats">Stats</button>
+          <Btn class="actionBtn" size="sm" @click.stop="showStats = !showStats">Stats</Btn>
           <div class="popover statsPopover" :class="{ open: showStats }" @click.stop>
             <!-- Donut chart -->
             <div class="donutRow" v-if="donutSegments.length > 0">
@@ -524,23 +525,23 @@ async function saveEdit() {
 
     <!-- Program control -->
     <div class="controlRow">
-      <button class="ctrlBtn primary" @click="onStartClick" :disabled="!can.ready || !activeFile || editing">
+      <Btn class="ctrlBtn" variant="primary" @click="onStartClick" :disabled="!can.ready || !activeFile || editing">
         <Play :size="14" class="ctrlIcon" /> {{ selectedLine && selectedLine > 1 ? `Start L${selectedLine}` : 'Start' }}
-      </button>
-      <button class="ctrlBtn" @click="emit('cycleStep')" :disabled="!((can.ready && activeFile) || can.resume) || editing">
+      </Btn>
+      <Btn class="ctrlBtn" @click="emit('cycleStep')" :disabled="!((can.ready && activeFile) || can.resume) || editing">
         <SkipForward :size="14" class="ctrlIcon" /> Step
-      </button>
-      <button class="ctrlBtn"
+      </Btn>
+      <Btn class="ctrlBtn"
         @click="isPaused ? emit('cycleResume') : emit('cyclePause')"
         :disabled="!(can.pause || can.resume)">
         <component :is="isPaused ? Play : Pause" :size="14" class="ctrlIcon" />
         {{ isPaused ? 'Resume' : 'Pause' }}
-      </button>
-      <button class="ctrlBtn danger" @click="emit('abort')" :disabled="!can.abort">
+      </Btn>
+      <Btn class="ctrlBtn" variant="danger" @click="emit('abort')" :disabled="!can.abort">
         <Square :size="14" class="ctrlIcon" /> Abort
-      </button>
-      <button class="ctrlBtn switchBtn" :class="{ active: optionalStop }" :disabled="!can.override" @click="emit('toggleOptionalStop')">M01</button>
-      <button class="ctrlBtn switchBtn" :class="{ active: blockDelete }" :disabled="!can.override" @click="emit('toggleBlockDelete')">/BD</button>
+      </Btn>
+      <Btn class="ctrlBtn switchBtn" :active="optionalStop" :disabled="!can.override" @click="emit('toggleOptionalStop')">M01</Btn>
+      <Btn class="ctrlBtn switchBtn" :active="blockDelete" :disabled="!can.override" @click="emit('toggleBlockDelete')">/BD</Btn>
     </div>
 
     <!-- Progress bar -->
@@ -558,13 +559,13 @@ async function saveEdit() {
     <!-- Error banner -->
     <div v-if="uploadError" class="errorBanner">
       <span>{{ uploadError }}</span>
-      <button class="btn-icon" @click="uploadError = null">&times;</button>
+      <Btn icon @click="uploadError = null">&times;</Btn>
     </div>
 
     <!-- File browser (collapsible) -->
     <div v-if="showBrowser" class="fileBrowser">
       <div class="browserHeader">
-        <button v-if="currentSubdir" class="backBtn" @click="navigateUp">..</button>
+        <Btn v-if="currentSubdir" class="backBtn" size="xs" @click="navigateUp">..</Btn>
         <span class="browserPath">{{ currentSubdir || '/' }}</span>
       </div>
       <div class="fileList">
@@ -600,12 +601,12 @@ async function saveEdit() {
       <div v-if="editing" class="editArea">
         <div v-if="saveError" class="errorBanner">
           <span>{{ saveError }}</span>
-          <button class="btn-icon" @click="saveError = null">&times;</button>
+          <Btn icon @click="saveError = null">&times;</Btn>
         </div>
         <textarea class="editTextarea" v-model="editBuffer" spellcheck="false"></textarea>
         <div class="editActions">
-          <button class="actionBtn primary" @click="saveEdit" :disabled="saving">{{ saving ? 'Saving...' : 'Save' }}</button>
-          <button class="actionBtn" @click="discardEdit" :disabled="saving">Discard</button>
+          <Btn class="actionBtn" size="sm" variant="primary" @click="saveEdit" :disabled="saving">{{ saving ? 'Saving...' : 'Save' }}</Btn>
+          <Btn class="actionBtn" size="sm" @click="discardEdit" :disabled="saving">Discard</Btn>
         </div>
       </div>
 
@@ -665,12 +666,12 @@ async function saveEdit() {
         <div class="dialogSection">
           <div class="sub">Spindle Preset</div>
           <div class="spindleBtnRow">
-            <button class="optBtn" :class="{ active: dialogSpindleDir === 'off' }"
-                    @click="dialogSpindleDir = 'off'">Off</button>
-            <button class="optBtn" :class="{ active: dialogSpindleDir === 'forward' }"
-                    @click="dialogSpindleDir = 'forward'">FWD</button>
-            <button class="optBtn" :class="{ active: dialogSpindleDir === 'reverse' }"
-                    @click="dialogSpindleDir = 'reverse'">REV</button>
+            <Btn class="optBtn" size="sm" :active="dialogSpindleDir === 'off'"
+                    @click="dialogSpindleDir = 'off'">Off</Btn>
+            <Btn class="optBtn" size="sm" :active="dialogSpindleDir === 'forward'"
+                    @click="dialogSpindleDir = 'forward'">FWD</Btn>
+            <Btn class="optBtn" size="sm" :active="dialogSpindleDir === 'reverse'"
+                    @click="dialogSpindleDir = 'reverse'">REV</Btn>
           </div>
           <div v-if="dialogSpindleDir !== 'off'" class="rpmRow">
             <label>RPM</label>
@@ -679,9 +680,9 @@ async function saveEdit() {
         </div>
 
         <div class="dialogActions">
-          <button class="btn" @click="showRunDialog = false">Cancel</button>
-          <button class="btn primary" @click="confirmRunFromLine"
-                  :disabled="!can.ready">Run from Line {{ selectedLine }}</button>
+          <Btn @click="showRunDialog = false">Cancel</Btn>
+          <Btn variant="primary" @click="confirmRunFromLine"
+                  :disabled="!can.ready">Run from Line {{ selectedLine }}</Btn>
         </div>
       </div>
     </div>
@@ -724,20 +725,6 @@ async function saveEdit() {
   align-items: center;
   justify-content: center;
   gap: var(--gap-tight);
-  padding: 8px 12px;
-  border-radius: var(--radius-xl);
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-}
-
-.ctrlBtn.primary {
-  background: color-mix(in oklab, var(--ok) 25%, var(--button-bg));
-  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
-}
-
-.ctrlBtn.danger {
-  background: color-mix(in oklab, var(--danger) 25%, var(--button-bg));
-  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
 }
 
 .switchBtn {
@@ -745,10 +732,8 @@ async function saveEdit() {
   opacity: var(--opacity-muted);
 }
 
-.switchBtn.active:not(:disabled) {
+.switchBtn.active {
   opacity: 1;
-  background: color-mix(in oklab, var(--ok) 25%, var(--button-bg));
-  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
 }
 
 .ctrlIcon {
@@ -903,9 +888,6 @@ async function saveEdit() {
 }
 
 .actionBtn {
-  font-size: var(--fs-sm);
-  padding: 5px 10px;
-  border-radius: var(--radius-lg);
   white-space: nowrap;
 }
 

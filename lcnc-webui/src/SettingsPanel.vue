@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, inject, onMounted, watch, type Ref, type ComputedRef } from "vue";
 import TabPanel from "./TabPanel.vue";
+import Btn from "./Btn.vue";
 import {
   loadViewerDefaults, saveViewerDefaults,
   loadMachineDefaults, saveMachineDefaults,
@@ -684,7 +685,7 @@ const halStats = computed(() => ({
                   @input="onMachineColorChange(part.id, ($event.target as HTMLInputElement).value)"
                 />
                 <span class="colorLabel">{{ formatPartLabel(part.id) }}</span>
-                <button v-if="machineColors[part.id]" class="btn-icon" @click="resetMachineColor(part.id)">&times;</button>
+                <Btn v-if="machineColors[part.id]" icon @click="resetMachineColor(part.id)">&times;</Btn>
               </div>
             </div>
             <label class="checkRow">
@@ -702,13 +703,14 @@ const halStats = computed(() => ({
             <div class="inputRow">
               <label class="inputLabel">Tracking</label>
               <div class="btnGroup">
-                <button
+                <Btn
                   v-for="m in (['none', 'tool', 'workpiece'] as TrackMode[])"
                   :key="m"
+                  size="sm"
+                  :active="trackingMode === m"
                   class="optBtn"
-                  :class="{ active: trackingMode === m }"
                   @click="trackingMode = m; save()"
-                >{{ m.charAt(0).toUpperCase() + m.slice(1) }}</button>
+                >{{ m.charAt(0).toUpperCase() + m.slice(1) }}</Btn>
               </div>
             </div>
             <label class="checkRow">
@@ -718,20 +720,21 @@ const halStats = computed(() => ({
             <div class="inputRow">
               <label class="inputLabel">Projection</label>
               <div class="btnGroup">
-                <button
+                <Btn
                   v-for="p in (['perspective', 'parallel'] as Projection[])"
                   :key="p"
+                  size="sm"
+                  :active="projection === p"
                   class="optBtn"
-                  :class="{ active: projection === p }"
                   @click="projection = p; emit('setProjection', p); save()"
-                >{{ p.charAt(0).toUpperCase() + p.slice(1) }}</button>
+                >{{ p.charAt(0).toUpperCase() + p.slice(1) }}</Btn>
               </div>
             </div>
           </div>
         </div>
 
         <div class="resetRow">
-          <button class="danger" :disabled="!can.idle" @click="resetTarget = 'viewer'">Reset 3D Viewer</button>
+          <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'viewer'">Reset 3D Viewer</Btn>
         </div>
         </fieldset>
         </div>
@@ -744,22 +747,24 @@ const halStats = computed(() => ({
             <div class="sub">Tool Load Behavior</div>
             <div class="settingDesc">Controls what happens when you load a tool from the Tool Table.</div>
             <div class="btnGroup modeGroup">
-              <button
+              <Btn
+                size="sm"
+                :active="toolChangeMode === 'm6g43'"
                 class="optBtn modeBtn"
-                :class="{ active: toolChangeMode === 'm6g43' }"
                 @click="toolChangeMode = 'm6g43'; saveMachine()"
               >
                 <span class="modeName">M6 G43</span>
                 <span class="modeDesc">Load tool, activate length offset</span>
-              </button>
-              <button
+              </Btn>
+              <Btn
+                size="sm"
+                :active="toolChangeMode === 'm600'"
                 class="optBtn modeBtn"
-                :class="{ active: toolChangeMode === 'm600' }"
                 @click="toolChangeMode = 'm600'; saveMachine()"
               >
                 <span class="modeName">M600</span>
                 <span class="modeDesc">Load tool, measure with toolsetter, save offset</span>
-              </button>
+              </Btn>
             </div>
           </div>
           <div class="sep"></div>
@@ -767,33 +772,35 @@ const halStats = computed(() => ({
             <div class="sub">Run from Line</div>
             <div class="settingDesc">Allow starting program execution from a selected line in the code viewer.</div>
             <div class="btnGroup modeGroup">
-              <button
+              <Btn
+                size="sm"
+                :active="!runFromLine"
                 class="optBtn modeBtn"
-                :class="{ active: !runFromLine }"
                 @click="runFromLine = false; emit('setRunFromLine', false); saveMachine()"
               >
                 <span class="modeName">Disabled</span>
                 <span class="modeDesc">Always start from beginning</span>
-              </button>
-              <button
+              </Btn>
+              <Btn
+                size="sm"
+                :active="runFromLine"
                 class="optBtn modeBtn"
-                :class="{ active: runFromLine }"
                 @click="runFromLine = true; emit('setRunFromLine', true); saveMachine()"
               >
                 <span class="modeName">Enabled</span>
                 <span class="modeDesc">Click a line in code viewer to start from it</span>
-              </button>
+              </Btn>
             </div>
             <div v-if="runFromLine" class="rflDefaults">
               <div class="settingDesc">Default spindle preset for run-from-line dialog.</div>
               <div class="rflRow">
                 <div class="btnGroup">
-                  <button class="optBtn" :class="{ active: rflSpindleDir === 'off' }"
-                          @click="rflSpindleDir = 'off'; saveMachine()">Off</button>
-                  <button class="optBtn" :class="{ active: rflSpindleDir === 'forward' }"
-                          @click="rflSpindleDir = 'forward'; saveMachine()">FWD</button>
-                  <button class="optBtn" :class="{ active: rflSpindleDir === 'reverse' }"
-                          @click="rflSpindleDir = 'reverse'; saveMachine()">REV</button>
+                  <Btn size="sm" :active="rflSpindleDir === 'off'" class="optBtn"
+                          @click="rflSpindleDir = 'off'; saveMachine()">Off</Btn>
+                  <Btn size="sm" :active="rflSpindleDir === 'forward'" class="optBtn"
+                          @click="rflSpindleDir = 'forward'; saveMachine()">FWD</Btn>
+                  <Btn size="sm" :active="rflSpindleDir === 'reverse'" class="optBtn"
+                          @click="rflSpindleDir = 'reverse'; saveMachine()">REV</Btn>
                 </div>
                 <div v-if="rflSpindleDir !== 'off'" class="rflRpm">
                   <label>RPM</label>
@@ -807,44 +814,48 @@ const halStats = computed(() => ({
             <div class="sub">Keyboard Jogging</div>
             <div class="settingDesc">Allow arrow keys, Page Up/Down, and bracket keys to jog axes.</div>
             <div class="btnGroup modeGroup">
-              <button
+              <Btn
+                size="sm"
+                :active="!keyboardJog"
                 class="optBtn modeBtn"
-                :class="{ active: !keyboardJog }"
                 @click="keyboardJog = false; emit('setKeyboardJog', false); saveMachine()"
               >
                 <span class="modeName">Disabled</span>
                 <span class="modeDesc">Keyboard jog keys are ignored</span>
-              </button>
-              <button
+              </Btn>
+              <Btn
+                size="sm"
+                :active="keyboardJog"
                 class="optBtn modeBtn"
-                :class="{ active: keyboardJog }"
                 @click="keyboardJog = true; emit('setKeyboardJog', true); saveMachine()"
               >
                 <span class="modeName">Enabled</span>
                 <span class="modeDesc">Arrow/Page/bracket keys jog the machine</span>
-              </button>
+              </Btn>
             </div>
           </div>
           <div>
             <div class="sub">Spindle Feedback Unit</div>
             <div class="settingDesc">What unit does your spindle encoder / VFD driver output on the speed-in HAL pin? Simulators use RPS; most real VFDs output RPM directly.</div>
             <div class="btnGroup modeGroup">
-              <button
+              <Btn
+                size="sm"
+                :active="spindleFeedbackUnit === 'rps'"
                 class="optBtn modeBtn"
-                :class="{ active: spindleFeedbackUnit === 'rps' }"
                 @click="spindleFeedbackUnit = 'rps'; saveMachine()"
               >
                 <span class="modeName">RPS (default)</span>
                 <span class="modeDesc">Pin outputs revolutions per second (×60 for display)</span>
-              </button>
-              <button
+              </Btn>
+              <Btn
+                size="sm"
+                :active="spindleFeedbackUnit === 'rpm'"
                 class="optBtn modeBtn"
-                :class="{ active: spindleFeedbackUnit === 'rpm' }"
                 @click="spindleFeedbackUnit = 'rpm'; saveMachine()"
               >
                 <span class="modeName">RPM</span>
                 <span class="modeDesc">Pin outputs RPM directly (most VFDs)</span>
-              </button>
+              </Btn>
             </div>
           </div>
           <div>
@@ -859,7 +870,7 @@ const halStats = computed(() => ({
             />
           </div>
           <div class="resetRow">
-            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'machine'">Reset Machine</button>
+            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'machine'">Reset Machine</Btn>
           </div>
           </fieldset>
         </div>
@@ -893,8 +904,8 @@ const halStats = computed(() => ({
               <span class="readonlyVal">{{ g30Z != null ? g30Z.toFixed(3) : '—' }}</span>
             </div>
             <div class="tsBtnRow" style="margin-top: 8px;">
-              <button class="optBtn" :disabled="!can.idle" @click="setG30">Set Current Position</button>
-              <button class="optBtn" @click="loadG30" :disabled="g30Loading">Refresh</button>
+              <Btn size="sm" class="optBtn" :disabled="!can.idle" @click="setG30">Set Current Position</Btn>
+              <Btn size="sm" class="optBtn" @click="loadG30" :disabled="g30Loading">Refresh</Btn>
             </div>
           </div>
 
@@ -948,18 +959,18 @@ const halStats = computed(() => ({
 
               <label title="Pause after tool measurement: None = continue immediately, M00 = mandatory stop (press Cycle Start to resume), M01 = optional stop (active only when block delete is off). (#3105)">Brake After</label>
               <div class="tsBtnRow">
-                <button v-for="b in [0, 1, 2]" :key="b" class="optBtn tsToggle" :class="{ active: tsParams.brakeAfter === b }" @click="tsParams.brakeAfter = b; saveTsParams()">{{ BRAKE_LABELS[b] }}</button>
+                <Btn v-for="b in [0, 1, 2]" :key="b" size="sm" :active="tsParams.brakeAfter === b" class="optBtn tsToggle" @click="tsParams.brakeAfter = b; saveTsParams()">{{ BRAKE_LABELS[b] }}</Btn>
               </div>
 
               <label title="M-code sent to stop the spindle before probing. M5 = standard stop. M500 = stop and wait for spindle to fully decelerate (for VFD-controlled spindles). (#3107)">Spindle Stop</label>
               <div class="tsBtnRow">
-                <button class="optBtn tsToggle" :class="{ active: tsParams.spindleStopM === 5 }" @click="tsParams.spindleStopM = 5; saveTsParams()">M5</button>
-                <button class="optBtn tsToggle" :class="{ active: tsParams.spindleStopM === 500 }" @click="tsParams.spindleStopM = 500; saveTsParams()">M500</button>
+                <Btn size="sm" :active="tsParams.spindleStopM === 5" class="optBtn tsToggle" @click="tsParams.spindleStopM = 5; saveTsParams()">M5</Btn>
+                <Btn size="sm" :active="tsParams.spindleStopM === 500" class="optBtn tsToggle" @click="tsParams.spindleStopM = 500; saveTsParams()">M500</Btn>
               </div>
 
               <label title="Axis direction to offset the probe position for large tools: X−, X+, Y−, or Y+. Choose based on your machine layout to avoid clamp or fixture collisions. (#3013)">Offset Dir</label>
               <div class="tsBtnRow">
-                <button v-for="d in [0, 1, 2, 3]" :key="d" class="optBtn tsToggle" :class="{ active: tsParams.offsetDirection === d }" @click="tsParams.offsetDirection = d; saveTsParams()">{{ OFFSET_DIR_LABELS[d] }}</button>
+                <Btn v-for="d in [0, 1, 2, 3]" :key="d" size="sm" :active="tsParams.offsetDirection === d" class="optBtn tsToggle" @click="tsParams.offsetDirection = d; saveTsParams()">{{ OFFSET_DIR_LABELS[d] }}</Btn>
               </div>
             </div>
           </div>
@@ -993,7 +1004,7 @@ const halStats = computed(() => ({
           </div>
 
           <div class="resetRow">
-            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'toolsetter'">Reset Toolsetter</button>
+            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'toolsetter'">Reset Toolsetter</Btn>
           </div>
           </fieldset>
         </div>
@@ -1005,17 +1016,17 @@ const halStats = computed(() => ({
           <div class="section">
             <div class="sub">Theme</div>
             <div class="btnGroup">
-              <button class="optBtn" :class="{ active: themeMode === 'auto' }" @click="setTheme('auto')">Auto</button>
-              <button class="optBtn" :class="{ active: themeMode === 'light' }" @click="setTheme('light')">Light</button>
-              <button class="optBtn" :class="{ active: themeMode === 'dark' }" @click="setTheme('dark')">Dark</button>
+              <Btn size="sm" :active="themeMode === 'auto'" class="optBtn" @click="setTheme('auto')">Auto</Btn>
+              <Btn size="sm" :active="themeMode === 'light'" class="optBtn" @click="setTheme('light')">Light</Btn>
+              <Btn size="sm" :active="themeMode === 'dark'" class="optBtn" @click="setTheme('dark')">Dark</Btn>
             </div>
             <div class="btnGroup" style="margin-top: 8px;">
-              <button class="optBtn" :class="{ active: themeMode === 'hc-light' }" @click="setTheme('hc-light')">HC Light</button>
-              <button class="optBtn" :class="{ active: themeMode === 'hc-dark' }" @click="setTheme('hc-dark')">HC Dark</button>
+              <Btn size="sm" :active="themeMode === 'hc-light'" class="optBtn" @click="setTheme('hc-light')">HC Light</Btn>
+              <Btn size="sm" :active="themeMode === 'hc-dark'" class="optBtn" @click="setTheme('hc-dark')">HC Dark</Btn>
             </div>
           </div>
           <div class="resetRow">
-            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'display'">Reset Display</button>
+            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'display'">Reset Display</Btn>
           </div>
           </fieldset>
         </div>
@@ -1067,7 +1078,7 @@ const halStats = computed(() => ({
             </div>
           </div>
           <div class="resetRow">
-            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'camera'">Reset Camera</button>
+            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'camera'">Reset Camera</Btn>
           </div>
           </fieldset>
         </div>
@@ -1089,10 +1100,10 @@ const halStats = computed(() => ({
                   <code class="macroSettingsCmd">{{ m.command }}</code>
                 </div>
                 <div class="macroSettingsActions">
-                  <button class="btn-icon" :disabled="idx === 0" @click="moveMacro(idx, -1)" title="Move up"><ChevronUp :size="14" /></button>
-                  <button class="btn-icon" :disabled="idx === macros.length - 1" @click="moveMacro(idx, 1)" title="Move down"><ChevronDown :size="14" /></button>
-                  <button class="btn-icon" @click="editMacro(m)" title="Edit"><Pencil :size="14" /></button>
-                  <button class="btn-icon" @click="deleteMacro(m.id)" title="Delete"><Trash2 :size="14" /></button>
+                  <Btn icon :disabled="idx === 0" @click="moveMacro(idx, -1)" title="Move up"><ChevronUp :size="14" /></Btn>
+                  <Btn icon :disabled="idx === macros.length - 1" @click="moveMacro(idx, 1)" title="Move down"><ChevronDown :size="14" /></Btn>
+                  <Btn icon @click="editMacro(m)" title="Edit"><Pencil :size="14" /></Btn>
+                  <Btn icon @click="deleteMacro(m.id)" title="Delete"><Trash2 :size="14" /></Btn>
                 </div>
               </div>
             </div>
@@ -1122,12 +1133,12 @@ const halStats = computed(() => ({
                 </div>
               </div>
               <div class="macroEditActions">
-                <button class="btn" @click="editingMacro = null">Cancel</button>
-                <button class="btn primary" @click="saveMacro" :disabled="!editingMacro.name.trim() || !editingMacro.command.trim()">Save</button>
+                <Btn @click="editingMacro = null">Cancel</Btn>
+                <Btn variant="primary" @click="saveMacro" :disabled="!editingMacro.name.trim() || !editingMacro.command.trim()">Save</Btn>
               </div>
             </div>
 
-            <button v-if="!editingMacro && macros.length < 20" class="btn primary" @click="addMacro" style="margin-top: var(--gap-section);">Add Macro</button>
+            <Btn v-if="!editingMacro && macros.length < 20" variant="primary" @click="addMacro" style="margin-top: var(--gap-section);">Add Macro</Btn>
           </div>
         </div>
       </template>
@@ -1139,22 +1150,24 @@ const halStats = computed(() => ({
             <div class="sub">Gamepad Jogging</div>
             <div class="settingDesc">Use an Xbox, PlayStation, or standard gamepad to jog the machine.</div>
             <div class="btnGroup modeGroup">
-              <button
+              <Btn
+                size="sm"
+                :active="!props.gamepadConfig?.enabled"
                 class="optBtn modeBtn"
-                :class="{ active: !props.gamepadConfig?.enabled }"
                 @click="emit('setGamepadConfig', { ...props.gamepadConfig!, enabled: false })"
               >
                 <span class="modeName">Disabled</span>
                 <span class="modeDesc">Gamepad input is ignored</span>
-              </button>
-              <button
+              </Btn>
+              <Btn
+                size="sm"
+                :active="props.gamepadConfig?.enabled"
                 class="optBtn modeBtn"
-                :class="{ active: props.gamepadConfig?.enabled }"
                 @click="emit('setGamepadConfig', { ...props.gamepadConfig!, enabled: true })"
               >
                 <span class="modeName">Enabled</span>
                 <span class="modeDesc">Sticks and D-pad jog the machine</span>
-              </button>
+              </Btn>
             </div>
           </div>
 
@@ -1216,7 +1229,7 @@ const halStats = computed(() => ({
           </div>
 
           <div class="resetRow">
-            <button class="danger" :disabled="!can.idle" @click="resetTarget = 'gamepad'">Reset Gamepad</button>
+            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'gamepad'">Reset Gamepad</Btn>
           </div>
         </fieldset>
         </div>
@@ -1227,31 +1240,31 @@ const halStats = computed(() => ({
           <!-- Header: section toggles + search + refresh (pinned) -->
           <div class="halHeader">
             <div class="btnGroup">
-              <button class="optBtn" :class="{ active: halSection === 'pins' }"
+              <Btn size="sm" :active="halSection === 'pins'" class="optBtn"
                       @click="halSection = 'pins'">
                 Pins <span class="halCount" v-if="halStats.pins">({{ halStats.pins }})</span>
-              </button>
-              <button class="optBtn" :class="{ active: halSection === 'signals' }"
+              </Btn>
+              <Btn size="sm" :active="halSection === 'signals'" class="optBtn"
                       @click="halSection = 'signals'">
                 Signals <span class="halCount" v-if="halStats.signals">({{ halStats.signals }})</span>
-              </button>
-              <button class="optBtn" :class="{ active: halSection === 'params' }"
+              </Btn>
+              <Btn size="sm" :active="halSection === 'params'" class="optBtn"
                       @click="halSection = 'params'">
                 Params <span class="halCount" v-if="halStats.params">({{ halStats.params }})</span>
-              </button>
+              </Btn>
             </div>
             <div class="halActions">
               <input type="text" class="halSearchInput" v-model="halSearch" placeholder="Search..." />
-              <button class="optBtn" @click="refreshHal" :disabled="halLoading">
+              <Btn size="sm" class="optBtn" @click="refreshHal" :disabled="halLoading">
                 {{ halLoading ? '...' : 'Refresh' }}
-              </button>
+              </Btn>
             </div>
           </div>
 
           <!-- Tree controls (pinned) -->
           <div v-if="!halSearch.trim() && ((halSection === 'pins' && halPins.length > 0) || (halSection === 'params' && halParams.length > 0))" class="halTreeControls">
-            <button class="optBtn" @click="expandAllHal">+ all</button>
-            <button class="optBtn" @click="collapseAllHal">- all</button>
+            <Btn size="sm" class="optBtn" @click="expandAllHal">+ all</Btn>
+            <Btn size="sm" class="optBtn" @click="collapseAllHal">- all</Btn>
             <span class="halFilterInfo" v-if="halSection === 'pins' && filteredPins.length !== halPins.length">
               {{ filteredPins.length }} / {{ halPins.length }}
             </span>
@@ -1272,11 +1285,11 @@ const halStats = computed(() => ({
             <!-- Tree view -->
             <template v-if="!halSearch.trim()">
               <div v-for="[group, pins] of pinGroups" :key="group" class="halGroup">
-                <button class="halGroupHeader" @click="toggleHalGroup(group)">
+                <Btn class="halGroupHeader" @click="toggleHalGroup(group)">
                   <span class="halChevron">{{ halExpanded.has(group) ? '\u25BC' : '\u25B6' }}</span>
                   <span class="halGroupName">{{ group }}</span>
                   <span class="halGroupCount">({{ pins.length }})</span>
-                </button>
+                </Btn>
                 <div v-if="halExpanded.has(group)" class="halGroupBody">
                   <div class="halRow" v-for="pin in pins" :key="pin.name">
                     <span class="halName" :title="pin.name">{{ pin.name }}</span>
@@ -1323,11 +1336,11 @@ const halStats = computed(() => ({
           <div v-if="halSection === 'params' && halParams.length > 0">
             <template v-if="!halSearch.trim()">
               <div v-for="[group, params] of paramGroups" :key="group" class="halGroup">
-                <button class="halGroupHeader" @click="toggleHalGroup(group)">
+                <Btn class="halGroupHeader" @click="toggleHalGroup(group)">
                   <span class="halChevron">{{ halExpanded.has(group) ? '\u25BC' : '\u25B6' }}</span>
                   <span class="halGroupName">{{ group }}</span>
                   <span class="halGroupCount">({{ params.length }})</span>
-                </button>
+                </Btn>
                 <div v-if="halExpanded.has(group)" class="halGroupBody">
                   <div class="halRow" v-for="param in params" :key="param.name">
                     <span class="halName" :title="param.name">{{ param.name }}</span>
@@ -1364,8 +1377,8 @@ const halStats = computed(() => ({
           <div class="dialogTitle danger">Reset {{ resetLabels[resetTarget] }}</div>
           <div class="dialogBody">Restore {{ resetLabels[resetTarget] }} settings to defaults? This cannot be undone.</div>
           <div class="dialogActions">
-            <button @click="resetTarget = null">Cancel</button>
-            <button class="danger" @click="confirmReset">Reset</button>
+            <Btn @click="resetTarget = null">Cancel</Btn>
+            <Btn variant="danger" @click="confirmReset">Reset</Btn>
           </div>
         </div>
       </div>
@@ -1539,12 +1552,6 @@ const halStats = computed(() => ({
   gap: var(--gap-tight);
 }
 
-.optBtn {
-  padding: 5px 10px;
-  font-size: var(--fs-base);
-  border-radius: var(--radius-md);
-}
-
 .optBtn.active {
   background: var(--hl-selected);
   font-weight: var(--fw-semibold);
@@ -1650,9 +1657,6 @@ const halStats = computed(() => ({
 }
 
 .tsToggle {
-  padding: 5px 8px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
   opacity: var(--opacity-muted);
 }
 
@@ -1731,11 +1735,8 @@ const halStats = computed(() => ({
   background: none;
   border: none;
   border-radius: 0;
-  color: inherit;
-  font: inherit;
   width: 100%;
   text-align: left;
-  cursor: pointer;
   user-select: none;
 }
 

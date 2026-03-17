@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import Btn from "./Btn.vue";
 import { usePermissions } from "./permissions";
 import { STEP_DEFAULT } from "./defaults";
 
@@ -63,9 +64,9 @@ function fmt(n: any, letter?: string) {
         <template v-for="(letter, i) in axes" :key="'w' + letter">
           <div class="axis"><span>{{ letter }}</span><b>{{ fmt(workPos[i], letter) }}</b></div>
           <input type="number" :step="STEP_DEFAULT" :value="touchoff[i]" @input="updateTouchoff(i, +($event.target as HTMLInputElement).value)" :disabled="!can.zero" @keydown.enter="setAxis(i)" />
-          <button class="zeroBtn" @click="setAxis(i)" :disabled="!can.zero">Set {{ letter }}</button>
+          <Btn class="zeroBtn" size="sm" @click="setAxis(i)" :disabled="!can.zero">Set {{ letter }}</Btn>
         </template>
-        <button class="homeBtn spanBtn" :style="{ gridColumn: 4, gridRow: spanRows }" @click="setAll()" :disabled="!can.zero">Set All</button>
+        <Btn class="homeBtn spanBtn" size="lg" @click="setAll()" :disabled="!can.zero" :style="{ gridColumn: 4, gridRow: spanRows }">Set All</Btn>
       </div>
     </div>
 
@@ -77,9 +78,9 @@ function fmt(n: any, letter?: string) {
         <template v-for="(letter, i) in axes" :key="'m' + letter">
           <div class="axis"><span>{{ letter }}</span><b>{{ fmt(machinePos[i], letter) }}</b></div>
           <div></div>
-          <button class="zeroBtn" :disabled="!can.idle" @click="homedJoints[i] ? emit('unhomeAxis', i) : emit('homeAxis', i)">{{ homedJoints[i] ? `Unhome ${letter}` : `Home ${letter}` }}</button>
+          <Btn class="zeroBtn" size="sm" :disabled="!can.idle" @click="homedJoints[i] ? emit('unhomeAxis', i) : emit('homeAxis', i)">{{ homedJoints[i] ? `Unhome ${letter}` : `Home ${letter}` }}</Btn>
         </template>
-        <button class="homeBtn spanBtn" :style="{ gridColumn: 4, gridRow: spanRows }" :disabled="!can.idle" @click="homed ? emit('unhomeAll') : emit('homeAll')">{{ homed ? 'Unhome' : 'Home All' }}</button>
+        <Btn class="homeBtn spanBtn" size="lg" :disabled="!can.idle" :style="{ gridColumn: 4, gridRow: spanRows }" @click="homed ? emit('unhomeAll') : emit('homeAll')">{{ homed ? 'Unhome' : 'Home All' }}</Btn>
       </div>
     </div>
   </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted } from "vue";
+import Btn from "./Btn.vue";
 import DroPanel from "./DroPanel.vue";
 import JogPanel from "./JogPanel.vue";
 import { usePermissions } from "./permissions";
@@ -174,9 +175,9 @@ function onMdiKeydown(e: KeyboardEvent) {
       />
       <div class="sep"></div>
       <div class="gotoRow" :class="{ inactive: !can.ready }">
-        <button class="btn" :disabled="!can.ready" @click="emit('goToG30')">Go to G30</button>
-        <button class="btn" :disabled="!can.ready" @click="emit('goToHome')">Go to Home</button>
-        <button class="btn" :disabled="!can.ready" @click="emit('goToZero')">Go to Zero</button>
+        <Btn :disabled="!can.ready" @click="emit('goToG30')">Go to G30</Btn>
+        <Btn :disabled="!can.ready" @click="emit('goToHome')">Go to Home</Btn>
+        <Btn :disabled="!can.ready" @click="emit('goToZero')">Go to Zero</Btn>
       </div>
     </div>
 
@@ -217,13 +218,13 @@ function onMdiKeydown(e: KeyboardEvent) {
           :disabled="!can.ready"
           placeholder="G-code command (↑↓ history)"
         />
-        <button class="btn-inline" @click="handleSend" :disabled="!can.ready">
+        <Btn inline @click="handleSend" :disabled="!can.ready">
           Send
-        </button>
+        </Btn>
       </div>
       <div class="mdiHistoryHeader">
         <span class="sub">History</span>
-        <button class="btn-inline" @click="clearHistory" :disabled="!can.ready || history.length === 0">Clear</button>
+        <Btn inline @click="clearHistory" :disabled="!can.ready || history.length === 0">Clear</Btn>
       </div>
       <div class="mdiHistoryList scroll-thin">
         <div v-for="(cmd, i) in history" :key="i" class="mdiHistoryItem"
@@ -315,7 +316,7 @@ function onMdiKeydown(e: KeyboardEvent) {
   gap: var(--gap-controls);
 }
 
-.gotoRow .btn {
+.gotoRow :deep(.b) {
   flex: 1;
 }
 </style>

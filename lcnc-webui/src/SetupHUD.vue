@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { usePermissions } from "./permissions";
 import { STEP_DEFAULT } from "./defaults";
+import Btn from "./Btn.vue";
 
 
 const props = defineProps<{
@@ -41,36 +42,36 @@ function updateTouchoff(axis: number, val: number) {
   <div class="setupHud hud-panel">
     <!-- Homing -->
     <div class="row">
-      <button
+      <Btn
         v-if="!homed"
-        class="btn primary wide"
+        variant="primary" block
         :disabled="homeDisabled"
         @click="emit('homeAll')"
-      >Home All</button>
-      <button
+      >Home All</Btn>
+      <Btn
         v-else
-        class="btn wide"
+        block
         :disabled="unhomeDisabled"
         @click="emit('unhomeAll')"
-      >Unhome</button>
+      >Unhome</Btn>
     </div>
 
     <!-- Set individual axes -->
     <div class="axisRow" v-for="(letter, i) in axesList" :key="letter">
       <input type="number" :step="STEP_DEFAULT" :value="touchoff[i]" @input="updateTouchoff(i, +($event.target as HTMLInputElement).value)" :disabled="zeroDisabled" @keydown.enter="emit('setAxis', i, touchoff[i] ?? 0)" />
-      <button class="btn" :disabled="zeroDisabled" @click="emit('setAxis', i, touchoff[i] ?? 0)">Set {{ letter }}</button>
+      <Btn :disabled="zeroDisabled" @click="emit('setAxis', i, touchoff[i] ?? 0)">Set {{ letter }}</Btn>
     </div>
 
     <!-- Set all -->
     <div class="row">
-      <button class="btn wide" :disabled="zeroDisabled" @click="emit('setAll', [...touchoff])">Set All</button>
+      <Btn block :disabled="zeroDisabled" @click="emit('setAll', [...touchoff])">Set All</Btn>
     </div>
 
     <!-- Go-to navigation -->
     <div class="row">
-      <button class="btn" :disabled="!can.ready" @click="emit('goToG30')">Go to G30</button>
-      <button class="btn" :disabled="!can.ready" @click="emit('goToHome')">Go to Home</button>
-      <button class="btn" :disabled="!can.ready" @click="emit('goToZero')">Go to Zero</button>
+      <Btn :disabled="!can.ready" @click="emit('goToG30')">Go to G30</Btn>
+      <Btn :disabled="!can.ready" @click="emit('goToHome')">Go to Home</Btn>
+      <Btn :disabled="!can.ready" @click="emit('goToZero')">Go to Zero</Btn>
     </div>
   </div>
 </template>
@@ -87,24 +88,8 @@ function updateTouchoff(axis: number, val: number) {
   gap: var(--gap-tight);
 }
 
-.btn {
+.row :deep(.b) {
   flex: 1;
-  padding: 6px 10px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  border-radius: var(--radius-md);
-}
-
-.btn.primary {
-  background: color-mix(in oklab, var(--ok) 20%, var(--button-bg));
-}
-
-.btn.primary:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--ok) 35%, var(--button-bg));
-}
-
-.btn.wide {
-  width: 100%;
 }
 
 .axisRow {

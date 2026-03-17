@@ -11,6 +11,7 @@ import SettingsPanel from "./SettingsPanel.vue";
 import ToolTablePanel from "./ToolTablePanel.vue";
 import ProbePanel from "./ProbePanel.vue";
 import CameraViewer from "./CameraViewer.vue";
+import Btn from "./Btn.vue";
 import { HeartPulse, Info, LocateFixed, SlidersHorizontal, Gauge, MessageSquare, RotateCw, RotateCcw, Square, Droplets, Drill, CodeXml, Lock, LockOpen, TriangleAlert, Power, PowerOff, Gamepad2, BookOpen, ClipboardCopy } from "lucide-vue-next";
 import GcodeReferenceDialog from "./GcodeReferenceDialog.vue";
 import { loadViewerDefaults, loadPanelsDefaults, savePanelsDefaults, MAX_PANELS, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, loadMacrosDefaults, loadGamepadDefaults, saveGamepadDefaults, settingsVersion, type ThemeMode, type MacroDef, type GamepadDefaults, STEP_DEFAULT, STEP_RPM, STEP_OVERRIDE, STEP_RAPID_OVERRIDE } from "./defaults";
@@ -1250,15 +1251,15 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <Gamepad2 :size="14" />
         </div>
 
-        <button class="btn btn-icon hdrShutdown" title="Shut Down LinuxCNC" @click="showShutdownConfirm = true">
+        <Btn icon class="hdrShutdown" title="Shut Down LinuxCNC" @click="showShutdownConfirm = true">
           <PowerOff :size="16" />
-        </button>
+        </Btn>
       </div>
     </header>
 
     <div v-if="bannerLevel !== 'none'" class="statusBanner" :class="bannerLevel">
       {{ bannerText }}
-      <button v-if="bannerLevel === 'refresh'" class="btn" @click="reloadPage">Refresh</button>
+      <Btn v-if="bannerLevel === 'refresh'" @click="reloadPage">Refresh</Btn>
     </div>
 
     <!-- Body: sidebar (safety+status) + main content -->
@@ -1269,33 +1270,33 @@ watch(isHomed, (nowHomed, wasHomed) => {
     <section class="card">
       <div class="sub">Machine Safety</div>
       <div class="btnrow">
-        <button class="btn safetyBtn" :class="{ ok: armed }" @click="arm(!armed)" :disabled="busy" :title="armed ? 'Disarm' : 'Arm'">
+        <Btn size="lg" :variant="armed ? 'ok' : 'default'" class="safetyBtn" @click="arm(!armed)" :disabled="busy" :title="armed ? 'Disarm' : 'Arm'" block>
           <component :is="armed ? LockOpen : Lock" class="safetyIcon" />
-        </button>
+        </Btn>
 
         <div class="vsep"></div>
 
-        <button
-          class="btn safetyBtn estop"
-          :class="{ flashing: isEstop }"
+        <Btn
+          size="lg" variant="estop" class="safetyBtn"
+          :flashing="isEstop"
           @click="send({ cmd: isEstop ? 'estop_reset' : 'estop' })"
           :disabled="!(isEstop ? canResetEstop : canEstop)"
         >
           <TriangleAlert class="safetyIcon" />
           <span class="safetyLabel">{{ isEstop ? "Reset" : "E-Stop" }}</span>
-        </button>
+        </Btn>
 
         <div class="vsep"></div>
 
-        <button
-          class="btn safetyBtn"
-          :class="{ ok: isEnabled }"
+        <Btn
+          size="lg" :variant="isEnabled ? 'ok' : 'default'" class="safetyBtn"
           @click="fire({ cmd: isEnabled ? 'machine_off' : 'machine_on' })"
           :disabled="!(isEnabled ? canMachineOff : canMachineOn) || busy"
           :title="isEnabled ? 'Machine Off' : 'Machine On'"
+          block
         >
           <Power class="safetyIcon" />
-        </button>
+        </Btn>
 
       </div>
     </section>
@@ -1313,12 +1314,13 @@ watch(isHomed, (nowHomed, wasHomed) => {
             <div class="statusRow"><div class="k">Enabled</div><div class="v" :class="isEnabled ? 'okText' : 'mutedText'">{{ isEnabled ? 'TRUE' : 'FALSE' }}</div></div>
             <div class="statusRow"><div class="k">Homed</div><div class="v" :class="isHomed ? 'okText' : 'badText'">{{ isHomed ? 'TRUE' : 'FALSE' }}</div></div>
             <div class="statusRow"><div class="k">Motion</div><div class="v">{{ isTeleop ? 'WORLD' : 'JOINT' }}</div></div>
-            <button
-              class="btn popoverAction"
-              :class="{ primary: !isHomed }"
+            <Btn
+              class="popoverAction"
+              :variant="isHomed ? 'default' : 'primary'"
               :disabled="!permissions.idle"
               @click="isHomed ? unhomeAll() : homeAll()"
-            >{{ isHomed ? 'Unhome' : 'Home All' }}</button>
+              block
+            >{{ isHomed ? 'Unhome' : 'Home All' }}</Btn>
           </div>
         </div>
 
@@ -1378,8 +1380,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
               </tbody>
             </table>
             <div class="offsetActions" :class="{ inactive: !permissions.idle }">
-              <button class="ovrPresetBtn" :disabled="!permissions.idle || !selectedWcs" @click="clearWcs(selectedWcs!)">Clear {{ selectedWcs }}</button>
-              <button class="ovrPresetBtn" :disabled="!permissions.idle" @click="clearWcs('all')">Clear All</button>
+              <Btn size="xs" :disabled="!permissions.idle || !selectedWcs" @click="clearWcs(selectedWcs!)">Clear {{ selectedWcs }}</Btn>
+              <Btn size="xs" :disabled="!permissions.idle" @click="clearWcs('all')">Clear All</Btn>
             </div>
           </div>
         </div>
@@ -1396,7 +1398,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
               <span class="sliderVal" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
             </div>
             <div class="ovrPresets">
-              <button v-for="p in [50, 100, 150, 200]" :key="'f'+p" class="ovrPresetBtn" :disabled="!permissions.override || !feedOvrEnabled" @click="setOverridePreset('feed', p)">{{ p }}%</button>
+              <Btn v-for="p in [50, 100, 150, 200]" :key="'f'+p" size="xs" :disabled="!permissions.override || !feedOvrEnabled" @click="setOverridePreset('feed', p)">{{ p }}%</Btn>
             </div>
             <div class="ovrRow">
               <span class="ovrLabel">Spindle</span>
@@ -1404,7 +1406,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
               <span class="sliderVal" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
             </div>
             <div class="ovrPresets">
-              <button v-for="p in [50, 100, 150, 200]" :key="'s'+p" class="ovrPresetBtn" :disabled="!permissions.override || !spindleOvrEnabled" @click="setOverridePreset('spindle', p)">{{ p }}%</button>
+              <Btn v-for="p in [50, 100, 150, 200]" :key="'s'+p" size="xs" :disabled="!permissions.override || !spindleOvrEnabled" @click="setOverridePreset('spindle', p)">{{ p }}%</Btn>
             </div>
             <div class="ovrRow">
               <span class="ovrLabel">Rapid</span>
@@ -1412,9 +1414,9 @@ watch(isHomed, (nowHomed, wasHomed) => {
               <span class="sliderVal" :class="{ warn: rapidSlider !== 100 }">{{ rapidSlider }}%</span>
             </div>
             <div class="ovrPresets">
-              <button v-for="p in [25, 50, 75, 100]" :key="'r'+p" class="ovrPresetBtn" :disabled="!permissions.override" @click="setOverridePreset('rapid', p)">{{ p }}%</button>
+              <Btn v-for="p in [25, 50, 75, 100]" :key="'r'+p" size="xs" :disabled="!permissions.override" @click="setOverridePreset('rapid', p)">{{ p }}%</Btn>
             </div>
-            <button class="ovrResetBtn" :disabled="!permissions.override" @click="resetAllOverrides">Reset All</button>
+            <Btn size="sm" class="ovrResetBtn" :disabled="!permissions.override" @click="resetAllOverrides" block>Reset All</Btn>
             </fieldset>
           </div>
         </div>
@@ -1427,8 +1429,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
             <div class="msgPopHeader">
               <span class="msgPopTitle">Messages</span>
               <div v-if="messages.length > 0" style="display:flex;gap:var(--gap-tight)">
-                <button class="ovrPresetBtn" @click="copyAllMessages">Copy All</button>
-                <button class="ovrPresetBtn" @click="clearAllMessages">Clear All</button>
+                <Btn size="xs" @click="copyAllMessages">Copy All</Btn>
+                <Btn size="xs" @click="clearAllMessages">Clear All</Btn>
               </div>
             </div>
             <div v-if="messages.length === 0" class="msgPopEmpty">No messages</div>
@@ -1442,8 +1444,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
                   </div>
                   <div class="msgPopText">{{ msg.text }}</div>
                 </div>
-                <button class="btn-icon" title="Copy" @click="copyMessage(msg)"><ClipboardCopy :size="12" /></button>
-                <button class="btn-icon" @click="dismissMessage(msg.id)">&times;</button>
+                <Btn icon title="Copy" @click="copyMessage(msg)"><ClipboardCopy :size="12" /></Btn>
+                <Btn icon @click="dismissMessage(msg.id)">&times;</Btn>
               </div>
             </div>
           </div>
@@ -1455,48 +1457,50 @@ watch(isHomed, (nowHomed, wasHomed) => {
       <div class="sub">Controls</div>
       <div class="controlBtns">
         <div class="controlGroup">
-        <button
-          class="btn controlBtn"
-          :class="{ active: isSpinning, warn: spindleMismatch }"
+        <Btn
+          size="lg" class="controlBtn"
+          :class="{ warn: spindleMismatch }"
+          :active="isSpinning"
           @click.stop="toggleChip('spindle')"
           title="Spindle"
+          block
         >
           <RotateCw class="controlIcon" />
-        </button>
+        </Btn>
         <div class="popover spindlePopover" :class="{ open: openChip === 'spindle' }" @click.stop>
           <fieldset :disabled="!permissions.ready" class="fs-reset">
           <!-- Direction controls -->
           <div class="spDirRow">
-            <button
-              class="btn spDirBtn"
-              :class="{ active: isReverse }"
+            <Btn
+              size="lg" class="spDirBtn"
+              :active="isReverse"
               :disabled="!permissions.ready"
               @click="spindleReverse(rpmInput)"
               title="Spindle Reverse (CCW)"
             >
               <RotateCcw :size="14" />
               <span class="label">Rev</span>
-            </button>
-            <button
-              class="btn spDirBtn spStopBtn"
-              :class="{ active: isSpinning }"
+            </Btn>
+            <Btn
+              size="lg" variant="danger" class="spDirBtn"
+              :active="isSpinning"
               :disabled="!permissions.ready"
               @click="spindleStop()"
               title="Spindle Stop"
             >
               <Square :size="14" />
               <span class="label">Stop</span>
-            </button>
-            <button
-              class="btn spDirBtn"
-              :class="{ active: isForward }"
+            </Btn>
+            <Btn
+              size="lg" class="spDirBtn"
+              :active="isForward"
               :disabled="!permissions.ready"
               @click="spindleForward(rpmInput)"
               title="Spindle Forward (CW)"
             >
               <RotateCw :size="14" />
               <span class="label">Fwd</span>
-            </button>
+            </Btn>
           </div>
 
           <!-- RPM input -->
@@ -1553,7 +1557,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
               :disabled="!permissions.override || !spindleOvrEnabled"
             />
             <div class="spOvrPresets">
-              <button v-for="p in [50, 100, 150, 200]" :key="'sp'+p" class="ovrPresetBtn" :disabled="!permissions.override || !spindleOvrEnabled" @click="setSpindleOvrPreset(p)">{{ p }}%</button>
+              <Btn v-for="p in [50, 100, 150, 200]" :key="'sp'+p" size="xs" :disabled="!permissions.override || !spindleOvrEnabled" @click="setSpindleOvrPreset(p)">{{ p }}%</Btn>
             </div>
           </div>
           </fieldset>
@@ -1561,85 +1565,89 @@ watch(isHomed, (nowHomed, wasHomed) => {
         </div>
 
         <div class="controlGroup">
-        <button
-          class="btn controlBtn"
-          :class="{ active: coolantActive }"
+        <Btn
+          size="lg" class="controlBtn"
+          :active="coolantActive"
           @click.stop="toggleChip('coolant')"
           title="Coolant"
+          block
         >
           <Droplets class="controlIcon" />
-        </button>
+        </Btn>
         <div class="popover coolantPopover" :class="{ open: openChip === 'coolant' }" @click.stop>
           <fieldset :disabled="!permissions.ready" class="fs-reset">
           <div class="coolantRow">
             <span class="coolantLabel">Flood</span>
-            <button
-              class="btn coolantToggle"
-              :class="floodOn ? 'active' : ''"
+            <Btn
+              class="coolantToggle"
+              :active="floodOn"
               :disabled="!permissions.override"
               @click="toggleFlood"
-            >{{ floodOn ? 'ON' : 'OFF' }}</button>
+            >{{ floodOn ? 'ON' : 'OFF' }}</Btn>
           </div>
           <div class="coolantRow">
             <span class="coolantLabel">Mist</span>
-            <button
-              class="btn coolantToggle"
-              :class="mistOn ? 'active' : ''"
+            <Btn
+              class="coolantToggle"
+              :active="mistOn"
               :disabled="!permissions.override"
               @click="toggleMist"
-            >{{ mistOn ? 'ON' : 'OFF' }}</button>
+            >{{ mistOn ? 'ON' : 'OFF' }}</Btn>
           </div>
           </fieldset>
         </div>
         </div>
 
         <div class="controlGroup">
-        <button
-          class="btn controlBtn"
-          :class="{ active: !!st.probing }"
+        <Btn
+          size="lg" class="controlBtn"
+          :active="!!st.probing"
           @click.stop="openDialog('tool')"
           title="Tool"
+          block
         >
           <Drill class="controlIcon" />
-        </button>
+        </Btn>
         </div>
         <div class="controlGroup">
-        <button
-          class="btn controlBtn"
-          :class="{ active: openChip === 'macros' }"
+        <Btn
+          size="lg" class="controlBtn"
+          :active="openChip === 'macros'"
           @click.stop="toggleChip('macros')"
           title="Macros"
+          block
         >
           <CodeXml class="controlIcon" />
-        </button>
+        </Btn>
         <div class="popover macroPopover" :class="{ open: openChip === 'macros' }" @click.stop>
           <div v-if="userMacros.length === 0" class="macroEmpty">
             No macros configured.<br>Add macros in Settings.
           </div>
           <template v-else>
-            <button
+            <Btn
               v-for="m in userMacros"
               :key="m.id"
-              class="btn macroBtn"
+              class="macroBtn"
               :disabled="!permissions.ready"
               @click="executeMacro(m)"
-            >{{ m.name }}</button>
+              block
+            >{{ m.name }}</Btn>
           </template>
         </div>
         </div>
 
         <div class="controlGroup">
-        <button class="btn controlBtn" @click.stop="openGcodeRef()" title="G-code Reference">
+        <Btn size="lg" class="controlBtn" @click.stop="openGcodeRef()" title="G-code Reference" block>
           <BookOpen class="controlIcon" />
-        </button>
+        </Btn>
         </div>
         <div class="controlGroup">
-        <button class="btn controlBtn" @click.stop="openDialog('settings')" title="Settings">
+        <Btn size="lg" class="controlBtn" @click.stop="openDialog('settings')" title="Settings" block>
           <SlidersHorizontal class="controlIcon" />
-        </button>
+        </Btn>
         </div>
         <div class="controlGroup simtripGroup">
-        <button class="btn controlBtn simtrip" :disabled="!st.probing" @click.stop="send({ cmd: 'simulate_probe_trip' })" title="Simulate probe contact (sim/debug)">Sim Trip</button>
+        <Btn class="controlBtn simtrip" :disabled="!st.probing" @click.stop="send({ cmd: 'simulate_probe_trip' })" title="Simulate probe contact (sim/debug)" block>Sim Trip</Btn>
         </div>
       </div>
     </section>
@@ -1830,7 +1838,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
       <div class="dialog lg dialog-full">
         <div class="dialogHeader">
           <span class="dialogTitle">Tool Table</span>
-          <button class="btn-icon" @click="toolDialogOpen = false">&times;</button>
+          <Btn icon @click="toolDialogOpen = false">&times;</Btn>
         </div>
         <div class="toolDialogActions" :class="{ inactive: !permissions.ready }">
           <div class="toolInputRow">
@@ -1846,15 +1854,15 @@ watch(isHomed, (nowHomed, wasHomed) => {
             />
           </div>
           <div class="toolActions">
-            <button class="btn toolActionBtn measure" :disabled="!permissions.ready || !!st.probing" @click="measureAuto">Measure</button>
-            <button class="btn toolActionBtn" :disabled="!permissions.ready || !!st.probing" @click="measureManual">Manual</button>
-            <button class="btn toolActionBtn load" :disabled="!permissions.ready || !!st.probing" @click="loadTool">Load</button>
-            <button class="btn toolActionBtn abort" :disabled="!st.probing" @click="fire({ cmd: 'abort' })">Abort</button>
+            <Btn variant="ok" :disabled="!permissions.ready || !!st.probing" @click="measureAuto">Measure</Btn>
+            <Btn :disabled="!permissions.ready || !!st.probing" @click="measureManual">Manual</Btn>
+            <Btn variant="primary" :disabled="!permissions.ready || !!st.probing" @click="loadTool">Load</Btn>
+            <Btn variant="danger" :disabled="!st.probing" @click="fire({ cmd: 'abort' })">Abort</Btn>
           </div>
           <div class="toolActions">
-            <button class="btn toolActionBtn" :disabled="!permissions.idle" @click="toolTableRef?.openAdd()">+ Add</button>
-            <button class="btn toolActionBtn" :disabled="!permissions.idle" @click="toolTableRef?.triggerImport()">Import</button>
-            <button class="btn toolActionBtn" :disabled="!permissions.idle" @click="toolTableRef?.fetchTools()">Refresh</button>
+            <Btn :disabled="!permissions.idle" @click="toolTableRef?.openAdd()">+ Add</Btn>
+            <Btn :disabled="!permissions.idle" @click="toolTableRef?.triggerImport()">Import</Btn>
+            <Btn :disabled="!permissions.idle" @click="toolTableRef?.fetchTools()">Refresh</Btn>
           </div>
           <div class="toolStatusRow">
             <span class="toolStatusDot" :class="probeStatusClass"></span>
@@ -1872,7 +1880,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
       <div class="dialog lg dialog-full">
         <div class="dialogHeader">
           <span class="dialogTitle">Settings</span>
-          <button class="btn-icon" @click="settingsDialogOpen = false">&times;</button>
+          <Btn icon @click="settingsDialogOpen = false">&times;</Btn>
         </div>
         <div class="settingsDialogBody">
           <SettingsPanel
@@ -1903,10 +1911,10 @@ watch(isHomed, (nowHomed, wasHomed) => {
           Insert tool and press Confirm
         </div>
         <div class="dialogActions">
-          <button class="btn danger" @click="send({ cmd: 'abort' })">Cancel</button>
-          <button class="btn primary" :disabled="!armed" @click="confirmToolChange">
+          <Btn variant="danger" @click="send({ cmd: 'abort' })">Cancel</Btn>
+          <Btn variant="primary" :disabled="!armed" @click="confirmToolChange">
             Confirm
-          </button>
+          </Btn>
         </div>
       </div>
     </div>
@@ -1928,8 +1936,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
           <code class="macroPreview">{{ macroPreview() }}</code>
         </div>
         <div class="dialogActions">
-          <button class="btn" @click="macroParamDialog = null">Cancel</button>
-          <button class="btn primary" :disabled="!permissions.ready" @click="confirmMacroParams">Execute</button>
+          <Btn @click="macroParamDialog = null">Cancel</Btn>
+          <Btn variant="primary" :disabled="!permissions.ready" @click="confirmMacroParams">Execute</Btn>
         </div>
       </div>
     </div>
@@ -1939,8 +1947,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
         <div class="dialogTitle danger">Shut Down LinuxCNC?</div>
         <div class="dialogBody">This will stop all motion and exit LinuxCNC.</div>
         <div class="dialogActions">
-          <button class="btn" @click="showShutdownConfirm = false">Cancel</button>
-          <button class="btn danger" @click="send({ cmd: 'shutdown' }); showShutdownConfirm = false">Shut Down</button>
+          <Btn @click="showShutdownConfirm = false">Cancel</Btn>
+          <Btn variant="danger" @click="send({ cmd: 'shutdown' }); showShutdownConfirm = false">Shut Down</Btn>
         </div>
       </div>
     </div>
@@ -1960,8 +1968,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
           </template>
         </div>
         <div class="dialogActions">
-          <button class="btn danger" @click="cancelCompToggle">Cancel</button>
-          <button class="btn primary" @click="confirmCompToggle">Confirm</button>
+          <Btn variant="danger" @click="cancelCompToggle">Cancel</Btn>
+          <Btn variant="primary" @click="confirmCompToggle">Confirm</Btn>
         </div>
       </div>
     </div>
@@ -2277,13 +2285,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 .popoverAction {
   margin-top: var(--gap-tight);
-  width: 100%;
-  padding: 8px;
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-}
-.popoverAction.primary {
-  background: color-mix(in oklab, var(--ok) 20%, var(--button-bg));
 }
 
 .programPopover {
@@ -2344,19 +2345,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
   margin-bottom: var(--gap-tight);
 }
 
-.ovrPresetBtn {
-  padding: 2px 8px;
-  font-size: var(--fs-xs);
-  border-radius: var(--radius-md);
-}
-
 .ovrResetBtn {
   margin-top: var(--gap-tight);
-  padding: 5px 10px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  border-radius: var(--radius-lg);
-  width: 100%;
 }
 
 /* ---- Controls section (Spindle button + popover) ---- */
@@ -2364,16 +2354,9 @@ watch(isHomed, (nowHomed, wasHomed) => {
 .controlGroup { position: relative; }
 
 .controlBtn {
-  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px;
-}
-
-.controlBtn.active {
-  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
-  background: color-mix(in oklab, var(--ok) 20%, var(--button-bg));
 }
 .controlBtn.warn {
   border-color: color-mix(in srgb, var(--danger) 50%, transparent);
@@ -2411,19 +2394,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
   flex-direction: column;
   align-items: center;
   gap: var(--gap-tight);
-  padding: 10px 14px;
-  border-radius: var(--radius-xl);
   min-width: 64px;
-}
-
-.spDirBtn.active {
-  background: color-mix(in oklab, var(--ok) 30%, var(--panel));
-  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
-}
-
-.spStopBtn.active {
-  background: color-mix(in oklab, var(--danger) 30%, var(--panel));
-  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
 }
 
 .spDirIcon { font-size: var(--fs-2xl); line-height: 1; }
@@ -2581,13 +2552,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 .coolantToggle {
   min-width: 60px;
-  padding: 6px 14px;
-  font-weight: var(--fw-semibold);
-  border-radius: var(--radius-xl);
-}
-.coolantToggle.active {
-  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
-  background: color-mix(in oklab, var(--ok) 25%, var(--button-bg));
 }
 
 /* ---- Tool dialog ---- */
@@ -2630,29 +2594,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   align-items: center;
   gap: var(--gap-tight);
 }
-.toolActionBtn {
-  padding: 7px 10px;
-  font-weight: var(--fw-semibold);
-  border-radius: var(--radius-xl);
-}
-.toolActionBtn.measure {
-  background: color-mix(in oklab, var(--ok) 20%, var(--button-bg));
-  border-color: color-mix(in oklab, var(--ok) 30%, var(--border));
-  color: var(--ok);
-}
-.toolActionBtn.measure:disabled { color: var(--fg); background: var(--button-bg); border-color: var(--border); }
-.toolActionBtn.load {
-  background: color-mix(in oklab, var(--info) 20%, var(--button-bg));
-  border-color: color-mix(in oklab, var(--info) 30%, var(--border));
-  color: var(--info);
-}
-.toolActionBtn.load:disabled { color: var(--fg); background: var(--button-bg); border-color: var(--border); }
-.toolActionBtn.abort {
-  background: color-mix(in oklab, var(--danger) 20%, var(--button-bg));
-  border-color: color-mix(in oklab, var(--danger) 30%, var(--border));
-  color: var(--danger);
-}
-.toolActionBtn.abort:disabled { color: var(--fg); background: var(--button-bg); border-color: var(--border); }
 .controlBtn.simtrip {
   background: color-mix(in oklab, var(--accent) 15%, var(--button-bg));
   border-color: color-mix(in oklab, var(--accent) 30%, var(--border));
@@ -2747,12 +2688,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   margin: 0 2px;
 }
 
-.btn {
-  padding: 10px 12px;
-  border-radius: var(--radius-2xl);
-}
-
-/* .btn.primary and .btn.danger are in style.css (global) */
 
 .safetyBtn {
   display: flex;

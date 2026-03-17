@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Btn from "./Btn.vue";
+
 const props = defineProps<{
   tabs: Array<{ id: string; label: string }>;
   modelValue: string;
@@ -27,7 +29,7 @@ const emit = defineEmits<{
           <span v-if="badges?.[tab.id]" class="badge">{{ badges[tab.id]! > 99 ? '99+' : badges[tab.id] }}</span>
         </button>
       </div>
-      <button v-if="closable" class="btn-icon" @click="emit('close')">&times;</button>
+      <Btn v-if="closable" icon @click="emit('close')">&times;</Btn>
     </div>
 
     <div class="tab-content">

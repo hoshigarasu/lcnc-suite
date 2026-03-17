@@ -4,6 +4,7 @@ import { send, lastReply, connected } from "./lcncWs";
 import { usePermissions } from "./permissions";
 import { loadMachineDefaults, STEP_DEFAULT, type ToolChangeMode } from "./defaults";
 import { Pencil, Trash2 } from "lucide-vue-next";
+import Btn from "./Btn.vue";
 
 const FETCH_DELAY_MS = 500;
 const REFETCH_AFTER_SAVE_MS = 400;
@@ -377,9 +378,9 @@ defineExpose({ openAdd, fetchTools, triggerImport });
     <div v-if="!hideHeader" class="header">
       <div class="sub">Tool Table</div>
       <div class="actions">
-        <button class="btn" @click="openAdd" :disabled="!can.idle">+ Add</button>
-        <button class="btn" @click="triggerImport" :disabled="!can.idle">Import</button>
-        <button class="btn" @click="fetchTools" :disabled="loading || !can.idle">Refresh</button>
+        <Btn @click="openAdd" :disabled="!can.idle">+ Add</Btn>
+        <Btn @click="triggerImport" :disabled="!can.idle">Import</Btn>
+        <Btn @click="fetchTools" :disabled="loading || !can.idle">Refresh</Btn>
       </div>
     </div>
 
@@ -397,7 +398,7 @@ defineExpose({ openAdd, fetchTools, triggerImport });
     <!-- Import result banner -->
     <div v-if="importResult" class="importBanner">
       Imported {{ importResult.added }} tools (all Z offsets set to 0)
-      <button class="btn-icon" @click="importResult = null">&times;</button>
+      <Btn icon @click="importResult = null">&times;</Btn>
     </div>
 
     <!-- Delete confirm dialog -->
@@ -409,8 +410,8 @@ defineExpose({ openAdd, fetchTools, triggerImport });
             Remove tool <strong>T{{ deletingTool }}</strong> from the tool table?
           </div>
           <div class="dialogActions">
-            <button class="btn" @click="cancelDelete">Cancel</button>
-            <button class="btn danger" @click="confirmDelete">Delete</button>
+            <Btn @click="cancelDelete">Cancel</Btn>
+            <Btn variant="danger" @click="confirmDelete">Delete</Btn>
           </div>
         </div>
       </div>
@@ -498,8 +499,8 @@ defineExpose({ openAdd, fetchTools, triggerImport });
             </template>
           </div>
           <div class="dialogActions">
-            <button class="btn" @click="cancelEditModal">Cancel</button>
-            <button class="btn primary" @click="saveEdit">{{ isNewTool ? "Add" : "Save" }}</button>
+            <Btn @click="cancelEditModal">Cancel</Btn>
+            <Btn variant="primary" @click="saveEdit">{{ isNewTool ? "Add" : "Save" }}</Btn>
           </div>
         </div>
       </div>
@@ -528,10 +529,10 @@ defineExpose({ openAdd, fetchTools, triggerImport });
             </div>
           </div>
           <div class="dialogActions">
-            <button class="btn" @click="cancelImport">Cancel</button>
-            <button class="btn primary" @click="confirmImport" :disabled="importBusy">
+            <Btn @click="cancelImport">Cancel</Btn>
+            <Btn variant="primary" @click="confirmImport" :disabled="importBusy">
               {{ importBusy ? 'Importing...' : 'Import' }}
-            </button>
+            </Btn>
           </div>
         </div>
       </div>
@@ -564,7 +565,7 @@ defineExpose({ openAdd, fetchTools, triggerImport });
             :class="{ activeTool: tool.T === currentTool }"
           >
             <td class="colT">
-              <button class="btn" :disabled="!can.ready" @click="requestToolChange(tool.T)">T{{ tool.T }}</button>
+              <Btn :disabled="!can.ready" @click="requestToolChange(tool.T)">T{{ tool.T }}</Btn>
             </td>
             <td class="colNum mono">{{ fmtNum(tool.D) }}</td>
             <td class="colNum mono">{{ fmtNum(tool.Z, 6) }}</td>
@@ -572,16 +573,16 @@ defineExpose({ openAdd, fetchTools, triggerImport });
             <td class="colSm mono">{{ tool.flutes ?? "-" }}</td>
             <td class="colDesc" :title="tool.description">{{ tool.description || tool.remark || "-" }}</td>
             <td class="colAction">
-              <button class="btn" :disabled="!can.idle" @click="openEdit(tool)" title="Edit tool"><Pencil :size="14" /></button>
+              <Btn :disabled="!can.idle" @click="openEdit(tool)" title="Edit tool"><Pencil :size="14" /></Btn>
             </td>
             <td class="colAction">
-              <button
+              <Btn
                 v-if="tool.T !== currentTool"
-                class="btn danger"
+                variant="danger"
                 @click.stop="requestDelete(tool.T)"
                 :disabled="!can.idle"
                 title="Delete tool"
-              ><Trash2 :size="14" /></button>
+              ><Trash2 :size="14" /></Btn>
             </td>
           </tr>
           <tr v-if="!loading && filteredTools.length === 0">
@@ -775,11 +776,6 @@ defineExpose({ openAdd, fetchTools, triggerImport });
 }
 .activeTool:hover {
   background: color-mix(in oklab, var(--active-tool) 18%, transparent);
-}
-
-/* Compact buttons inside table cells */
-td .btn {
-  padding: 2px 6px;
 }
 
 .colT {

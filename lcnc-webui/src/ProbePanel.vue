@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
+import Btn from "./Btn.vue";
 import { usePermissions } from "./permissions";
 import { STEP_DEFAULT, STEP_FEED, loadProbeDefaults, saveProbeDefaults, settingsVersion } from "./defaults";
 
@@ -554,14 +555,14 @@ function fmtR(key: string): string {
 
     <!-- WCS selector -->
     <div class="g5xRow" :class="{ inactive: !can.idle }">
-      <button
+      <Btn
         v-for="g in g5xOptions"
         :key="g"
         class="g5xBtn"
-        :class="{ active: g === g5xLabel }"
+        :active="g === g5xLabel"
         :disabled="!can.idle"
         @click="emit('setG5x', g)"
-      >{{ g }}</button>
+      >{{ g }}</Btn>
     </div>
 
     <!-- Control bar -->
@@ -579,11 +580,11 @@ function fmtR(key: string): string {
           <span class="statusDot" :class="statusClass"></span>
           <span class="statusText">{{ probeStatus }}</span>
         </div>
-        <button
-          class="abortBtn compact"
+        <Btn
+          variant="danger" size="sm"
           :disabled="!probing"
           @click="emit('abort')"
-        >Abort</button>
+        >Abort</Btn>
       </div>
     </div>
 
@@ -593,7 +594,7 @@ function fmtR(key: string): string {
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap">
-          <button
+          <Btn
             v-for="op in outsideGrid"
             :key="op.id"
             class="gridCell"
@@ -669,7 +670,7 @@ function fmtR(key: string): string {
               <polygon points="70,52 79,47 79,57" class="arrowHead" />
               <circle cx="70" cy="70" r="2.5" class="crosshair" />
             </svg>
-          </button>
+          </Btn>
         </div>
       </div>
       </div>
@@ -681,7 +682,7 @@ function fmtR(key: string): string {
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap">
-          <button
+          <Btn
             v-for="op in insideGrid"
             :key="op.id"
             class="gridCell"
@@ -757,7 +758,7 @@ function fmtR(key: string): string {
               <polygon points="45,28 36,23 36,33" class="arrowHead" />
               <circle cx="45" cy="45" r="2.5" class="crosshair" />
             </svg>
-          </button>
+          </Btn>
         </div>
       </div>
       </div>
@@ -769,11 +770,12 @@ function fmtR(key: string): string {
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap bossGrid">
-          <button
+          <Btn
             v-for="op in bossGrid"
             :key="op.id"
             class="gridCell"
-            :class="{ probing: probing && activeGridOp === op.id, active: activeBossOp === op.id }"
+            :class="{ probing: probing && activeGridOp === op.id }"
+            :active="activeBossOp === op.id"
             :disabled="!can.probe || probing"
             :title="op.description"
             @click="runBossProbe(op)"
@@ -838,7 +840,7 @@ function fmtR(key: string): string {
               <circle cx="40" cy="40" r="8" class="crosshair" />
               <circle cx="40" cy="40" r="4" class="probeTip" />
             </svg>
-          </button>
+          </Btn>
         </div>
       </div>
 
@@ -860,7 +862,7 @@ function fmtR(key: string): string {
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap angleGrid">
-          <button
+          <Btn
             v-for="op in angleGrid"
             :key="op.id"
             class="gridCell"
@@ -944,7 +946,7 @@ function fmtR(key: string): string {
               <polygon points="16,22 11,11 21,11" class="arrowHead" />
               <circle cx="58" cy="22" r="2.5" class="crosshair" transform="rotate(-4, 30, 50)" />
             </svg>
-          </button>
+          </Btn>
         </div>
       </div>
 
@@ -964,7 +966,7 @@ function fmtR(key: string): string {
         <div class="sub">Round Hole</div>
         <div class="calRow">
           <div class="calBtnPair">
-            <button class="gridCell" :disabled="!can.probe || probing" title="Round hole — edge start" @click="runCalProbe('probe_cal_round_pocket')">
+            <Btn class="gridCell" :disabled="!can.probe || probing" title="Round hole — edge start" @click="runCalProbe('probe_cal_round_pocket')">
               <svg viewBox="0 0 80 80" class="gridIcon">
                 <path d="M0 0H80V80H0Z M40 18a22 22 0 1 0 0 44a22 22 0 1 0 0-44Z" fill-rule="evenodd" class="workpiece" />
                 <circle cx="5" cy="40" r="3" class="probeTip" />
@@ -974,8 +976,8 @@ function fmtR(key: string): string {
                 <polygon points="62,40 53,35 53,45" class="arrowHead" />
                 <circle cx="40" cy="40" r="2.5" class="crosshair" />
               </svg>
-            </button>
-            <button class="gridCell" :disabled="!can.probe || probing" title="Round hole — center start" @click="runCalProbe('probe_cal_round_boss')">
+            </Btn>
+            <Btn class="gridCell" :disabled="!can.probe || probing" title="Round hole — center start" @click="runCalProbe('probe_cal_round_boss')">
               <svg viewBox="0 0 80 80" class="gridIcon">
                 <path d="M0 0H80V80H0Z M40 18a22 22 0 1 0 0 44a22 22 0 1 0 0-44Z" fill-rule="evenodd" class="workpiece" />
                 <polygon points="40,18 35,27 45,27" class="arrowHead" />
@@ -985,7 +987,7 @@ function fmtR(key: string): string {
                 <circle cx="40" cy="40" r="8" class="crosshair" />
                 <circle cx="40" cy="40" r="4" class="probeTip" />
               </svg>
-            </button>
+            </Btn>
           </div>
           <div class="calParamStacked">
             <div class="calParamRow">
@@ -1001,7 +1003,7 @@ function fmtR(key: string): string {
         <div class="sub">Rectangular Pocket</div>
         <div class="calRow">
           <div class="calBtnPair">
-            <button class="gridCell" :disabled="!can.probe || probing" title="Rect pocket — edge start" @click="runCalProbe('probe_cal_square_pocket')">
+            <Btn class="gridCell" :disabled="!can.probe || probing" title="Rect pocket — edge start" @click="runCalProbe('probe_cal_square_pocket')">
               <svg viewBox="0 0 80 80" class="gridIcon">
                 <path d="M0 0H80V80H0Z M15 15H65V65H15Z" fill-rule="evenodd" class="workpiece" />
                 <circle cx="5" cy="40" r="3" class="probeTip" />
@@ -1011,8 +1013,8 @@ function fmtR(key: string): string {
                 <polygon points="65,40 56,35 56,45" class="arrowHead" />
                 <circle cx="40" cy="40" r="2.5" class="crosshair" />
               </svg>
-            </button>
-            <button class="gridCell" :disabled="!can.probe || probing" title="Rect pocket — center start" @click="runCalProbe('probe_cal_square_boss')">
+            </Btn>
+            <Btn class="gridCell" :disabled="!can.probe || probing" title="Rect pocket — center start" @click="runCalProbe('probe_cal_square_boss')">
               <svg viewBox="0 0 80 80" class="gridIcon">
                 <path d="M0 0H80V80H0Z M15 15H65V65H15Z" fill-rule="evenodd" class="workpiece" />
                 <polygon points="40,15 35,24 45,24" class="arrowHead" />
@@ -1022,7 +1024,7 @@ function fmtR(key: string): string {
                 <circle cx="40" cy="40" r="8" class="crosshair" />
                 <circle cx="40" cy="40" r="4" class="probeTip" />
               </svg>
-            </button>
+            </Btn>
           </div>
           <div class="calParamStacked">
             <div class="calParamRow">
@@ -1041,9 +1043,9 @@ function fmtR(key: string): string {
       <div class="section">
         <div class="calParamTitle">Calibrate on:</div>
         <div class="calAxisRow">
-          <button class="calAxisBtn" :class="{ active: calAxis === 0 }" :disabled="!can.ready" @click="calAxis = 0">Avg XY</button>
-          <button class="calAxisBtn" :class="{ active: calAxis === 1 }" :disabled="!can.ready" @click="calAxis = 1">X Error</button>
-          <button class="calAxisBtn" :class="{ active: calAxis === 2 }" :disabled="!can.ready" @click="calAxis = 2">Y Error</button>
+          <Btn class="calAxisBtn" :active="calAxis === 0" :disabled="!can.ready" @click="calAxis = 0">Avg XY</Btn>
+          <Btn class="calAxisBtn" :active="calAxis === 1" :disabled="!can.ready" @click="calAxis = 1">X Error</Btn>
+          <Btn class="calAxisBtn" :active="calAxis === 2" :disabled="!can.ready" @click="calAxis = 2">Y Error</Btn>
         </div>
       </div>
       </div>
@@ -1055,7 +1057,7 @@ function fmtR(key: string): string {
       <div class="section">
         <div class="sub">Probe Operation</div>
         <div class="gridWrap bossGrid">
-          <button
+          <Btn
             v-for="op in ridgeGrid"
             :key="op.id"
             class="gridCell"
@@ -1116,7 +1118,7 @@ function fmtR(key: string): string {
               <circle cx="40" cy="40" r="8" class="crosshair" />
               <circle cx="40" cy="40" r="4" class="probeTip" />
             </svg>
-          </button>
+          </Btn>
         </div>
       </div>
 
@@ -1155,11 +1157,11 @@ function fmtR(key: string): string {
       </div>
 
       <div class="surfaceActions" :class="{ inactive: !can.ready }">
-        <button class="btn" :disabled="!can.probe || probing" @click="runSurfaceScan">Start Scan</button>
-        <button v-if="!surfaceInViewer" class="btn" :disabled="!can.idle" @click="loadSurfaceMap">Load Map</button>
-        <button v-else class="btn" :disabled="!can.idle" @click="emit('clearSurfaceMap')">Unload Map</button>
-        <button class="btn" :disabled="!can.idle" @click="if (!surfacePoints?.length) emit('getProbeResults'); mapDialogOpen = true">3D Inspect</button>
-        <button class="btn" :class="{ active: eoffsetEnabled }" :disabled="!can.ready || probing" @click="toggleComp">{{ eoffsetEnabled ? 'Disable Comp' : 'Enable Comp' }}</button>
+        <Btn :disabled="!can.probe || probing" @click="runSurfaceScan">Start Scan</Btn>
+        <Btn v-if="!surfaceInViewer" :disabled="!can.idle" @click="loadSurfaceMap">Load Map</Btn>
+        <Btn v-else :disabled="!can.idle" @click="emit('clearSurfaceMap')">Unload Map</Btn>
+        <Btn :disabled="!can.idle" @click="if (!surfacePoints?.length) emit('getProbeResults'); mapDialogOpen = true">3D Inspect</Btn>
+        <Btn :active="eoffsetEnabled" :disabled="!can.ready || probing" @click="toggleComp">{{ eoffsetEnabled ? 'Disable Comp' : 'Enable Comp' }}</Btn>
       </div>
 
       <div class="compStatus" :class="{ inactive: !can.ready }">
@@ -1168,10 +1170,10 @@ function fmtR(key: string): string {
         <span v-if="eoffsetZ != null" class="compValue">Z: {{ eoffsetZ.toFixed(4) }}</span>
         <span class="compMethod">
           Method:
-          <button v-for="(label, id) in METHOD_LABELS" :key="id"
-            class="methodBtn" :class="{ active: compMethod === Number(id) }"
+          <Btn v-for="(label, id) in METHOD_LABELS" :key="id"
+            class="methodBtn" :active="compMethod === Number(id)"
             :disabled="!can.ready"
-            @click="setMethod(Number(id))">{{ label }}</button>
+            @click="setMethod(Number(id))">{{ label }}</Btn>
         </span>
       </div>
     </template>
@@ -1213,7 +1215,7 @@ function fmtR(key: string): string {
         <input type="number" v-model.number="params.stepOffWidth" min="0.1" :step="STEP_DEFAULT" :disabled="!can.ready" @change="saveParams" />
 
         <label title="Probe tip radius calibration offset. Compensates for the difference between electrical trigger point and true tip center. Set via calibration routines — do not guess. (#3032)">Cal Offset</label>
-        <span class="calOffsetReadonly">{{ fmt(params.calOffset) }} <button class="calResetBtn" :disabled="!can.ready || probing" @click="resetCal">Reset</button></span>
+        <span class="calOffsetReadonly">{{ fmt(params.calOffset) }} <Btn size="xs" :disabled="!can.ready || probing" @click="resetCal">Reset</Btn></span>
       </div>
     </div>
 
@@ -1248,7 +1250,7 @@ function fmtR(key: string): string {
     <div class="dialog lg dialog-full">
       <div class="dialogHeader">
         <span class="dialogTitle">Surface Compensation Map</span>
-        <button class="btn-icon" @click="mapDialogOpen = false">&times;</button>
+        <Btn icon @click="mapDialogOpen = false">&times;</Btn>
       </div>
       <div ref="surfaceContainer" class="surface3d"></div>
     </div>
@@ -1417,12 +1419,6 @@ function fmtR(key: string): string {
   font-family: var(--font-mono);
 }
 
-.calResetBtn {
-  padding: 2px 8px;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-semibold);
-  border-radius: var(--radius-md);
-}
 
 .calParamTitle {
   font-size: var(--fs-sm);
@@ -1438,16 +1434,7 @@ function fmtR(key: string): string {
 
 .calAxisBtn {
   flex: 1;
-  padding: 6px 10px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  border-radius: var(--radius-lg);
   text-align: center;
-}
-
-.calAxisBtn.active {
-  background: var(--hl-selected);
-  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
 }
 
 .gridCell {
@@ -1455,17 +1442,7 @@ function fmtR(key: string): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-xl);
   padding: 4px;
-  transition: background 0.12s, border-color 0.12s;
-}
-
-.gridCell:hover:not(:disabled) {
-  background: var(--hl-hover);
-}
-
-.gridCell:disabled {
-  opacity: var(--opacity-disabled);
 }
 
 .gridCell.probing {
@@ -1540,28 +1517,6 @@ function fmtR(key: string): string {
   gap: var(--gap-tight);
 }
 
-.abortBtn {
-  padding: 10px 14px;
-  font-size: var(--fs-md);
-  font-weight: var(--fw-semibold);
-  border-radius: var(--radius-xl);
-  background: color-mix(in oklab, var(--danger) 20%, var(--button-bg));
-  border-color: color-mix(in oklab, var(--danger) 30%, var(--border));
-  color: var(--danger);
-}
-
-.abortBtn.compact {
-  padding: 5px 10px;
-  font-size: var(--fs-sm);
-  border-radius: var(--radius-lg);
-}
-
-.abortBtn:disabled {
-  opacity: var(--opacity-disabled);
-  color: var(--fg);
-  background: var(--button-bg);
-  border-color: var(--border);
-}
 
 
 /* Status */
@@ -1627,10 +1582,10 @@ function fmtR(key: string): string {
   gap: var(--gap-tight);
   flex-wrap: wrap;
 }
-.surfaceActions .btn {
+.surfaceActions :deep(.b) {
   flex: 1;
 }
-.surfaceActions .btn.active {
+.surfaceActions :deep(.active) {
   background: var(--ok);
   color: var(--fg-on-accent);
 }

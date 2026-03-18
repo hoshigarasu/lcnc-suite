@@ -598,7 +598,7 @@ async function saveEdit() {
       </div>
 
       <!-- Edit mode -->
-      <div v-if="editing" class="editArea">
+      <div v-if="editing" class="stack-controls editArea">
         <div v-if="saveError" class="errorBanner">
           <span>{{ saveError }}</span>
           <Btn icon @click="saveError = null">&times;</Btn>
@@ -666,11 +666,11 @@ async function saveEdit() {
         <div class="dialogSection">
           <div class="sub">Spindle Preset</div>
           <div class="spindleBtnRow">
-            <Btn class="optBtn" size="sm" :active="dialogSpindleDir === 'off'"
+            <Btn class="optBtn" size="sm" :selected="dialogSpindleDir === 'off'"
                     @click="dialogSpindleDir = 'off'">Off</Btn>
-            <Btn class="optBtn" size="sm" :active="dialogSpindleDir === 'forward'"
+            <Btn class="optBtn" size="sm" :selected="dialogSpindleDir === 'forward'"
                     @click="dialogSpindleDir = 'forward'">FWD</Btn>
-            <Btn class="optBtn" size="sm" :active="dialogSpindleDir === 'reverse'"
+            <Btn class="optBtn" size="sm" :selected="dialogSpindleDir === 'reverse'"
                     @click="dialogSpindleDir = 'reverse'">REV</Btn>
           </div>
           <div v-if="dialogSpindleDir !== 'off'" class="rpmRow">
@@ -1148,9 +1148,6 @@ async function saveEdit() {
 .editArea {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-controls);
 }
 
 .editTextarea {
@@ -1191,12 +1188,6 @@ async function saveEdit() {
 
 .dialogSection {
   margin: var(--gap-section) 0;
-}
-
-.optBtn.active {
-  background: var(--hl-selected);
-  font-weight: var(--fw-semibold);
-  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
 }
 
 .spindleBtnRow {

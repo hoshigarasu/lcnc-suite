@@ -2,6 +2,7 @@
 import { computed, reactive } from "vue";
 import { send } from "./lcncWs";
 import JogButton from "./JogButton.vue";
+import Btn from "./Btn.vue";
 
 import { usePermissions } from "./permissions";
 
@@ -228,15 +229,15 @@ function stopJog(s: Sector, e?: PointerEvent) {
     <div class="controlGrid">
       <!-- Mode row -->
       <div class="k">Mode</div>
-      <button
-        class="modeBtn"
-        :class="isTeleop ? 'teleop' : ''"
+      <Btn
+        size="sm"
+        :active="isTeleop"
         :disabled="!can.jog"
         @click="emit('toggleTeleop')"
         :title="isTeleop ? 'Switch to Joint mode' : (isHomed ? 'Switch to World mode' : 'Home all axes first')"
       >
         {{ isTeleop ? "World" : "Joint" }}
-      </button>
+      </Btn>
       <span v-if="!isHomed" class="modeHint">Home first</span>
       <span v-else></span>
 
@@ -272,15 +273,16 @@ function stopJog(s: Sector, e?: PointerEvent) {
 
       <!-- Step row -->
       <div class="k">Step</div>
-      <div class="incrGroup">
-        <button
+      <div class="row-tight incrGroup">
+        <Btn
           v-for="opt in incrementOptions"
           :key="opt.value"
-          class="incrBtn"
-          :class="{ active: jogIncrement === opt.value }"
+          size="sm"
+          mono
+          :selected="jogIncrement === opt.value"
           @click="emit('update:jogIncrement', opt.value)"
           :disabled="!can.jog"
-        >{{ opt.label }}</button>
+        >{{ opt.label }}</Btn>
       </div>
       <span class="sliderVal" v-if="jogIncrement > 0">{{ jogIncrement }} {{ linearUnit }}{{ abcAxes.length > 0 ? ' · °' : '' }} /click</span>
       <span class="sliderVal" v-else>Hold to jog</span>
@@ -502,17 +504,6 @@ function stopJog(s: Sector, e?: PointerEvent) {
   height: 50px;
 }
 
-/* ---- Mode button ---- */
-.modeBtn {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-}
-
-.modeBtn.teleop:not(:disabled) {
-  background: color-mix(in oklab, var(--ok) 15%, var(--button-bg));
-  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
-}
-
 .modeHint {
   font-size: var(--fs-sm);
   opacity: var(--opacity-muted);
@@ -520,22 +511,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
 
 /* ---- Increment buttons ---- */
 .incrGroup {
-  display: flex;
-  gap: var(--gap-tight);
 }
 
-.incrBtn {
-  padding: 6px 10px;
-  border-radius: var(--radius-xl);
-  font-size: var(--fs-sm);
-  font-family: var(--font-mono);
-  user-select: none;
-}
-
-.incrBtn.active {
-  background: var(--hl-selected);
-  font-weight: var(--fw-bold);
-  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
-}
 
 </style>

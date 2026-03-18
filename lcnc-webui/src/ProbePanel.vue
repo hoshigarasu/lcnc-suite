@@ -541,25 +541,26 @@ function fmtR(key: string): string {
 </script>
 
 <template>
-  <div class="probePanel scroll-thin">
+  <div class="stack-sections probePanel scroll-thin">
     <!-- Sub-view tabs -->
-    <div class="viewTabs">
-      <button class="tab-btn" :class="{ active: probeView === 'outside' }" @click="probeView = 'outside'">Outside</button>
-      <button class="tab-btn" :class="{ active: probeView === 'inside' }" @click="probeView = 'inside'">Inside</button>
-      <button class="tab-btn" :class="{ active: probeView === 'boss' }" @click="probeView = 'boss'">Boss/Pocket</button>
-      <button class="tab-btn" :class="{ active: probeView === 'ridge' }" @click="probeView = 'ridge'">Ridge/Valley</button>
-      <button class="tab-btn" :class="{ active: probeView === 'angle' }" @click="probeView = 'angle'">Angle</button>
-      <button class="tab-btn" :class="{ active: probeView === 'surface' }" @click="probeView = 'surface'">Surface</button>
-      <button class="tab-btn" :class="{ active: probeView === 'cal' }" @click="probeView = 'cal'">Calibrate</button>
+    <div class="row-tight viewTabs">
+      <Btn size="sm" muted :selected="probeView === 'outside'" @click="probeView = 'outside'">Outside</Btn>
+      <Btn size="sm" muted :selected="probeView === 'inside'" @click="probeView = 'inside'">Inside</Btn>
+      <Btn size="sm" muted :selected="probeView === 'boss'" @click="probeView = 'boss'">Boss/Pocket</Btn>
+      <Btn size="sm" muted :selected="probeView === 'ridge'" @click="probeView = 'ridge'">Ridge/Valley</Btn>
+      <Btn size="sm" muted :selected="probeView === 'angle'" @click="probeView = 'angle'">Angle</Btn>
+      <Btn size="sm" muted :selected="probeView === 'surface'" @click="probeView = 'surface'">Surface</Btn>
+      <Btn size="sm" muted :selected="probeView === 'cal'" @click="probeView = 'cal'">Calibrate</Btn>
     </div>
 
     <!-- WCS selector -->
-    <div class="g5xRow" :class="{ inactive: !can.idle }">
+    <div class="row-tight g5xRow" :class="{ inactive: !can.idle }">
       <Btn
         v-for="g in g5xOptions"
         :key="g"
-        class="g5xBtn"
-        :active="g === g5xLabel"
+        size="sm"
+        muted
+        :selected="g === g5xLabel"
         :disabled="!can.idle"
         @click="emit('setG5x', g)"
       >{{ g }}</Btn>
@@ -1259,9 +1260,6 @@ function fmtR(key: string): string {
 
 <style scoped>
 .probePanel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-panel);
   overflow-y: auto;
   height: 100%;
   position: relative;
@@ -1309,8 +1307,6 @@ function fmtR(key: string): string {
 
 /* WCS selector row */
 .g5xRow {
-  display: flex;
-  gap: var(--gap-tight);
   flex-wrap: wrap;
 }
 

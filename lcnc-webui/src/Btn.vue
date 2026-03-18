@@ -6,7 +6,10 @@ defineProps<{
   inline?: boolean;
   block?: boolean;
   active?: boolean;
+  selected?: boolean;
   flashing?: boolean;
+  muted?: boolean;
+  mono?: boolean;
 }>();
 </script>
 
@@ -16,7 +19,7 @@ defineProps<{
       icon ? 'b-icon' : inline ? 'b-inline' : 'b',
       !icon && !inline && (size ?? 'md'),
       !icon && !inline && (variant ?? 'default'),
-      { active, flashing, block },
+      { active, selected, flashing, block, muted, mono },
     ]"
   >
     <slot />
@@ -81,6 +84,13 @@ defineProps<{
   background: color-mix(in oklab, var(--danger) 20%, var(--button-bg));
 }
 
+/* ---- Selected state (neutral, non-green) ---- */
+.b.selected {
+  background: var(--hl-selected);
+  font-weight: var(--fw-semibold);
+  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
+}
+
 /* ---- Flashing (E-Stop) ---- */
 .flashing {
   animation: flash-estop 0.6s step-start infinite;
@@ -90,6 +100,15 @@ defineProps<{
   0%, 100% { background: color-mix(in oklab, var(--danger) 40%, var(--button-bg)); }
   50% { background: var(--button-bg); }
 }
+
+/* ---- Muted (dimmed until active/selected/hover) ---- */
+.b.muted { opacity: var(--opacity-muted); }
+.b.muted:hover:not(:disabled) { opacity: 1; }
+.b.muted.active,
+.b.muted.selected { opacity: 1; }
+
+/* ---- Mono (monospace font) ---- */
+.b.mono { font-family: var(--font-mono); }
 
 /* ---- Block ---- */
 .block { width: 100%; }

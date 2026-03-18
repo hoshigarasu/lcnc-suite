@@ -133,24 +133,25 @@ function onMdiKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="manualPanel">
+  <div class="stack-sections manualPanel">
     <!-- Sub-view tabs -->
-    <div class="viewTabs">
-      <button class="tab-btn" :class="{ active: manualView === 'dro' }" @click="manualView = 'dro'">DRO</button>
-      <button class="tab-btn" :class="{ active: manualView === 'jogging' }" @click="manualView = 'jogging'">Jog</button>
-      <button class="tab-btn" :class="{ active: manualView === 'mdi' }" @click="manualView = 'mdi'">MDI</button>
+    <div class="row-tight viewTabs">
+      <Btn size="sm" muted :selected="manualView === 'dro'" @click="manualView = 'dro'">DRO</Btn>
+      <Btn size="sm" muted :selected="manualView === 'jogging'" @click="manualView = 'jogging'">Jog</Btn>
+      <Btn size="sm" muted :selected="manualView === 'mdi'" @click="manualView = 'mdi'">MDI</Btn>
     </div>
 
     <!-- WCS selector -->
-    <div class="g5xRow" :class="{ inactive: !can.idle }">
-      <button
+    <div class="row-tight g5xRow" :class="{ inactive: !can.idle }">
+      <Btn
         v-for="g in g5xOptions"
         :key="g"
-        class="g5xBtn"
-        :class="{ active: g === g5xLabel }"
+        size="sm"
+        muted
+        :selected="g === g5xLabel"
         :disabled="!can.idle"
         @click="emit('setG5x', g)"
-      >{{ g }}</button>
+      >{{ g }}</Btn>
     </div>
 
     <!-- ═══ DRO VIEW ═══ -->
@@ -238,9 +239,6 @@ function onMdiKeydown(e: KeyboardEvent) {
 
 <style scoped>
 .manualPanel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-section);
   height: 100%;
   min-height: 0;
 }
@@ -306,8 +304,6 @@ function onMdiKeydown(e: KeyboardEvent) {
 }
 
 .g5xRow {
-  display: flex;
-  gap: var(--gap-tight);
   flex-wrap: wrap;
 }
 

@@ -51,7 +51,7 @@ function toggleSort(key: "code" | "name") {
         <span class="dialogTitle">G-code Reference</span>
         <Btn icon @click="emit('close')">&times;</Btn>
       </div>
-      <div class="refContent" :class="{ inactive: !can.idle }">
+      <div class="stack-controls refContent" :class="{ inactive: !can.idle }">
         <input
           type="text"
           v-model="search"
@@ -104,11 +104,8 @@ function toggleSort(key: "code" | "name") {
 
 <style scoped>
 .refContent {
-  display: flex;
-  flex-direction: column;
   flex: 1;
   min-height: 0;
-  gap: var(--gap-controls);
   padding: var(--gap-section) 14px 14px;
 }
 

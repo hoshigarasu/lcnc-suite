@@ -9,29 +9,29 @@
 
       <!-- Views pill -->
       <div class="toolPill">
-        <button class="pillLabel" :class="{ active: openPill === 'views' }" @click.stop="togglePill('views')">Views</button>
+        <Btn size="sm" muted :selected="openPill === 'views'" @click.stop="togglePill('views')">Views</Btn>
         <div class="popover pillPopover" :class="{ open: openPill === 'views' }" @click.stop>
           <div class="viewGrid">
-            <button class="viewBtn" @click="$emit('setView', 'top')">Top</button>
-            <button class="viewBtn" @click="$emit('setView', 'bottom')">Bottom</button>
-            <button class="viewBtn" @click="$emit('setView', 'front')">Front</button>
-            <button class="viewBtn" @click="$emit('setView', 'back')">Back</button>
-            <button class="viewBtn" @click="$emit('setView', 'left')">Left</button>
-            <button class="viewBtn" @click="$emit('setView', 'right')">Right</button>
-            <button class="viewBtn wide" @click="$emit('setView', 'dimetric')">Dimetric</button>
-            <button class="viewBtn wide" @click="$emit('setView', 'reset')">Reset</button>
+            <Btn size="sm" @click="$emit('setView', 'top')">Top</Btn>
+            <Btn size="sm" @click="$emit('setView', 'bottom')">Bottom</Btn>
+            <Btn size="sm" @click="$emit('setView', 'front')">Front</Btn>
+            <Btn size="sm" @click="$emit('setView', 'back')">Back</Btn>
+            <Btn size="sm" @click="$emit('setView', 'left')">Left</Btn>
+            <Btn size="sm" @click="$emit('setView', 'right')">Right</Btn>
+            <Btn size="sm" class="wide" @click="$emit('setView', 'dimetric')">Dimetric</Btn>
+            <Btn size="sm" class="wide" @click="$emit('setView', 'reset')">Reset</Btn>
           </div>
           <div class="sep"></div>
           <div class="projRow">
-            <button class="viewBtn" :class="{ active: !isOrtho }" @click="isOrtho && toggleProjection()">Perspective</button>
-            <button class="viewBtn" :class="{ active: isOrtho }" @click="!isOrtho && toggleProjection()">Parallel</button>
+            <Btn size="sm" :selected="!isOrtho" @click="isOrtho && toggleProjection()">Perspective</Btn>
+            <Btn size="sm" :selected="isOrtho" @click="!isOrtho && toggleProjection()">Parallel</Btn>
           </div>
         </div>
       </div>
 
       <!-- Layers pill -->
       <div class="toolPill">
-        <button class="pillLabel" :class="{ active: openPill === 'layers' }" @click.stop="togglePill('layers')">Layers</button>
+        <Btn size="sm" muted :selected="openPill === 'layers'" @click.stop="togglePill('layers')">Layers</Btn>
         <div class="popover pillPopover" :class="{ open: openPill === 'layers' }" @click.stop>
           <label><input type="checkbox" v-model="local.backplot" @change="emitToggle('backplot')" /> Backplot</label>
           <label><input type="checkbox" v-model="local.toolpath" @change="emitToggle('toolpath')" /> Toolpath</label>
@@ -46,9 +46,9 @@
 
       <!-- Toolpath pill -->
       <div class="toolPill">
-        <button class="pillLabel" :class="{ active: openPill === 'toolpath' }" @click.stop="togglePill('toolpath')">Toolpath</button>
+        <Btn size="sm" muted :selected="openPill === 'toolpath'" @click.stop="togglePill('toolpath')">Toolpath</Btn>
         <div class="popover pillPopover" :class="{ open: openPill === 'toolpath' }" @click.stop>
-          <button class="viewBtn" @click="$emit('resetBackplot')">Clear Backplot</button>
+          <Btn size="sm" @click="$emit('resetBackplot')">Clear Backplot</Btn>
           <div class="sep"></div>
           <label><input type="checkbox" v-model="pathOnTop" @change="$emit('setPathOnTop', pathOnTop)" /> Always on top</label>
         </div>
@@ -56,17 +56,17 @@
 
       <!-- Tracking pill -->
       <div class="toolPill">
-        <button class="pillLabel" :class="{ active: openPill === 'tracking' }" @click.stop="togglePill('tracking')">Tracking</button>
+        <Btn size="sm" muted :selected="openPill === 'tracking'" @click.stop="togglePill('tracking')">Tracking</Btn>
         <div class="popover pillPopover" :class="{ open: openPill === 'tracking' }" @click.stop>
-          <button class="viewBtn" :class="{ active: trackMode === 'none' }" @click="setTrack('none')">None</button>
-          <button class="viewBtn" :class="{ active: trackMode === 'tool' }" @click="setTrack('tool')">Tool</button>
-          <button class="viewBtn" :class="{ active: trackMode === 'workpiece' }" @click="setTrack('workpiece')">Workpiece</button>
+          <Btn size="sm" :selected="trackMode === 'none'" @click="setTrack('none')">None</Btn>
+          <Btn size="sm" :selected="trackMode === 'tool'" @click="setTrack('tool')">Tool</Btn>
+          <Btn size="sm" :selected="trackMode === 'workpiece'" @click="setTrack('workpiece')">Workpiece</Btn>
         </div>
       </div>
 
       <!-- Workpiece pill -->
       <div class="toolPill">
-        <button class="pillLabel" :class="{ active: openPill === 'workpiece' }" @click.stop="togglePill('workpiece')">Workpiece</button>
+        <Btn size="sm" muted :selected="openPill === 'workpiece'" @click.stop="togglePill('workpiece')">Workpiece</Btn>
         <div class="popover pillPopover wpPopover" :class="{ open: openPill === 'workpiece' }" @click.stop>
           <div class="inputRow">
             <label class="inputLabel">Size X</label>
@@ -114,6 +114,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref } from "vue";
+import Btn from "./Btn.vue";
 import { loadViewerDefaults, STEP_DEFAULT, type Vec3, type Layer, type TrackMode } from "./defaults";
 
 type ViewPreset = "top" | "bottom" | "left" | "right" | "front" | "back" | "iso" | "dimetric" | "reset";
@@ -221,17 +222,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside));
   cursor: default;
 }
 
-.pillLabel {
-  display: block;
-  padding: 5px 10px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  user-select: none;
-  opacity: var(--opacity-muted);
-}
-
-.pillLabel.active {
-  opacity: 1;
+.toolPill :deep(.b.selected) {
   background: var(--panel);
 }
 
@@ -256,20 +247,7 @@ onUnmounted(() => document.removeEventListener("click", onClickOutside));
   gap: var(--gap-tight);
 }
 
-.viewBtn {
-  padding: 6px 10px;
-  font-size: var(--fs-base);
-  border-radius: var(--radius-md);
-  white-space: nowrap;
-}
-
-.viewBtn.active {
-  background: var(--hl-selected);
-  font-weight: var(--fw-semibold);
-  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
-}
-
-.viewBtn.wide {
+.wide {
   grid-column: 1 / -1;
 }
 

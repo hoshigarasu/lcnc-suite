@@ -18,16 +18,17 @@ const emit = defineEmits<{
   <div class="tab-panel">
     <div class="topBar">
       <div class="tabRow">
-        <button
+        <Btn
           v-for="tab in tabs"
           :key="tab.id"
-          class="tab-btn"
-          :class="{ active: modelValue === tab.id }"
+          size="sm"
+          muted
+          :selected="modelValue === tab.id"
           @click="emit('update:modelValue', tab.id)"
         >
           {{ tab.label }}
           <span v-if="badges?.[tab.id]" class="badge">{{ badges[tab.id]! > 99 ? '99+' : badges[tab.id] }}</span>
-        </button>
+        </Btn>
       </div>
       <Btn v-if="closable" icon @click="emit('close')">&times;</Btn>
     </div>

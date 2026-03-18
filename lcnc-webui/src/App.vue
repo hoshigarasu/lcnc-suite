@@ -12,7 +12,7 @@ import ToolTablePanel from "./ToolTablePanel.vue";
 import ProbePanel from "./ProbePanel.vue";
 import CameraViewer from "./CameraViewer.vue";
 import Btn from "./Btn.vue";
-import { HeartPulse, Info, LocateFixed, SlidersHorizontal, Gauge, MessageSquare, RotateCw, RotateCcw, Square, Droplets, Drill, CodeXml, Lock, LockOpen, TriangleAlert, Power, PowerOff, Gamepad2, BookOpen, ClipboardCopy } from "lucide-vue-next";
+import { LocateFixed, SlidersHorizontal, Gauge, MessageSquare, RotateCw, RotateCcw, Square, Droplets, Drill, CodeXml, Lock, LockOpen, TriangleAlert, Power, PowerOff, Gamepad2, BookOpen, ClipboardCopy, Hash } from "lucide-vue-next";
 import GcodeReferenceDialog from "./GcodeReferenceDialog.vue";
 import { loadViewerDefaults, loadPanelsDefaults, savePanelsDefaults, MAX_PANELS, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, loadMacrosDefaults, loadGamepadDefaults, saveGamepadDefaults, settingsVersion, type ThemeMode, type MacroDef, type GamepadDefaults, STEP_DEFAULT, STEP_RPM, STEP_OVERRIDE, STEP_RAPID_OVERRIDE } from "./defaults";
 import { useGamepad } from "./useGamepad";
@@ -322,30 +322,7 @@ const hasRotation = computed(() => {
   return rot != null && rot !== 0;
 });
 
-// Cycle chip value: "G54" → "ROT 45.0" / "Z 0.050" → "G54" when rotation or eoffset is active
-const offsetCyclePhase = ref(false);
-let _offsetCycleTimer: ReturnType<typeof setInterval> | null = null;
 const hasOffsetWarning = computed(() => hasRotation.value || !!st.value.eoffset_enabled);
-
-watch(hasOffsetWarning, (active) => {
-  if (active && !_offsetCycleTimer) {
-    _offsetCycleTimer = setInterval(() => { offsetCyclePhase.value = !offsetCyclePhase.value; }, 2000);
-  } else if (!active) {
-    if (_offsetCycleTimer) { clearInterval(_offsetCycleTimer); _offsetCycleTimer = null; }
-    offsetCyclePhase.value = false;
-  }
-}, { immediate: true });
-
-const offsetChipValue = computed(() => {
-  if (st.value.eoffset_enabled && offsetCyclePhase.value) {
-    const z = st.value.eoffset_z;
-    return z != null ? `Z ${z.toFixed(3)}` : "COMP";
-  }
-  if (hasRotation.value && offsetCyclePhase.value) {
-    return `ROT ${st.value.rotation_xy!.toFixed(1)}`;
-  }
-  return g5xLabel.value;
-});
 
 function fmtOff(v: number | undefined): string {
   if (v == null || !Number.isFinite(v)) return "0.0000";
@@ -599,16 +576,6 @@ const spindleMismatch = computed(() =>
   !isSpinning.value && Math.abs(spindleActual.value ?? 0) > 1
 );
 
-// Spindle override slider (synced from status)
-const spindleOvrSlider = ref(100);
-watch(spindleOverrideValue, (val) => {
-  if (Number.isFinite(val)) spindleOvrSlider.value = Math.round(val * 100);
-});
-function onSpindleOvrChange() { setSpindleOverride(spindleOvrSlider.value / 100); }
-function setSpindleOvrPreset(percent: number) {
-  spindleOvrSlider.value = percent;
-  onSpindleOvrChange();
-}
 
 // Coolant state
 const floodOn = computed(() => !!st.value.flood);
@@ -1301,155 +1268,16 @@ watch(isHomed, (nowHomed, wasHomed) => {
       </div>
     </section>
 
-    <section class="card topStatus">
+    <section class="card">
       <div class="sub">Machine Status</div>
-
-      <div class="compactStatus">
-        <div class="statusChip" :class="isEstop ? 'bad' : (isEnabled && isHomed ? 'ok' : '')" @click.stop="toggleChip('machine')" title="Machine State">
-          <HeartPulse class="chipIcon" />
-          <span class="label">Machine State</span>
-          <span class="chipValue">{{ isEstop ? 'E-STOP' : (!isEnabled ? 'OFF' : (!isHomed ? 'NOT HOMED' : 'READY')) }}</span>
-          <div class="popover chipPopover" :class="{ open: openChip === 'machine' }">
-            <div class="statusRow"><div class="k">E-Stop</div><div class="v" :class="isEstop ? 'badText' : 'okText'">{{ isEstop ? 'TRUE' : 'FALSE' }}</div></div>
-            <div class="statusRow"><div class="k">Enabled</div><div class="v" :class="isEnabled ? 'okText' : 'mutedText'">{{ isEnabled ? 'TRUE' : 'FALSE' }}</div></div>
-            <div class="statusRow"><div class="k">Homed</div><div class="v" :class="isHomed ? 'okText' : 'badText'">{{ isHomed ? 'TRUE' : 'FALSE' }}</div></div>
-            <div class="statusRow"><div class="k">Motion</div><div class="v">{{ isTeleop ? 'WORLD' : 'JOINT' }}</div></div>
-            <Btn
-              class="popoverAction"
-              :variant="isHomed ? 'default' : 'primary'"
-              :disabled="!permissions.idle"
-              @click="isHomed ? unhomeAll() : homeAll()"
-              block
-            >{{ isHomed ? 'Unhome' : 'Home All' }}</Btn>
-          </div>
-        </div>
-
-        <div class="statusChip" :class="isRunning ? 'ok' : (isPaused ? 'warn' : '')" @click.stop="toggleChip('program')" title="Task Mode">
-          <Info class="chipIcon" />
-          <span class="label">Task Mode</span>
-          <span class="chipValue">{{ isRunning ? 'RUNNING' : (isPaused ? 'PAUSED' : 'IDLE') }}</span>
-          <div class="popover chipPopover programPopover" :class="{ open: openChip === 'program' }">
-            <div class="statusRow"><div class="k">Task Mode</div><div class="v">{{ taskModeLabel }}</div></div>
-            <div class="statusRow"><div class="k">Interpreter</div><div class="v">{{ interpStateLabel }}</div></div>
-            <div class="statusRow"><div class="k">Elapsed</div><div class="v mono">{{ elapsedDisplay }}</div></div>
-            <div class="statusRow"><div class="k">G-codes</div><div class="v codes">{{ activeGcodes }}</div></div>
-            <div class="statusRow"><div class="k">M-codes</div><div class="v codes">{{ activeMcodes }}</div></div>
-          </div>
-        </div>
-
-        <div class="statusChip" :class="{ warn: hasOffsetWarning }" @click.stop="openOffsetsPopover()" title="Offsets">
-          <LocateFixed class="chipIcon" />
-          <span class="label">Offsets</span>
-          <span class="chipValue">{{ offsetChipValue }}</span>
-          <div class="popover chipPopover offsetsPopover" :class="{ open: openChip === 'offsets' }" @click.stop>
-            <table class="offsetTable">
-              <thead>
-                <tr><th></th><th v-for="col in offsetColumns" :key="col">{{ col.toUpperCase() }}</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in wcsTable" :key="row.name"
-                    :class="{ activeRow: row.name === g5xLabel, selectedRow: row.name === selectedWcs }"
-                    @click="selectedWcs = row.name">
-                  <td class="offLabel">{{ row.name }}</td>
-                  <td v-for="axis in offsetColumns" :key="axis"
-                      :class="{ warn: axis === 'r' && row[axis] !== 0, editableCell: permissions.idle }"
-                      @dblclick.stop="startEditCell(row.name, axis, Number(row[axis]) || 0)">
-                    <input v-if="editingCell?.wcs === row.name && editingCell?.axis === axis"
-                           ref="offsetInputRef"
-                           v-model="editValue"
-                           class="offsetInput"
-                           @keydown.enter.prevent="commitCell(row.name, axis)"
-                           @keydown.escape.prevent="cancelEdit()"
-                           @blur="commitCell(row.name, axis)"
-                           @click.stop />
-                    <span v-else>{{ fmtOff(Number(row[axis])) }}</span>
-                  </td>
-                </tr>
-                <tr v-if="st.g92_offset?.some((v: number) => v !== 0)" class="g92Row">
-                  <td class="offLabel">G92</td>
-                  <td v-for="(col, i) in offsetColumns" :key="col">{{ col === 'r' ? '' : fmtOff(st.g92_offset?.[i]) }}</td>
-                </tr>
-                <tr v-if="st.tool_offset?.some((v: number) => v !== 0)" class="toolRow">
-                  <td class="offLabel">Tool</td>
-                  <td v-for="(col, i) in offsetColumns" :key="col">{{ col === 'r' ? '' : fmtOff(st.tool_offset?.[i]) }}</td>
-                </tr>
-                <tr v-if="st.eoffset_z != null && st.eoffset_z !== 0" class="eoffsetRow">
-                  <td class="offLabel">Comp</td>
-                  <td v-for="col in offsetColumns" :key="col">{{ col === 'z' ? fmtOff(st.eoffset_z) : '' }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div class="offsetActions" :class="{ inactive: !permissions.idle }">
-              <Btn size="xs" :disabled="!permissions.idle || !selectedWcs" @click="clearWcs(selectedWcs!)">Clear {{ selectedWcs }}</Btn>
-              <Btn size="xs" :disabled="!permissions.idle" @click="clearWcs('all')">Clear All</Btn>
-            </div>
-          </div>
-        </div>
-
-        <div class="statusChip overridesChip" :class="{ warn: overridesActive && !overridesDisabled, bad: overridesDisabled }" @click.stop="toggleChip('overrides')" title="Overrides">
-          <Gauge class="chipIcon" />
-          <span class="label">Overrides</span>
-          <span class="chipValue">{{ overridesDisabled ? 'DISABLED' : (overridesActive ? 'ACTIVE' : 'DEFAULT') }}</span>
-          <div class="popover chipPopover overridesPopover" :class="{ open: openChip === 'overrides' }" @click.stop>
-            <fieldset :disabled="!permissions.override" class="fs-reset">
-            <div class="ovrRow">
-              <span class="ovrLabel">Feed</span>
-              <input type="range" v-model.number="feedSlider" @change="onFeedChange" min="0" :max="maxFeedOverride" :step="STEP_OVERRIDE" :disabled="!permissions.override || !feedOvrEnabled" />
-              <span class="sliderVal" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
-            </div>
-            <div class="ovrPresets">
-              <Btn v-for="p in [50, 100, 150, 200]" :key="'f'+p" size="xs" :disabled="!permissions.override || !feedOvrEnabled" @click="setOverridePreset('feed', p)">{{ p }}%</Btn>
-            </div>
-            <div class="ovrRow">
-              <span class="ovrLabel">Spindle</span>
-              <input type="range" v-model.number="spindleSlider" @change="onSpindleSliderChange" :min="minSpindleOverride" :max="maxSpindleOverride" :step="STEP_OVERRIDE" :disabled="!permissions.override || !spindleOvrEnabled" />
-              <span class="sliderVal" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
-            </div>
-            <div class="ovrPresets">
-              <Btn v-for="p in [50, 100, 150, 200]" :key="'s'+p" size="xs" :disabled="!permissions.override || !spindleOvrEnabled" @click="setOverridePreset('spindle', p)">{{ p }}%</Btn>
-            </div>
-            <div class="ovrRow">
-              <span class="ovrLabel">Rapid</span>
-              <input type="range" v-model.number="rapidSlider" @change="onRapidChange" min="25" max="100" :step="STEP_RAPID_OVERRIDE" :disabled="!permissions.override" />
-              <span class="sliderVal" :class="{ warn: rapidSlider !== 100 }">{{ rapidSlider }}%</span>
-            </div>
-            <div class="ovrPresets">
-              <Btn v-for="p in [25, 50, 75, 100]" :key="'r'+p" size="xs" :disabled="!permissions.override" @click="setOverridePreset('rapid', p)">{{ p }}%</Btn>
-            </div>
-            <Btn size="sm" class="ovrResetBtn" :disabled="!permissions.override" @click="resetAllOverrides" block>Reset All</Btn>
-            </fieldset>
-          </div>
-        </div>
-
-        <div class="statusChip" :class="{ warn: unreadCount > 0 }" @click.stop="toggleChip('messages')" title="Messages">
-          <MessageSquare class="chipIcon" />
-          <span class="label">Messages</span>
-          <span class="chipValue">{{ unreadCount > 0 ? unreadCount : 'NONE' }}</span>
-          <div class="popover chipPopover messagesPopover" :class="{ open: openChip === 'messages' }" @click.stop>
-            <div class="msgPopHeader">
-              <span class="msgPopTitle">Messages</span>
-              <div v-if="messages.length > 0" style="display:flex;gap:var(--gap-tight)">
-                <Btn size="xs" @click="copyAllMessages">Copy All</Btn>
-                <Btn size="xs" @click="clearAllMessages">Clear All</Btn>
-              </div>
-            </div>
-            <div v-if="messages.length === 0" class="msgPopEmpty">No messages</div>
-            <div v-else class="msgPopList">
-              <div v-for="msg in [...messages].reverse()" :key="msg.id" class="msgPopItem" :class="msgKindClass(msg.kind)">
-                <div class="msgPopIndicator"></div>
-                <div class="msgPopBody">
-                  <div class="msgPopMeta">
-                    <span class="msgPopBadge" :class="msgKindClass(msg.kind)">{{ msgKindLabel(msg.kind) }}</span>
-                    <span class="msgPopTime">{{ msgFormatTime(msg.ts) }}</span>
-                  </div>
-                  <div class="msgPopText">{{ msg.text }}</div>
-                </div>
-                <Btn icon title="Copy" @click="copyMessage(msg)"><ClipboardCopy :size="12" /></Btn>
-                <Btn icon @click="dismissMessage(msg.id)">&times;</Btn>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="machineStatus">
+        <div class="statusRow"><div class="k">E-Stop</div><div class="v" :class="isEstop ? 'badText' : 'okText'">{{ isEstop ? 'TRUE' : 'FALSE' }}</div></div>
+        <div class="statusRow"><div class="k">Enabled</div><div class="v" :class="isEnabled ? 'okText' : 'mutedText'">{{ isEnabled ? 'TRUE' : 'FALSE' }}</div></div>
+        <div class="statusRow"><div class="k">Homed</div><div class="v" :class="isHomed ? 'okText' : 'badText'">{{ isHomed ? 'TRUE' : 'FALSE' }}</div></div>
+        <div class="statusRow"><div class="k">Motion</div><div class="v">{{ isTeleop ? 'WORLD' : 'JOINT' }}</div></div>
+        <div class="statusRow"><div class="k">Mode</div><div class="v">{{ taskModeLabel }}</div></div>
+        <div class="statusRow"><div class="k">Interp</div><div class="v">{{ interpStateLabel }}</div></div>
+        <div class="statusRow"><div class="k">Elapsed</div><div class="v mono">{{ elapsedDisplay }}</div></div>
       </div>
     </section>
 
@@ -1540,26 +1368,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
             </div>
           </div>
 
-          <!-- Speed override slider -->
-          <div class="spOvrGroup">
-            <div class="spOvrHeader">
-              <span>Speed Override</span>
-              <span class="sliderVal" :class="{ warn: spindleOvrSlider !== 100 }">{{ spindleOvrSlider }}%</span>
-            </div>
-            <input
-              type="range"
-              class="spOvrSlider"
-              v-model.number="spindleOvrSlider"
-              @change="onSpindleOvrChange"
-              :min="minSpindleOverride"
-              :max="maxSpindleOverride"
-              :step="STEP_OVERRIDE"
-              :disabled="!permissions.override || !spindleOvrEnabled"
-            />
-            <div class="spOvrPresets">
-              <Btn v-for="p in [50, 100, 150, 200]" :key="'sp'+p" size="xs" :disabled="!permissions.override || !spindleOvrEnabled" @click="setSpindleOvrPreset(p)">{{ p }}%</Btn>
-            </div>
-          </div>
           </fieldset>
         </div>
         </div>
@@ -1612,7 +1420,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
         <div class="controlGroup">
         <Btn
           size="lg" class="controlBtn"
-          :active="openChip === 'macros'"
           @click.stop="toggleChip('macros')"
           title="Macros"
           block
@@ -1636,6 +1443,142 @@ watch(isHomed, (nowHomed, wasHomed) => {
         </div>
         </div>
 
+        <!-- Overrides -->
+        <div class="controlGroup">
+        <Btn
+          size="lg" class="controlBtn"
+          :class="{ warn: overridesDisabled }"
+          :active="overridesActive"
+          @click.stop="toggleChip('overrides')"
+          title="Overrides"
+          block
+        >
+          <Gauge class="controlIcon" />
+        </Btn>
+        <div class="popover overridesPopover" :class="{ open: openChip === 'overrides' }" @click.stop>
+          <fieldset :disabled="!permissions.override" class="fs-reset">
+          <div class="ovrRow">
+            <span class="ovrLabel">Feed</span>
+            <input type="range" v-model.number="feedSlider" @change="onFeedChange" min="0" :max="maxFeedOverride" :step="STEP_OVERRIDE" :disabled="!permissions.override || !feedOvrEnabled" />
+            <span class="sliderVal" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
+          </div>
+          <div class="ovrPresets">
+            <Btn v-for="p in [50, 100, 150, 200]" :key="'f'+p" size="xs" :disabled="!permissions.override || !feedOvrEnabled" @click="setOverridePreset('feed', p)">{{ p }}%</Btn>
+          </div>
+          <div class="ovrRow">
+            <span class="ovrLabel">Spindle</span>
+            <input type="range" v-model.number="spindleSlider" @change="onSpindleSliderChange" :min="minSpindleOverride" :max="maxSpindleOverride" :step="STEP_OVERRIDE" :disabled="!permissions.override || !spindleOvrEnabled" />
+            <span class="sliderVal" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
+          </div>
+          <div class="ovrPresets">
+            <Btn v-for="p in [50, 100, 150, 200]" :key="'s'+p" size="xs" :disabled="!permissions.override || !spindleOvrEnabled" @click="setOverridePreset('spindle', p)">{{ p }}%</Btn>
+          </div>
+          <div class="ovrRow">
+            <span class="ovrLabel">Rapid</span>
+            <input type="range" v-model.number="rapidSlider" @change="onRapidChange" min="25" max="100" :step="STEP_RAPID_OVERRIDE" :disabled="!permissions.override" />
+            <span class="sliderVal" :class="{ warn: rapidSlider !== 100 }">{{ rapidSlider }}%</span>
+          </div>
+          <div class="ovrPresets">
+            <Btn v-for="p in [25, 50, 75, 100]" :key="'r'+p" size="xs" :disabled="!permissions.override" @click="setOverridePreset('rapid', p)">{{ p }}%</Btn>
+          </div>
+          <Btn size="sm" class="ovrResetBtn" :disabled="!permissions.override" @click="resetAllOverrides" block>Reset All</Btn>
+          </fieldset>
+        </div>
+        </div>
+
+        <!-- Offsets -->
+        <div class="controlGroup">
+        <Btn
+          size="lg" class="controlBtn"
+          :class="{ warn: hasOffsetWarning }"
+          @click.stop="openOffsetsPopover()"
+          title="Offsets"
+          block
+        >
+          <LocateFixed class="controlIcon" />
+        </Btn>
+        <div class="popover offsetsPopover" :class="{ open: openChip === 'offsets' }" @click.stop>
+          <table class="offsetTable">
+            <thead>
+              <tr><th></th><th v-for="col in offsetColumns" :key="col">{{ col.toUpperCase() }}</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in wcsTable" :key="row.name"
+                  :class="{ activeRow: row.name === g5xLabel, selectedRow: row.name === selectedWcs }"
+                  @click="selectedWcs = row.name">
+                <td class="offLabel">{{ row.name }}</td>
+                <td v-for="axis in offsetColumns" :key="axis"
+                    :class="{ warn: axis === 'r' && row[axis] !== 0, editableCell: permissions.idle }"
+                    @dblclick.stop="startEditCell(row.name, axis, Number(row[axis]) || 0)">
+                  <input v-if="editingCell?.wcs === row.name && editingCell?.axis === axis"
+                         ref="offsetInputRef"
+                         v-model="editValue"
+                         class="offsetInput"
+                         @keydown.enter.prevent="commitCell(row.name, axis)"
+                         @keydown.escape.prevent="cancelEdit()"
+                         @blur="commitCell(row.name, axis)"
+                         @click.stop />
+                  <span v-else>{{ fmtOff(Number(row[axis])) }}</span>
+                </td>
+              </tr>
+              <tr v-if="st.g92_offset?.some((v: number) => v !== 0)" class="g92Row">
+                <td class="offLabel">G92</td>
+                <td v-for="(col, i) in offsetColumns" :key="col">{{ col === 'r' ? '' : fmtOff(st.g92_offset?.[i]) }}</td>
+              </tr>
+              <tr v-if="st.tool_offset?.some((v: number) => v !== 0)" class="toolRow">
+                <td class="offLabel">Tool</td>
+                <td v-for="(col, i) in offsetColumns" :key="col">{{ col === 'r' ? '' : fmtOff(st.tool_offset?.[i]) }}</td>
+              </tr>
+              <tr v-if="st.eoffset_z != null && st.eoffset_z !== 0" class="eoffsetRow">
+                <td class="offLabel">Comp</td>
+                <td v-for="col in offsetColumns" :key="col">{{ col === 'z' ? fmtOff(st.eoffset_z) : '' }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="offsetActions" :class="{ inactive: !permissions.idle }">
+            <Btn size="xs" :disabled="!permissions.idle || !selectedWcs" @click="clearWcs(selectedWcs!)">Clear {{ selectedWcs }}</Btn>
+            <Btn size="xs" :disabled="!permissions.idle" @click="clearWcs('all')">Clear All</Btn>
+          </div>
+        </div>
+        </div>
+
+        <!-- Messages -->
+        <div class="controlGroup">
+        <Btn
+          size="lg" class="controlBtn"
+          :active="unreadCount > 0"
+          @click.stop="toggleChip('messages')"
+          title="Messages"
+          block
+        >
+          <MessageSquare class="controlIcon" />
+        </Btn>
+        <div class="popover messagesPopover" :class="{ open: openChip === 'messages' }" @click.stop>
+          <div class="msgPopHeader">
+            <span class="msgPopTitle">Messages</span>
+            <div v-if="messages.length > 0" style="display:flex;gap:var(--gap-tight)">
+              <Btn size="xs" @click="copyAllMessages">Copy All</Btn>
+              <Btn size="xs" @click="clearAllMessages">Clear All</Btn>
+            </div>
+          </div>
+          <div v-if="messages.length === 0" class="msgPopEmpty">No messages</div>
+          <div v-else class="msgPopList">
+            <div v-for="msg in [...messages].reverse()" :key="msg.id" class="msgPopItem" :class="msgKindClass(msg.kind)">
+              <div class="msgPopIndicator"></div>
+              <div class="msgPopBody">
+                <div class="msgPopMeta">
+                  <span class="msgPopBadge" :class="msgKindClass(msg.kind)">{{ msgKindLabel(msg.kind) }}</span>
+                  <span class="msgPopTime">{{ msgFormatTime(msg.ts) }}</span>
+                </div>
+                <div class="msgPopText">{{ msg.text }}</div>
+              </div>
+              <Btn icon title="Copy" @click="copyMessage(msg)"><ClipboardCopy :size="12" /></Btn>
+              <Btn icon @click="dismissMessage(msg.id)">&times;</Btn>
+            </div>
+          </div>
+        </div>
+        </div>
+
         <div class="controlGroup">
         <Btn size="lg" class="controlBtn" @click.stop="openGcodeRef()" title="G-code Reference" block>
           <BookOpen class="controlIcon" />
@@ -1648,6 +1591,25 @@ watch(isHomed, (nowHomed, wasHomed) => {
         </div>
         <div class="controlGroup simtripGroup">
         <Btn class="controlBtn simtrip" :disabled="!st.probing" @click.stop="send({ cmd: 'simulate_probe_trip' })" title="Simulate probe contact (sim/debug)" block>Sim Trip</Btn>
+        </div>
+
+        <!-- Active G/M Codes -->
+        <div class="controlGroup controlGroup--wide">
+        <Btn
+          size="lg" class="controlBtn"
+          @click.stop="toggleChip('codes')"
+          title="Active Codes"
+          block
+        >
+          <Hash class="controlIcon" />
+        </Btn>
+        <div class="popover codesPopover" :class="{ open: openChip === 'codes' }" @click.stop>
+          <div class="label">G-codes</div>
+          <div class="codesValue">{{ activeGcodes }}</div>
+          <div class="sep"></div>
+          <div class="label">M-codes</div>
+          <div class="codesValue">{{ activeMcodes }}</div>
+        </div>
         </div>
       </div>
     </section>
@@ -2143,10 +2105,10 @@ watch(isHomed, (nowHomed, wasHomed) => {
   margin: 0;
 }
 
-.topRow .compactStatus {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--gap-controls);
+.machineStatus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-tight);
 }
 
 .card {
@@ -2199,11 +2161,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   font-weight: var(--fw-semibold);
 }
 
-.v.codes {
-  text-align: right;
-  word-break: break-word;
-}
-
 .v.warn {
   color: var(--warn);
   animation: flash-warn 1.2s ease-in-out infinite;
@@ -2230,68 +2187,18 @@ watch(isHomed, (nowHomed, wasHomed) => {
   opacity: var(--opacity-muted);
 }
 
-.compactStatus {
-  display: flex;
-  gap: var(--gap-controls);
-  flex-wrap: wrap;
-}
 
-.statusChip {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--gap-micro);
-  padding: 10px;
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-  cursor: default;
-  transition: background 0.12s, border-color 0.12s;
-}
-
-.statusChip:hover {
-  background: var(--hl-hover);
-}
-
-.statusChip.ok { border-color: color-mix(in srgb, var(--ok) 50%, transparent); background: color-mix(in oklab, var(--ok) 20%, var(--button-bg)); }
-.statusChip.bad { border-color: color-mix(in srgb, var(--danger) 50%, transparent); background: color-mix(in oklab, var(--danger) 20%, var(--button-bg)); }
-.statusChip.warn { border-color: color-mix(in srgb, var(--warn) 50%, transparent); animation: flash-chip-warn 1.2s ease-in-out infinite; }
-
-@keyframes flash-chip-warn {
-  0%, 100% { background: color-mix(in oklab, var(--warn) 25%, var(--button-bg)); }
-  50% { background: color-mix(in oklab, var(--warn) 10%, var(--button-bg)); }
-}
-
-.chipIcon { width: var(--fs-2xl); height: var(--fs-2xl); }
-.chipValue { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
-.topRow .statusChip .label,
-.topRow .statusChip .chipValue { display: none; }
-
-.chipPopover {
-  top: 0;
+.offsetsPopover {
+  bottom: 0;
   left: 100%;
   margin-left: 6px;
-  min-width: 200px;
+  min-width: 300px;
 }
-
-/* All status chip popovers: click-to-toggle */
-.statusChip { cursor: pointer; }
-.chipPopover.open {
+.offsetsPopover.open {
   display: flex !important;
   flex-direction: column;
   gap: var(--gap-tight);
 }
-
-.popoverAction {
-  margin-top: var(--gap-tight);
-}
-
-.programPopover {
-  min-width: 300px;
-}
-
-.offsetsPopover { min-width: 300px; }
 .offsetTable { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .offsetTable th { text-align: right; padding: 2px 6px; color: color-mix(in oklab, var(--fg) 55%, transparent); font-weight: var(--fw-medium); }
 .offsetTable td { text-align: right; padding: 2px 6px; font-family: var(--font-mono); }
@@ -2313,8 +2220,15 @@ watch(isHomed, (nowHomed, wasHomed) => {
 .offsetActions { display: flex; gap: var(--gap-tight); margin-top: var(--gap-controls); justify-content: flex-end; }
 
 .overridesPopover {
+  bottom: 0;
+  left: 100%;
+  margin-left: 6px;
   min-width: 260px;
   cursor: default;
+}
+.overridesPopover.open {
+  display: flex !important;
+  flex-direction: column;
   gap: var(--gap-controls);
 }
 
@@ -2352,6 +2266,25 @@ watch(isHomed, (nowHomed, wasHomed) => {
 /* ---- Controls section (Spindle button + popover) ---- */
 .controlBtns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-controls); }
 .controlGroup { position: relative; }
+.controlGroup--wide { grid-column: 1 / -1; }
+
+.codesPopover {
+  bottom: 0;
+  left: 100%;
+  margin-left: 6px;
+  min-width: 240px;
+}
+.codesPopover.open {
+  display: flex !important;
+  flex-direction: column;
+  gap: var(--gap-controls);
+}
+.codesValue {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  word-break: break-word;
+  line-height: 1.5;
+}
 
 .controlBtn {
   display: flex;
@@ -2459,32 +2392,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   opacity: var(--opacity-muted);
 }
 
-.spOvrGroup {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-tight);
-}
-
-.spOvrHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: var(--fs-base);
-}
-
-.spOvrHeader span:first-child {
-  font-weight: var(--fw-medium);
-  opacity: 0.8;
-}
-
-
-.spOvrSlider { width: 100%; }
-
-.spOvrPresets {
-  display: flex;
-  gap: var(--gap-tight);
-  flex-wrap: wrap;
-}
 
 /* ---- Coolant popover ---- */
 .macroPopover {
@@ -2635,7 +2542,18 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 /* ---- Messages popover ---- */
-.messagesPopover { min-width: 320px; max-height: 400px; }
+.messagesPopover {
+  bottom: 0;
+  left: 100%;
+  margin-left: 6px;
+  min-width: 320px;
+  max-height: 400px;
+}
+.messagesPopover.open {
+  display: flex !important;
+  flex-direction: column;
+  gap: var(--gap-controls);
+}
 .msgPopHeader { display: flex; justify-content: space-between; align-items: center; }
 .msgPopTitle { font-weight: var(--fw-semibold); font-size: var(--fs-md); }
 .msgPopEmpty { padding: 20px 0; text-align: center; font-size: var(--fs-base); opacity: var(--opacity-disabled); }

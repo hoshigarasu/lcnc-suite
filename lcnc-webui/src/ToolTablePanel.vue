@@ -422,7 +422,7 @@ defineExpose({ openAdd, fetchTools, triggerImport });
       <div v-if="editTool" class="dialogOverlay" @click.self="cancelEditModal">
         <div class="dialog editDialog">
           <div class="dialogTitle">{{ isNewTool ? "Add Tool" : `Edit Tool T${editTool.T}` }}</div>
-          <div class="editFields">
+          <div class="stack-controls editFields">
             <label class="editLabel">
               <span class="editLabelText">Tool #</span>
               <input class="editInput editInputNum" type="number" v-model.number="editForm.T" min="1" />
@@ -649,9 +649,6 @@ defineExpose({ openAdd, fetchTools, triggerImport });
 }
 
 .editFields {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-controls);
   margin-top: var(--gap-section);
 }
 

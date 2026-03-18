@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { loadCameraDefaults, saveCameraDefaults, settingsVersion } from "./defaults";
 import { Crosshair, Circle, Grid3x3 } from "lucide-vue-next";
+import Btn from "./Btn.vue";
 
 const props = defineProps<{ active?: boolean }>();
 
@@ -154,12 +155,12 @@ CAMERA_SOURCE = rtsp://&lt;host&gt;/live      # IP camera</pre>
 
       <!-- Floating toolbar -->
       <div class="cameraToolbar">
-        <button class="btn camToolBtn" :class="{ active: showCrosshair }"
-                @click="showCrosshair = !showCrosshair" title="Crosshair"><Crosshair :size="14" /></button>
-        <button class="btn camToolBtn" :class="{ active: showCircle }"
-                @click="showCircle = !showCircle" title="Circle"><Circle :size="14" /></button>
-        <button class="btn camToolBtn" :class="{ active: showGrid }"
-                @click="showGrid = !showGrid" title="Grid"><Grid3x3 :size="14" /></button>
+        <Btn size="xs" :active="showCrosshair"
+                @click="showCrosshair = !showCrosshair" title="Crosshair"><Crosshair :size="14" /></Btn>
+        <Btn size="xs" :active="showCircle"
+                @click="showCircle = !showCircle" title="Circle"><Circle :size="14" /></Btn>
+        <Btn size="xs" :active="showGrid"
+                @click="showGrid = !showGrid" title="Grid"><Grid3x3 :size="14" /></Btn>
         <div class="camSliderGroup">
           <Circle :size="12" class="camSliderLabel" />
           <input type="range" min="10" max="300" v-model.number="circleRadius" class="camSlider" />
@@ -253,16 +254,9 @@ CAMERA_SOURCE = rtsp://&lt;host&gt;/live      # IP camera</pre>
   backdrop-filter: blur(4px);
 }
 
-.camToolBtn {
+.cameraToolbar :deep(.b) {
   min-width: 32px;
   padding: 4px 8px;
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-semibold);
-}
-
-.camToolBtn.active {
-  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
-  background: color-mix(in oklab, var(--ok) 20%, var(--button-bg));
 }
 
 .camSliderGroup {

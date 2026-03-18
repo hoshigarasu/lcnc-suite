@@ -3,6 +3,7 @@ import { computed, reactive } from "vue";
 import { send } from "./lcncWs";
 import { usePermissions } from "./permissions";
 import JogButton from "./JogButton.vue";
+import Btn from "./Btn.vue";
 
 const ABC = new Set(["A", "B", "C"]);
 const UVW = new Set(["U", "V", "W"]);
@@ -194,15 +195,15 @@ function onAngularVelInput(ev: Event) {
     <div class="controlGrid">
       <!-- Mode row -->
       <div class="k">Mode</div>
-      <button
-        class="modeBtn"
-        :class="isTeleop ? 'teleop' : ''"
+      <Btn
+        size="xs"
+        :active="isTeleop"
         :disabled="disabled"
         @click="emit('toggleTeleop')"
         :title="isTeleop ? 'Switch to Joint mode' : (isHomed ? 'Switch to World mode' : 'Home all axes first')"
       >
         {{ isTeleop ? "World" : "Joint" }}
-      </button>
+      </Btn>
       <span v-if="!isHomed" class="modeHint">Home first</span>
       <span v-else></span>
 
@@ -238,15 +239,16 @@ function onAngularVelInput(ev: Event) {
 
       <!-- Step row -->
       <div class="k">Step</div>
-      <div class="incrGroup">
-        <button
+      <div class="row-tight incrGroup">
+        <Btn
           v-for="opt in incrementOptions"
           :key="opt.value"
-          class="incrBtn"
-          :class="{ active: jogIncrement === opt.value }"
+          size="xs"
+          mono
+          :selected="jogIncrement === opt.value"
           :disabled="disabled"
           @click="emit('update:jogIncrement', opt.value)"
-        >{{ opt.label }}</button>
+        >{{ opt.label }}</Btn>
       </div>
       <span class="sliderVal" v-if="jogIncrement > 0">{{ jogIncrement }} {{ linearUnit }} /click</span>
       <span class="sliderVal" v-else>Hold to jog</span>
@@ -333,17 +335,6 @@ function onAngularVelInput(ev: Event) {
   min-width: 0;
 }
 
-/* ---- Mode button ---- */
-.modeBtn {
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-semibold);
-}
-
-.modeBtn.teleop:not(:disabled) {
-  background: color-mix(in oklab, var(--ok) 15%, var(--button-bg));
-  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
-}
-
 .modeHint {
   font-size: var(--fs-2xs);
   opacity: var(--opacity-muted);
@@ -351,23 +342,10 @@ function onAngularVelInput(ev: Event) {
 
 /* ---- Increment buttons ---- */
 .incrGroup {
-  display: flex;
-  gap: var(--gap-micro);
 }
 
-.incrBtn {
+.incrGroup :deep(.b) {
   flex: 1;
-  padding: 3px 6px;
-  border-radius: var(--radius-xl);
-  font-size: var(--fs-xs);
-  font-family: var(--font-mono);
-  user-select: none;
-}
-
-.incrBtn.active {
-  background: var(--hl-selected);
-  font-weight: var(--fw-bold);
-  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
 }
 
 /* ---- Wheel + Z layout ---- */

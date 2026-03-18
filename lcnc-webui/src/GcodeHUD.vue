@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { usePermissions } from "./permissions";
 import { Play, SkipForward, Pause, Square } from "lucide-vue-next";
+import Btn from "./Btn.vue";
 
 const props = defineProps<{
   gcodeContent: string | null;
@@ -96,20 +97,20 @@ function tokenizeCode(code: string, tokens: Token[]) {
 <template>
   <div class="gcodeHud hud-panel">
     <!-- Program controls -->
-    <div class="ctrlRow">
-      <div class="ctrlGroup">
-        <button class="ctrlBtn primary" :disabled="!can.ready || !gcodeContent" @click="emit('cycleStart')"><Play :size="16" /></button>
-        <button class="ctrlBtn" :disabled="!((can.ready && gcodeContent) || can.resume)" @click="emit('cycleStep')"><SkipForward :size="16" /></button>
-        <button
-          class="ctrlBtn"
+    <div class="row-tight ctrlRow">
+      <div class="row-tight ctrlGroup">
+        <Btn variant="ok" size="sm" :disabled="!can.ready || !gcodeContent" @click="emit('cycleStart')"><Play :size="16" /></Btn>
+        <Btn size="sm" :disabled="!((can.ready && gcodeContent) || can.resume)" @click="emit('cycleStep')"><SkipForward :size="16" /></Btn>
+        <Btn
+          size="sm"
           :disabled="!can.pause && !can.resume"
           @click="isPaused ? emit('cycleResume') : emit('cyclePause')"
-        ><component :is="isPaused ? Play : Pause" :size="16" /></button>
-        <button class="ctrlBtn danger" :disabled="!can.abort" @click="emit('abort')"><Square :size="16" /></button>
+        ><component :is="isPaused ? Play : Pause" :size="16" /></Btn>
+        <Btn variant="danger" size="sm" :disabled="!can.abort" @click="emit('abort')"><Square :size="16" /></Btn>
       </div>
-      <div class="switchGroup">
-        <button class="ctrlBtn switchBtn" :class="{ active: optionalStop }" :disabled="!can.override" @click="emit('toggleOptionalStop')">M01</button>
-        <button class="ctrlBtn switchBtn" :class="{ active: blockDelete }" :disabled="!can.override" @click="emit('toggleBlockDelete')">/BD</button>
+      <div class="row-tight switchGroup">
+        <Btn size="sm" muted :active="optionalStop" :disabled="!can.override" @click="emit('toggleOptionalStop')">M01</Btn>
+        <Btn size="sm" muted :active="blockDelete" :disabled="!can.override" @click="emit('toggleBlockDelete')">/BD</Btn>
       </div>
     </div>
 
@@ -151,31 +152,12 @@ function tokenizeCode(code: string, tokens: Token[]) {
 
 /* Controls */
 .ctrlRow {
-  display: flex;
-  gap: var(--gap-tight);
 }
 
-.ctrlBtn {
+.ctrlGroup :deep(.b),
+.switchGroup :deep(.b) {
   flex: 1;
   padding: 4px 0;
-  font-size: var(--fs-base);
-  border-radius: var(--radius-md);
-}
-
-.ctrlBtn.primary {
-  background: color-mix(in oklab, var(--ok) 20%, var(--button-bg));
-}
-
-.ctrlBtn.primary:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--ok) 35%, var(--button-bg));
-}
-
-.ctrlBtn.danger {
-  background: color-mix(in oklab, var(--danger) 20%, var(--button-bg));
-}
-
-.ctrlBtn.danger:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--danger) 35%, var(--button-bg));
 }
 
 /* Progress */
@@ -252,24 +234,11 @@ function tokenizeCode(code: string, tokens: Token[]) {
 }
 
 .ctrlGroup {
-  display: flex;
-  gap: var(--gap-tight);
   flex: 3;
 }
 
 .switchGroup {
-  display: flex;
-  gap: var(--gap-tight);
   flex: 2;
 }
 
-.switchBtn {
-  opacity: var(--opacity-muted);
-}
-
-.switchBtn.active:not(:disabled) {
-  opacity: 1;
-  background: color-mix(in oklab, var(--ok) 25%, var(--button-bg));
-  border-color: color-mix(in srgb, var(--ok) 50%, transparent);
-}
 </style>

@@ -57,7 +57,7 @@ function fmt(n: any, letter?: string) {
 </script>
 
 <template>
-  <div class="container" :class="{ inactive: !can.idle }">
+  <div class="stack-sections container" :class="{ inactive: !can.idle }">
     <div class="section">
       <div class="sub">Work Position ({{ g5xLabel }})</div>
       <div class="grid">
@@ -88,9 +88,6 @@ function fmt(n: any, letter?: string) {
 
 <style scoped>
 .container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-panel);
 }
 
 .section {

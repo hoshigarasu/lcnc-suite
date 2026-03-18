@@ -438,46 +438,18 @@ label:has(input:disabled, select:disabled) {
 .token-comment, .tok-comment { color: #6a9955; opacity: 0.8; }
 .token-text, .tok-text { color: var(--fg); }
 
-/* ---- Tab buttons ---- */
-.tab-btn {
-  padding: 5px 8px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  border-radius: var(--radius-lg);
-  text-align: center;
-  white-space: nowrap;
-  opacity: var(--opacity-muted);
-}
+/* ---- Layout utilities ---- */
+.stack-panel    { display: flex; flex-direction: column; gap: var(--gap-panel); }
+.stack-sections { display: flex; flex-direction: column; gap: var(--gap-section); }
+.stack-controls { display: flex; flex-direction: column; gap: var(--gap-controls); }
+.stack-tight    { display: flex; flex-direction: column; gap: var(--gap-tight); }
+.stack-micro    { display: flex; flex-direction: column; gap: var(--gap-micro); }
 
-.tab-btn:hover {
-  opacity: 0.85;
-}
-
-.tab-btn.active {
-  opacity: 1;
-  background: var(--hl-selected);
-  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
-}
+.row-controls   { display: flex; gap: var(--gap-controls); align-items: center; }
+.row-tight      { display: flex; gap: var(--gap-tight); align-items: center; }
 
 .viewTabs {
-  display: flex;
-  gap: var(--gap-tight);
   flex-wrap: wrap;
-}
-
-/* ---- G5x coordinate system buttons ---- */
-.g5xBtn {
-  padding: 5px 10px;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-medium);
-  border-radius: var(--radius-lg);
-  opacity: var(--opacity-muted);
-}
-
-.g5xBtn.active {
-  opacity: 1;
-  font-weight: var(--fw-bold);
-  border-color: var(--fg);
 }
 
 .pill {

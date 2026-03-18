@@ -115,6 +115,7 @@ import { loadViewerDefaults, ALL_LAYERS, type Vec3, type Layer } from "./default
 import JogHUD from "./JogHUD.vue";
 import GcodeHUD from "./GcodeHUD.vue";
 import SetupHUD from "./SetupHUD.vue";
+import Btn from "./Btn.vue";
 
 const isDark = inject<ComputedRef<boolean>>("isDark", computed(() => window.matchMedia("(prefers-color-scheme: dark)").matches));
 
@@ -2220,10 +2221,10 @@ defineExpose({
 
     <!-- HUD toggle buttons (top-left) -->
     <div class="hudOverlay">
-      <div class="hudBtnRow">
-        <button class="hudBtn" :class="{ active: activeHudPanel === 'jog' }" @click="toggleHud('jog')">Jog</button>
-        <button class="hudBtn" :class="{ active: activeHudPanel === 'gcode' }" @click="toggleHud('gcode')">Program</button>
-        <button class="hudBtn" :class="{ active: activeHudPanel === 'setup' }" @click="toggleHud('setup')">Setup</button>
+      <div class="row-tight hudBtnRow">
+        <Btn size="sm" muted :selected="activeHudPanel === 'jog'" @click="toggleHud('jog')">Jog</Btn>
+        <Btn size="sm" muted :selected="activeHudPanel === 'gcode'" @click="toggleHud('gcode')">Program</Btn>
+        <Btn size="sm" muted :selected="activeHudPanel === 'setup'" @click="toggleHud('setup')">Setup</Btn>
       </div>
 
       <div v-show="activeHudPanel === 'jog'">
@@ -2300,28 +2301,9 @@ defineExpose({
 }
 
 .hudBtnRow {
-  display: flex;
-  gap: var(--gap-tight);
 }
 
-.hudBtn {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  padding: 5px 10px;
-  opacity: var(--opacity-muted);
-}
-
-.hudBtn:hover {
-  opacity: 1;
-}
-
-.hudBtn.active {
-  opacity: 1;
-  background: var(--hl-selected);
-  border-color: color-mix(in oklab, var(--fg) 30%, var(--border));
-}
-
-.hudBtn.warn {
+.hudBtnRow :deep(.b.warn) {
   opacity: 1;
   border-color: color-mix(in srgb, var(--warn) 50%, transparent);
   animation: flash-btn-warn 1.2s ease-in-out infinite;

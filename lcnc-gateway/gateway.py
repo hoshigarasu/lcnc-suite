@@ -2672,6 +2672,51 @@ class PreviewCanon(Translated, ArcsToSegmentsMixin, StatMixin):
         self.lo = lo
 
 
+def _patch_var_file_from_cache(path: str) -> None:
+    """Patch WCS rotation into temp var file before preview parse.
+
+    LinuxCNC only writes the var file on shutdown, so after G10 L2 R changes
+    the disk copy has stale rotation.  Patch only rotation (base + 10) —
+    axis offsets on disk are already correct in interpreter-internal units.
+    (_wcs_cache mixes internal units from seed with machine units from STAT,
+    so patching axis offsets would corrupt them.)
+    """
+    if not _wcs_cache:
+        return
+    # Build param_number → value map — rotation only
+    patches: Dict[str, str] = {}
+    for i, base in enumerate(_WCS_BASES):
+        row = _wcs_cache[i]
+        if not row:
+            continue
+        if "r" in row:
+            patches[str(base + 10)] = f"{row['r']:.6f}"
+
+    if not patches:
+        return
+
+    # Read, patch, write back
+    lines: List[str] = []
+    seen: set = set()
+    try:
+        with open(path, "r") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] in patches:
+                    lines.append(f"{parts[0]}\t{patches[parts[0]]}\n")
+                    seen.add(parts[0])
+                else:
+                    lines.append(line)
+        # Append any parameters not already in the file
+        for pnum, val in patches.items():
+            if pnum not in seen:
+                lines.append(f"{pnum}\t{val}\n")
+        with open(path, "w") as f:
+            f.writelines(lines)
+    except Exception as e:
+        print(f"[GCODE] var file patch failed: {e}")
+
+
 def parse_gcode_preview(filename: str, machine_units: str = "mm") -> Dict[str, Any]:
     """Full RS274NGC preview via LinuxCNC's native interpreter."""
     empty = {"feed": [], "feed_lines": [], "rapid": []}
@@ -2700,6 +2745,7 @@ def parse_gcode_preview(filename: str, machine_units: str = "mm") -> Dict[str, A
                 param_path = parameter if os.path.isabs(parameter) else os.path.join(os.path.dirname(ini_path), parameter)
                 if os.path.exists(param_path):
                     shutil.copy(param_path, temp_param)
+            _patch_var_file_from_cache(temp_param)
             canon.parameter_file = temp_param
 
             unitcode = "G%d" % (20 + (STAT.linear_units == 1))
@@ -3331,6 +3377,7 @@ async def ws_endpoint(ws: WebSocket):
         print(f"Error loading initial G-code: {e}")
 
     last_file: Optional[str] = None
+    last_rotation: Optional[float] = None
     viewer_init_sent = False
     _probe_results: dict = {}  # populated from shared poller probe updates
     _prev_tc_req = False  # previous tool-change-requested state for edge detection
@@ -3479,36 +3526,41 @@ async def ws_endpoint(ws: WebSocket):
                     _hal_send({"tool_changed": False})
                 _prev_tc_req = st.tool_change_requested
 
-                # Viewer: gcode preview only when the file changes
-                if st.active_file and st.active_file != last_file:
+                # Viewer: gcode preview when file or WCS rotation changes
+                cur_rotation = st.rotation_xy if st.rotation_xy is not None else 0.0
+                file_changed = st.active_file and st.active_file != last_file
+                rot_changed = last_file and st.active_file and cur_rotation != last_rotation
+
+                if file_changed or rot_changed:
                     last_file = st.active_file
+                    last_rotation = cur_rotation
                     try:
-                        def _load_gcode(filepath):
+                        include_content = file_changed  # only re-read file on file change
+
+                        def _load_gcode(filepath, read_content):
                             p = parse_gcode_preview(filepath, get_machine_units())
                             c = None
-                            try:
-                                with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-                                    c = f.read()
-                            except Exception:
-                                pass
+                            if read_content:
+                                try:
+                                    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                                        c = f.read()
+                                except Exception:
+                                    pass
                             return p, c
 
-                        preview, gcode_content = await loop.run_in_executor(None, _load_gcode, last_file)
+                        preview, gcode_content = await loop.run_in_executor(None, _load_gcode, last_file, include_content)
 
-                        await ws_send_json(
-                            ws,
-                            {
-                                "type": "viewer_gcode",
-                                "data": {
-                                    "file": last_file,
-                                    "feed": preview["feed"],
-                                    "feed_lines": preview["feed_lines"],
-                                    "rapid": preview["rapid"],
-                                    "stats": preview.get("stats"),
-                                    "content": gcode_content,
-                                },
-                            },
-                        )
+                        data: dict = {
+                            "file": last_file,
+                            "feed": preview["feed"],
+                            "feed_lines": preview["feed_lines"],
+                            "rapid": preview["rapid"],
+                            "stats": preview.get("stats"),
+                        }
+                        if include_content:
+                            data["content"] = gcode_content
+
+                        await ws_send_json(ws, {"type": "viewer_gcode", "data": data})
                     except Exception as e:
                         await ws_send_json(
                             ws,
@@ -3521,6 +3573,7 @@ async def ws_endpoint(ws: WebSocket):
                         )
                 elif not st.active_file and last_file:
                     last_file = None
+                    last_rotation = None
                     await ws_send_json(ws, {
                         "type": "viewer_gcode",
                         "data": {"file": None, "feed": [], "feed_lines": [], "rapid": [], "content": None},

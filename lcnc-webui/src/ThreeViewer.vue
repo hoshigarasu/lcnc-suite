@@ -161,6 +161,7 @@ type ViewerState = {
 
   g5x_offset?: number[];
   g92_offset?: number[];
+  rotation_xy?: number;
 
   active_file?: string;
   motion_line?: number;
@@ -255,6 +256,7 @@ const GIZMO_SIZE = 140; // pixels
 // Transform groups (logical)
 const groups: Record<string, THREE.Group> = {};
 let workOrigin: THREE.Group | null = null;
+let workRotGroup: THREE.Group | null = null;  // rotated sub-group for stock/axes (WCS rotation)
 let _workGrp: THREE.Group | null = null;   // resolved from init.workGroup
 let _toolGrp: THREE.Group | null = null;   // resolved from init.toolGroup
 
@@ -326,6 +328,7 @@ let lastBackplotPt: THREE.Vector3 | null = null;
 let machineBoundsMesh: THREE.Mesh | null = null;
 let boundsLabels: THREE.Group | null = null;
 const _billboardLabels: Text[] = [];
+const _bbQ = new THREE.Quaternion();  // reused for billboard parent compensation
 let workpieceMesh: THREE.Mesh | null = null;
 let overflowEdges: THREE.LineSegments | null = null;
 const boundsClipPlanes: THREE.Plane[] = [];
@@ -757,6 +760,7 @@ function ensureCoreGroups(init: ViewerInit) {
   for (const lbl of _billboardLabels) lbl.dispose();
   _billboardLabels.length = 0;
   workOrigin = null;
+  workRotGroup = null;
   workAxes = null;
   machineBoundsMesh = null;
   workpieceMesh = null;
@@ -800,6 +804,11 @@ function ensureCoreGroups(init: ViewerInit) {
   workOrigin = new THREE.Group();
   _workGrp.add(workOrigin);
 
+  // Rotated sub-group: stock, axes, overflow, surface rotate with WCS R value.
+  // Toolpath stays on workOrigin (interpreter already bakes rotation into coords).
+  workRotGroup = new THREE.Group();
+  workOrigin.add(workRotGroup);
+
   // Work zero XYZ arrows with labels
   workAxes = new THREE.Group();
   const _al = 60 * _unitScale;
@@ -821,7 +830,7 @@ function ensureCoreGroups(init: ViewerInit) {
     _billboardLabels.push(lbl);
   }
 
-  workOrigin.add(workAxes);
+  workRotGroup.add(workAxes);
 
   // ---- Backplot line (tool history in WORK coordinates) ----
 {
@@ -900,7 +909,7 @@ resetBackplot();
     );
     workpieceMesh.add(edges);
 
-    workOrigin.add(workpieceMesh);
+    workRotGroup!.add(workpieceMesh);
     applyBox(workpieceMesh, props.workpieceSize, props.workpieceOffset);
 
   }
@@ -1237,7 +1246,7 @@ async function buildFromInit(init: ViewerInit) {
 
         // Overflow outline (workpiece parts outside machine bounds)
         overflowEdges = rebuildOverflowEdges(props.workpieceSize, props.workpieceOffset);
-        if (overflowEdges && workOrigin) workOrigin.add(overflowEdges);
+        if (overflowEdges && workRotGroup) workRotGroup.add(overflowEdges);
       }
 
       // Dimension labels along bottom edges
@@ -1405,6 +1414,9 @@ function applyState(init: ViewerInit, st: ViewerState) {
   if (workOrigin) {
     workOrigin.position.set(ox, oy, oz);
     updateOverflowCheck();
+  }
+  if (workRotGroup) {
+    workRotGroup.rotation.z = (st.rotation_xy ?? 0) * Math.PI / 180;
   }
 
   // ---- Tool visual: parametric profile (TIP stays at local z=0) ----
@@ -1678,8 +1690,18 @@ function animate() {
   }
 
   // Billboard text labels — face camera each frame
+  // Labels may be children of rotated groups (e.g. workOrigin with WCS rotation),
+  // so we compensate by applying the inverse parent world quaternion first.
   if (camera) {
-    for (const lbl of _billboardLabels) lbl.quaternion.copy(camera.quaternion);
+    for (const lbl of _billboardLabels) {
+      if (lbl.parent) {
+        lbl.parent.getWorldQuaternion(_bbQ);
+        _bbQ.invert().multiply(camera.quaternion);
+        lbl.quaternion.copy(_bbQ);
+      } else {
+        lbl.quaternion.copy(camera.quaternion);
+      }
+    }
   }
 
   controls?.update();
@@ -1862,7 +1884,7 @@ watch(
       disposeObject(overflowEdges);
     }
     overflowEdges = rebuildOverflowEdges(props.workpieceSize, props.workpieceOffset);
-    if (overflowEdges && workOrigin) workOrigin.add(overflowEdges);
+    if (overflowEdges && workRotGroup) workRotGroup.add(overflowEdges);
   },
   { deep: true }
 );
@@ -1987,8 +2009,8 @@ function buildSurfaceLayer(pts: [number, number, number][]) {
     surfaceGroup.add(dot);
   }
 
-  // Add to work coordinate origin (same parent as workpiece/backplot)
-  workOrigin.add(surfaceGroup);
+  // Add to rotated sub-group (same parent as workpiece)
+  workRotGroup!.add(surfaceGroup);
 
   // Respect current layer visibility
   if (pendingLayers?.has("surface")) {

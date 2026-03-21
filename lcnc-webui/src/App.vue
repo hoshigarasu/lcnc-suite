@@ -1171,10 +1171,9 @@ watch(lastReply, (r: any) => {
 
 /** ---------- G-code content watcher ---------- */
 watch(viewerGcode, (newGcode) => {
-  if (newGcode?.content) {
-    gcodeContent.value = newGcode.content;
-  } else {
-    gcodeContent.value = null;
+  // content is omitted on rotation-only re-parses (toolpath update without file change)
+  if ("content" in (newGcode ?? {})) {
+    gcodeContent.value = newGcode?.content ?? null;
   }
   gcodeStats.value = newGcode?.stats ?? null;
 });

@@ -316,7 +316,7 @@ function loadTsParams() {
 
 function saveTsParams() {
   saveToolsetterDefaults({ ...tsParams.value });
-  emit("setProbeVars", buildVarMap());
+  if (can.value.ready) emit("setProbeVars", buildVarMap());
 }
 
 // ─── G30 tool change position ────────────────
@@ -351,7 +351,7 @@ function setG30() {
 
 onMounted(() => {
   loadTsParams();
-  emit("setProbeVars", buildVarMap());
+  if (can.value.ready) emit("setProbeVars", buildVarMap());
   loadG30();
 });
 
@@ -917,7 +917,7 @@ const halStats = computed(() => ({
 
       <template #toolsetter>
         <div class="stack-panel scrollContent scroll-thin">
-          <fieldset :disabled="!can.idle" class="fs-reset">
+          <fieldset :disabled="!can.ready" class="fs-reset">
           <div class="section">
             <div class="sub">Toolsetter Position (G53)</div>
             <div class="tsGrid">

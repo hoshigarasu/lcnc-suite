@@ -464,7 +464,10 @@ watch(feedOverrideValue, (val) => { if (Number.isFinite(val)) feedSlider.value =
 watch(spindleOverrideValue, (val) => { if (Number.isFinite(val)) spindleSlider.value = Math.round(val * 100); });
 watch(rapidOverrideValue, (val) => { if (Number.isFinite(val)) rapidSlider.value = Math.round(val * 100); });
 
-function toggleChip(chip: string) { openChip.value = openChip.value === chip ? null : chip; }
+function toggleChip(chip: string) {
+  closeAllDialogs();
+  openChip.value = openChip.value === chip ? null : chip;
+}
 function onFeedChange() { setFeedOverride(feedSlider.value / 100); }
 function onSpindleSliderChange() { setSpindleOverride(spindleSlider.value / 100); }
 function onRapidChange() { setRapidOverride(rapidSlider.value / 100); }
@@ -612,13 +615,24 @@ const settingsDialogOpen = ref(false);
 const gcodeRefOpen = ref(false);
 const gcodeRefInitialSearch = ref("");
 
-function openDialog(name: "tool" | "settings" | "gcodeRef") {
+function closeAllDialogs() {
   toolDialogOpen.value = false;
   settingsDialogOpen.value = false;
   gcodeRefOpen.value = false;
-  if (name === "tool") toolDialogOpen.value = true;
-  else if (name === "settings") settingsDialogOpen.value = true;
-  else if (name === "gcodeRef") gcodeRefOpen.value = true;
+}
+
+function openDialog(name: "tool" | "settings" | "gcodeRef") {
+  // Toggle if already open
+  const isOpen = (name === "tool" && toolDialogOpen.value)
+    || (name === "settings" && settingsDialogOpen.value)
+    || (name === "gcodeRef" && gcodeRefOpen.value);
+  closeAllDialogs();
+  openChip.value = null;
+  if (!isOpen) {
+    if (name === "tool") toolDialogOpen.value = true;
+    else if (name === "settings") settingsDialogOpen.value = true;
+    else if (name === "gcodeRef") gcodeRefOpen.value = true;
+  }
 }
 
 function openGcodeRef(code?: string) {
@@ -1791,7 +1805,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
     </div><!-- /bodyLayout -->
 
     <!-- Tool table dialog -->
-    <div v-if="toolDialogOpen" class="dialogOverlay" @click.self="toolDialogOpen = false">
+    <div v-if="toolDialogOpen" class="dialogOverlay">
       <div class="dialog lg dialog-full">
         <div class="dialogHeader">
           <span class="dialogTitle">Tool Table</span>
@@ -1833,7 +1847,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
     </div>
 
     <!-- Settings dialog -->
-    <div v-if="settingsDialogOpen" class="dialogOverlay" @click.self="settingsDialogOpen = false">
+    <div v-if="settingsDialogOpen" class="dialogOverlay">
       <div class="dialog lg dialog-full">
         <div class="dialogHeader">
           <span class="dialogTitle">Settings</span>
@@ -2186,7 +2200,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 
 .offsetsPopover {
-  bottom: 0;
+  top: 0;
   left: 100%;
   margin-left: 6px;
   min-width: 300px;
@@ -2217,7 +2231,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 .offsetActions { display: flex; gap: var(--gap-tight); margin-top: var(--gap-controls); justify-content: flex-end; }
 
 .overridesPopover {
-  bottom: 0;
+  top: 0;
   left: 100%;
   margin-left: 6px;
   min-width: 260px;
@@ -2261,8 +2275,8 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 /* ---- Controls section (Spindle button + popover) ---- */
-.controlBtns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-controls); }
-.controlGroup { position: relative; }
+.controlBtns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-controls); position: relative; }
+.controlGroup { }
 .controlGroup--wide { grid-column: 1 / -1; }
 
 .codesRow {
@@ -2300,7 +2314,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 .controlIcon { width: var(--fs-2xl); height: var(--fs-2xl); }
 
 .spindlePopover {
-  bottom: 0;
+  top: 0;
   left: 100%;
   margin-left: 6px;
   min-width: 280px;
@@ -2391,7 +2405,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 /* ---- Coolant popover ---- */
 .macroPopover {
-  bottom: 0;
+  top: 0;
   left: 100%;
   margin-left: 6px;
   min-width: 180px;
@@ -2433,7 +2447,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .coolantPopover {
-  bottom: 0;
+  top: 0;
   left: 100%;
   margin-left: 6px;
   min-width: 200px;
@@ -2539,7 +2553,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 /* ---- Messages popover ---- */
 .messagesPopover {
-  bottom: 0;
+  top: 0;
   left: 100%;
   margin-left: 6px;
   min-width: 320px;

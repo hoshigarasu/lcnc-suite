@@ -45,7 +45,7 @@ function toggleSort(key: "code" | "name") {
 </script>
 
 <template>
-  <div v-if="open" class="dialogOverlay" @click.self="emit('close')">
+  <div v-if="open" class="dialogOverlay">
     <div class="dialog lg dialog-full">
       <div class="dialogHeader">
         <span class="dialogTitle">G-code Reference</span>

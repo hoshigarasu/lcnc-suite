@@ -19,12 +19,15 @@ import shutil
 import tempfile
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse, JSONResponse
 
 
 # ---- Config ----
 POLL_HZ = 30  # status update rate
 BASE_DIR = Path(__file__).resolve().parent
 MACHINE_DIR = BASE_DIR / "machine"
+TOOLS_STL_DIR = MACHINE_DIR / "tools"
+TOOLS_STL_DIR.mkdir(exist_ok=True)
 
 # ---- LinuxCNC handles (nullable for auto-reconnect) ----
 STAT: Optional[linuxcnc.stat] = None
@@ -871,10 +874,10 @@ def save_tool_library(library: dict):
 
 
 _TOOL_META_FIELDS = (
-    "type", "description", "flutes", "oal", "flute_length", "corner_radius",
-    "body_length", "shaft_diameter", "taper_angle", "point_angle",
-    "tip_diameter", "material", "holder", "holder_segments",
-    "assembly_gauge_length", "profile",
+    "type", "description", "flutes", "oal", "flute_length", "shoulder_length",
+    "shoulder_diameter", "corner_radius", "body_length", "shaft_diameter",
+    "taper_angle", "point_angle", "tip_diameter", "material", "holder", "holder_segments",
+    "assembly_gauge_length", "profile", "stl_file",
 )
 
 
@@ -1950,6 +1953,11 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             library = load_tool_library()
             library.pop(str(tool_num), None)
             save_tool_library(library)
+
+            stl_path = TOOLS_STL_DIR / f"T{tool_num}.stl"
+            if stl_path.exists():
+                stl_path.unlink()
+
             return {"ok": True}
 
         if cmd == "tool_change":
@@ -2990,6 +2998,8 @@ def _parse_fusion_library(data: dict) -> list:
             "taper_angle": geom.get("TA"),
             "point_angle": geom.get("SIG"),
             "tip_diameter": geom.get("tip-diameter"),
+            "shoulder_length": geom.get("shoulder-length"),
+            "shoulder_diameter": geom.get("shoulder-diameter"),
             "assembly_gauge_length": geom.get("assemblyGaugeLength"),
             "material": entry.get("BMC"),
             "holder": holder.get("description") if holder else None,
@@ -3003,11 +3013,6 @@ def _parse_fusion_library(data: dict) -> list:
                  "upper_diameter": s["upper-diameter"]}
                 for s in holder_segs if "height" in s
             ]
-        # Preserve form mill profile (2D outline segments) for 3D rendering
-        if our_type == "formmill":
-            raw_profile = geom.get("profile")
-            if raw_profile and isinstance(raw_profile, list):
-                tool["profile"] = raw_profile
         # Preserve raw presets (speeds/feeds per material) for sidecar
         if presets:
             tool["presets"] = presets
@@ -3105,6 +3110,60 @@ async def apply_tool_library_import(
     save_tool_library(library)
 
     return {"ok": True, "added": len(parsed)}
+
+
+@app.post("/tool-stl/{tool_num}")
+async def upload_tool_stl(tool_num: int, file: UploadFile = File(...)):
+    """Upload an STL file for a tool."""
+    global _tool_meta_dirty
+    data = await file.read()
+    if len(data) < 84:
+        return JSONResponse({"error": "File too small to be a valid STL"}, status_code=400)
+    if len(data) > 10 * 1024 * 1024:
+        return JSONResponse({"error": "File exceeds 10 MB limit"}, status_code=400)
+
+    stl_name = f"T{tool_num}.stl"
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=TOOLS_STL_DIR, delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        os.replace(tmp_path, TOOLS_STL_DIR / stl_name)
+    except Exception:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        return JSONResponse({"error": "Failed to save STL"}, status_code=500)
+
+    library = load_tool_library()
+    key = str(tool_num)
+    if key not in library:
+        library[key] = {}
+    library[key]["stl_file"] = stl_name
+    save_tool_library(library)
+    _tool_meta_dirty = True
+
+    return {"ok": True, "stl_file": stl_name}
+
+
+@app.delete("/tool-stl/{tool_num}")
+async def delete_tool_stl(tool_num: int):
+    """Delete an STL file for a tool."""
+    global _tool_meta_dirty
+    stl_path = TOOLS_STL_DIR / f"T{tool_num}.stl"
+    if stl_path.exists():
+        stl_path.unlink()
+
+    library = load_tool_library()
+    key = str(tool_num)
+    if key in library:
+        library[key].pop("stl_file", None)
+        save_tool_library(library)
+
+    _tool_meta_dirty = True
+    return {"ok": True}
 
 
 @app.get("/files")
@@ -3444,10 +3503,11 @@ async def ws_endpoint(ws: WebSocket):
                             _meta = _lib.get(str(st.tool_number), {})
                             if _meta:
                                 _tm = {k: _meta[k] for k in (
-                                    "type", "oal", "flute_length", "body_length",
-                                    "shaft_diameter", "taper_angle", "point_angle",
-                                    "tip_diameter", "corner_radius", "holder_segments",
-                                    "profile",
+                                    "type", "oal", "flute_length", "shoulder_length",
+                                    "shoulder_diameter", "body_length",
+                                    "shaft_diameter", "taper_angle",
+                                    "point_angle", "tip_diameter", "corner_radius",
+                                    "holder_segments", "stl_file",
                                 ) if k in _meta}
                                 if _tm:
                                     status_msg["data"]["tool_meta"] = _tm
@@ -3838,8 +3898,6 @@ async def delete_settings():
     await loop.run_in_executor(None, reset_settings)
     return {"ok": True}
 
-
-from starlette.responses import StreamingResponse, JSONResponse
 
 @app.get("/camera/stream")
 async def camera_stream():

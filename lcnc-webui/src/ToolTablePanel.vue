@@ -5,6 +5,7 @@ import { usePermissions } from "./permissions";
 import { loadMachineDefaults, STEP_DEFAULT, type ToolChangeMode } from "./defaults";
 import { Pencil, Trash2 } from "lucide-vue-next";
 import Btn from "./Btn.vue";
+import ToolPreview from "./ToolPreview.vue";
 
 const FETCH_DELAY_MS = 500;
 const REFETCH_AFTER_SAVE_MS = 400;
@@ -39,6 +40,7 @@ interface Tool {
   tip_diameter: number | null;
   material: string | null;
   holder: string | null;
+  stl_file: string | null;
   unit: string;
 }
 
@@ -159,9 +161,9 @@ const editForm = ref({
   tip_diameter: null as number | null,
   material: "",
   holder: "",
+  stl_file: null as string | null,
 });
 const isNewTool = ref(false);
-const showGeometry = ref(false);
 
 function openEdit(tool: Tool) {
   editTool.value = tool;
@@ -182,12 +184,9 @@ function openEdit(tool: Tool) {
     tip_diameter: tool.tip_diameter,
     material: tool.material || "",
     holder: tool.holder || "",
+    stl_file: tool.stl_file ?? null,
   };
   isNewTool.value = false;
-  // Show geometry section if any geometry field is populated
-  showGeometry.value = !!(tool.oal || tool.flute_length || tool.corner_radius ||
-    tool.body_length || tool.shaft_diameter || tool.taper_angle ||
-    tool.point_angle || tool.tip_diameter || tool.material || tool.holder);
 }
 
 function openAdd() {
@@ -195,15 +194,14 @@ function openAdd() {
   editTool.value = { T: 0, P: 0, Z: 0, D: 0, remark: "", type: "", description: "",
     flutes: null, oal: null, flute_length: null, corner_radius: null,
     body_length: null, shaft_diameter: null, taper_angle: null, point_angle: null,
-    tip_diameter: null, material: null, holder: null, unit: "" };
+    tip_diameter: null, material: null, holder: null, stl_file: null, unit: "" };
   editForm.value = {
     T: maxT + 1, type: "", description: "", D: 0, Z: 0,
     flutes: null, oal: null, flute_length: null, corner_radius: null,
     body_length: null, shaft_diameter: null, taper_angle: null, point_angle: null,
-    tip_diameter: null, material: "", holder: "",
+    tip_diameter: null, material: "", holder: "", stl_file: null,
   };
   isNewTool.value = true;
-  showGeometry.value = false;
 }
 
 function buildToolMsg(form: typeof editForm.value) {
@@ -366,6 +364,31 @@ function triggerImport() {
   importInputRef.value?.click();
 }
 
+// ---- STL upload ----
+const stlInput = ref<HTMLInputElement | null>(null);
+
+async function onStlUpload(e: Event) {
+  if (!can.value.idle) return;
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file || !editForm.value) return;
+  const form = new FormData();
+  form.append("file", file);
+  const toolNum = editForm.value.T;
+  const resp = await fetch(`/tool-stl/${toolNum}`, { method: "POST", body: form });
+  const data = await resp.json();
+  if (data.ok) {
+    editForm.value.stl_file = data.stl_file;
+  }
+  (e.target as HTMLInputElement).value = "";
+}
+
+async function removeStl() {
+  if (!editForm.value || !can.value.idle) return;
+  const toolNum = editForm.value.T;
+  await fetch(`/tool-stl/${toolNum}`, { method: "DELETE" });
+  editForm.value.stl_file = null;
+}
+
 defineExpose({ openAdd, fetchTools, triggerImport });
 </script>
 
@@ -420,85 +443,89 @@ defineExpose({ openAdd, fetchTools, triggerImport });
     <!-- Edit / Add modal -->
     <Teleport to="body">
       <div v-if="editTool" class="dialogOverlay" @click.self="cancelEditModal">
-        <div class="dialog editDialog">
-          <div class="dialogTitle">{{ isNewTool ? "Add Tool" : `Edit Tool T${editTool.T}` }}</div>
-          <div class="stack-controls editFields">
-            <label class="editLabel">
-              <span class="editLabelText">Tool #</span>
-              <input class="editInput editInputNum" type="number" v-model.number="editForm.T" min="1" />
-            </label>
-            <label class="editLabel">
-              <span class="editLabelText">Type</span>
-              <select class="editInput" v-model="editForm.type">
-                <option value="">-</option>
-                <option v-for="tt in TOOL_TYPES" :key="tt" :value="tt">{{ typeLabel(tt) }}</option>
-              </select>
-            </label>
-            <label class="editLabel">
-              <span class="editLabelText">Description</span>
-              <input class="editInput" v-model="editForm.description" />
-            </label>
-            <label class="editLabel">
-              <span class="editLabelText">Diameter</span>
-              <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.D" />
-            </label>
-            <label class="editLabel">
-              <span class="editLabelText">Z Offset</span>
-              <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.Z" />
-            </label>
-            <label class="editLabel">
-              <span class="editLabelText">Flutes</span>
-              <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.flutes" />
-            </label>
-
-            <!-- Geometry section (collapsible) -->
-            <button class="geomToggle" @click="showGeometry = !showGeometry">
-              {{ showGeometry ? '▾' : '▸' }} Geometry
-            </button>
-            <template v-if="showGeometry">
-              <label class="editLabel">
-                <span class="editLabelText">OAL</span>
-                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.oal" placeholder="mm" />
-              </label>
-              <label class="editLabel">
-                <span class="editLabelText">Flute Len</span>
-                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.flute_length" placeholder="mm" />
-              </label>
-              <label class="editLabel">
-                <span class="editLabelText">Body Len</span>
-                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.body_length" placeholder="mm" />
-              </label>
-              <label class="editLabel">
-                <span class="editLabelText">Shaft Ø</span>
-                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.shaft_diameter" placeholder="mm" />
-              </label>
-              <label class="editLabel">
-                <span class="editLabelText">Corner R</span>
-                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.corner_radius" placeholder="mm" />
-              </label>
-              <label class="editLabel">
-                <span class="editLabelText">Tip Ø</span>
-                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.tip_diameter" placeholder="mm" />
-              </label>
-              <label class="editLabel">
-                <span class="editLabelText">Taper °</span>
-                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.taper_angle" placeholder="deg" />
-              </label>
-              <label class="editLabel">
-                <span class="editLabelText">Point °</span>
-                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.point_angle" placeholder="deg" />
-              </label>
-              <label class="editLabel">
-                <span class="editLabelText">Material</span>
-                <input class="editInput" v-model="editForm.material" placeholder="hss, carbide..." />
-              </label>
-              <label class="editLabel">
-                <span class="editLabelText">Holder</span>
-                <input class="editInput" v-model="editForm.holder" placeholder="Holder name" />
-              </label>
-            </template>
+        <div class="dialog lg editDialog">
+          <!-- Header -->
+          <div class="dialogHeader">
+            <span class="dialogTitle">{{ isNewTool ? "Add Tool" : `Edit Tool T${editTool.T}` }}</span>
+            <Btn icon @click="cancelEditModal">&times;</Btn>
           </div>
-          <div class="dialogActions">
+
+          <!-- Body: two columns -->
+          <div class="editBody scroll-thin">
+            <!-- Left column: form fields -->
+            <div class="editFields">
+              <div class="editGrid">
+                <div class="sub">General</div>
+                <label>Tool #</label>
+                <input class="editInput editInputNum" type="number" v-model.number="editForm.T" min="1" />
+                <label>Type</label>
+                <select class="editInput" v-model="editForm.type">
+                  <option value="">-</option>
+                  <option v-for="tt in TOOL_TYPES" :key="tt" :value="tt">{{ typeLabel(tt) }}</option>
+                </select>
+                <label>Description</label>
+                <input class="editInput" type="text" v-model="editForm.description" />
+                <label>Diameter</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.D" />
+                <label>Z Offset</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.Z" />
+                <label>Flutes</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.flutes" />
+                <label>Material</label>
+                <input class="editInput" type="text" v-model="editForm.material" placeholder="hss, carbide..." />
+
+                <div class="sub">Dimensions</div>
+                <label>Total Length</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.oal" placeholder="mm" />
+                <label>Shoulder Len</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.body_length" placeholder="mm" />
+                <label>Flute Len</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.flute_length" placeholder="mm" />
+                <label>Shaft Ø</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.shaft_diameter" placeholder="mm" />
+                <label>Corner R</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.corner_radius" placeholder="mm" />
+                <label>Tip Ø</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.tip_diameter" placeholder="mm" />
+                <label>Taper °</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.taper_angle" placeholder="deg" />
+                <label>Point °</label>
+                <input class="editInput editInputNum" type="number" :step="STEP_DEFAULT" v-model.number="editForm.point_angle" placeholder="deg" />
+                <label>Holder</label>
+                <input class="editInput" type="text" v-model="editForm.holder" placeholder="Holder name" />
+              </div>
+            </div>
+
+            <!-- Right column: preview + model -->
+            <div class="editPreviewCol">
+              <div class="editPreviewCanvas">
+                <ToolPreview
+                  :diameter="editForm.D || 6"
+                  :length="editForm.oal || Math.abs(editForm.Z) || 50"
+                  :flute-length="editForm.flute_length || (editForm.oal || 50) * 0.6"
+                  :shoulder-length="editForm.body_length || editForm.flute_length || (editForm.oal || 50) * 0.6"
+                  :shaft-diameter="editForm.shaft_diameter ?? undefined"
+                  :stl-file="editForm.stl_file"
+                  :width="160"
+                  :height="280"
+                />
+              </div>
+
+              <div class="sub">3D Model</div>
+              <div class="stack-controls">
+                <input ref="stlInput" type="file" accept=".stl" @change="onStlUpload" :disabled="!can.idle" hidden>
+                <Btn :disabled="!can.idle" class="stlUploadBtn" @click="stlInput?.click()">Upload STL</Btn>
+                <div v-if="editForm.stl_file" class="row-tight stlInfo">
+                  <span>{{ editForm.stl_file }}</span>
+                  <button class="btn-icon" @click="removeStl" :disabled="!can.idle">&times;</button>
+                </div>
+                <span v-else class="stlHint">No STL — using fallback cylinder</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="editFooter">
             <Btn @click="cancelEditModal">Cancel</Btn>
             <Btn variant="primary" @click="saveEdit">{{ isNewTool ? "Add" : "Save" }}</Btn>
           </div>
@@ -639,42 +666,53 @@ defineExpose({ openAdd, fetchTools, triggerImport });
   flex-shrink: 0;
 }
 
-/* ---- Dialogs ---- */
+/* ---- Edit dialog ---- */
 .editDialog {
-  min-width: 300px;
-  max-width: 360px;
-  text-align: left;
+  min-width: 500px;
+  max-width: 620px;
   max-height: 80vh;
+}
+
+.editBody {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  display: flex;
+  gap: var(--gap-panel);
+  padding: var(--gap-panel);
 }
 
 .editFields {
-  margin-top: var(--gap-section);
+  flex: 1;
+  min-width: 0;
 }
 
-.editLabel {
-  display: flex;
-  align-items: center;
+.editGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
   gap: var(--gap-controls);
+  align-items: center;
 }
 
-.editLabelText {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-  min-width: 75px;
-  flex-shrink: 0;
+.editGrid > label {
+  font-size: var(--fs-sm);
+  opacity: var(--opacity-muted);
+}
+
+.editGrid > .sub {
+  grid-column: 1 / -1;
+}
+
+.editGrid > .sub + label {
+  /* no extra top margin on first label after sub */
 }
 
 .editInput {
-  flex: 1;
-  padding: 6px 10px;
-  font-size: var(--fs-base);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--fg);
-  font-family: inherit;
-  box-sizing: border-box;
+  outline: none;
+}
+
+.editInput:focus {
+  border-color: color-mix(in oklab, var(--fg) 40%, var(--border));
 }
 
 .editInputNum {
@@ -682,20 +720,40 @@ defineExpose({ openAdd, fetchTools, triggerImport });
   text-align: right;
 }
 
-.geomToggle {
-  background: none;
-  border: none;
-  border-radius: 0;
-  color: color-mix(in oklab, var(--fg) 60%, transparent);
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-  cursor: pointer;
-  padding: 4px 0;
-  text-align: left;
+.editPreviewCol {
+  flex-shrink: 0;
+  align-self: flex-start;
 }
-.geomToggle:hover {
-  background: none;
-  color: var(--fg);
+
+.editPreviewCanvas {
+  display: flex;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--gap-controls);
+  margin-bottom: var(--gap-section);
+}
+
+.stlUploadBtn {
+  width: 100%;
+}
+
+.stlHint {
+  opacity: var(--opacity-disabled);
+  font-size: var(--fs-sm);
+}
+
+.stlInfo {
+  align-items: center;
+  font-size: var(--fs-sm);
+}
+
+.editFooter {
+  display: flex;
+  gap: var(--gap-controls);
+  justify-content: flex-end;
+  padding: var(--gap-section) var(--gap-panel);
+  border-top: 1px solid var(--border);
 }
 
 /* ---- Import dialog ---- */

@@ -25,7 +25,9 @@ Gateway connects to LinuxCNC via Python bindings (`linuxcnc.stat`, `linuxcnc.com
 - `MdiPanel.vue` — MDI input + send button
 - `ManualPanel.vue` — DRO + jogging + MDI (consolidated)
 - `ProbePanel.vue` — Probe operations grid, calls `O<probe_*> CALL` via MDI
-- `ToolTablePanel.vue` — Tool table with load/delete dialogs
+- `ToolTablePanel.vue` — Tool table with load/delete dialogs, STL upload, 2D preview
+- `ToolPreview.vue` — Small orthographic Three.js canvas for tool side-view preview
+- `toolGeometry.ts` — Shared tool geometry utilities (vertex colors, fallback cylinder)
 - `CameraViewer.vue` — Camera tab with MJPEG feed, SVG crosshair/circle/grid overlay, floating toolbar
 - `SettingsPanel.vue` — Sub-tabbed settings (3D Viewer | Machine | Toolsetter | Display | Camera | Macros | Gamepad | Keyboard | HAL | Debug)
 - `permissions.ts` — Centralized button permission system (evaluatePermissions + provide/inject)
@@ -173,6 +175,7 @@ const can = usePermissions();
 - Dialog overlays use `position: fixed; z-index: 1000` with global `button.primary`/`button.danger` styles
 - Gateway `tool_change` handler is fire-and-forget (no `CMD.wait_complete()` — blocks heartbeat loop)
 - Toolsetter settings live in SettingsPanel (Toolsetter sub-tab), tool actions in sidebar Tool popover
+- **Tool geometry**: Per-tool STL files in `machine/tools/`, loaded via `STLLoader`. Fallback: simple cylinder from diameter + length. Vertex colors split cutter (gold) / shaft (silver) by `flute_length` / `shoulder_length` Z thresholds. STL origin convention: tool tip at (0,0,0), extends in +Z.
 - **No `:deep()` visual overrides** — scoped CSS may use `:deep()` for layout properties (flex, width, height, padding) but NEVER for visual properties (background, color, border, box-shadow). Visual overrides bypass Btn.vue's state system. If a button state looks wrong, fix it in Btn.vue.
 
 ## Pre-Flight Checklist — MANDATORY for every CSS/UI edit
@@ -239,6 +242,7 @@ The `tool_touch_off.ngc` subroutine reads parameters from the LinuxCNC var file 
 - When adding server-synced settings sections, update `_VALID_SETTINGS_SECTIONS` in `gateway.py` — the gateway rejects unknown sections with "Unknown settings section" error
 - Don't hack around permission issues in the backend — use the proper frontend permission gate so the UI reflects machine state (dimming). The gate IS the fix, not a workaround.
 - Any component that emits MDI commands (e.g. `setProbeVars`) must gate those emissions behind `can.ready` — MDI requires homed. Settings persistence (`saveDefaults`) is separate and always works.
+- Fusion 360 tool library geometry params (`TA`, `LCF`, `LB`, `shoulder-length`) are ambiguous per tool type with no official docs — same key means different things for different tool types. STL import eliminates the interpretation guesswork.
 
 ## Production DISPLAY Integration
 

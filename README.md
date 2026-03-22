@@ -154,8 +154,8 @@ BY USING THIS SOFTWARE, YOU EXPRESSLY ACKNOWLEDGE AND ASSUME ALL RISKS ASSOCIATE
 - Calibration offset display with reset in always-visible control bar
 - Surface map 3D visualization (probe grid rendered as point cloud in the viewer)
 - Toolsetter integration with 24 configurable parameters and tool change position (G30)
-- Tool table editor with tool library metadata (15+ fields: flutes, material, OAL, corner radius, etc.), filter/sort, and spreadsheet import
-- 3D tool model auto-generated from tool table diameter/length
+- Tool table editor with tool library metadata (15+ fields: flutes, material, OAL, corner radius, etc.), filter/sort, spreadsheet import, per-tool STL upload with 2D side-view preview
+- 3D tool model from per-tool STL files with vertex-colored cutter/shaft zones, fallback cylinder from diameter/length
 - Camera tab with MJPEG feed, configurable crosshair/circle/grid SVG overlay (USB and IP cameras)
 - User-configurable macro buttons with `{param}` parameter prompts (sidebar popover + Settings editor)
 - HAL inspector built into Settings tab (tree view with search, live pin values)

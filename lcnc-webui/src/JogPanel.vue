@@ -5,6 +5,7 @@ import JogButton from "./JogButton.vue";
 import Btn from "./Btn.vue";
 
 import { usePermissions } from "./permissions";
+import Gate from "./Gate.vue";
 
 const ABC = new Set(["A", "B", "C"]);
 const UVW = new Set(["U", "V", "W"]);
@@ -212,7 +213,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
 </script>
 
 <template>
-  <div :class="{ inactive: !can.jog }">
+  <Gate :allow="can.jog">
     <div class="sub">Jog</div>
 
     <div class="controlGrid">
@@ -221,7 +222,6 @@ function stopJog(s: Sector, e?: PointerEvent) {
       <Btn
         size="sm"
         :active="isTeleop"
-        :disabled="!can.jog"
         @click="emit('toggleTeleop')"
         :title="isTeleop ? 'Switch to Joint mode' : (isHomed ? 'Switch to World mode' : 'Home all axes first')"
       >
@@ -240,7 +240,6 @@ function stopJog(s: Sector, e?: PointerEvent) {
         step="0.1"
         :value="jogVel"
         @input="onInput"
-        :disabled="!can.jog"
       />
       <span class="sliderVal">{{ (jogVel * 60).toFixed(0) }} {{ linearUnit }}/min</span>
 
@@ -255,7 +254,6 @@ function stopJog(s: Sector, e?: PointerEvent) {
           step="0.1"
           :value="angularJogVel"
           @input="onAngularInput"
-          :disabled="!can.jog"
         />
         <span class="sliderVal">{{ (angularJogVel * 60).toFixed(0) }} °/min</span>
       </template>
@@ -270,7 +268,6 @@ function stopJog(s: Sector, e?: PointerEvent) {
           mono
           :selected="jogIncrement === opt.value"
           @click="emit('update:jogIncrement', opt.value)"
-          :disabled="!can.jog"
         >{{ opt.label }}</Btn>
       </div>
       <span class="sliderVal" v-if="jogIncrement > 0">{{ jogIncrement }} {{ linearUnit }}{{ abcAxes.length > 0 ? ' · °' : '' }} /click</span>
@@ -334,7 +331,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
     <div class="hint">
       {{ jogIncrement > 0 ? 'Click to jog one step.' : 'Press and hold to jog.' }} {{ isTeleop ? 'World mode: coordinated Cartesian movement.' : 'Joint mode: individual axis control.' }}
     </div>
-  </div>
+  </Gate>
 </template>
 
 <style scoped>

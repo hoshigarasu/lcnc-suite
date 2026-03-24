@@ -3,6 +3,7 @@ import { ref, computed, watch } from "vue";
 import { GCODE_REFERENCE, GCODE_GROUPS, type GcodeEntry } from "./gcodeReference";
 import { usePermissions } from "./permissions";
 import Btn from "./Btn.vue";
+import Gate from "./Gate.vue";
 
 const props = defineProps<{ open: boolean; initialSearch?: string }>();
 const emit = defineEmits<{ (e: "close"): void }>();
@@ -51,28 +52,27 @@ function toggleSort(key: "code" | "name") {
         <span class="dialogTitle">G-code Reference</span>
         <Btn icon @click="emit('close')">&times;</Btn>
       </div>
-      <div class="stack-controls refContent" :class="{ inactive: !can.idle }">
+      <Gate :allow="can.idle" class="stack-controls refContent">
         <input
           type="text"
           v-model="search"
           placeholder="Search codes, names, descriptions…"
           class="refSearch"
-          :disabled="!can.idle"
         />
         <div class="refTable dataTable scroll-thin">
           <table>
             <thead>
               <tr>
                 <th class="colCode">
-                  <button class="sortHeader" :disabled="!can.idle" @click="toggleSort('code')">Code {{ sortKey === 'code' ? (sortAsc ? '▲' : '▼') : '' }}</button>
+                  <button class="sortHeader" @click="toggleSort('code')">Code {{ sortKey === 'code' ? (sortAsc ? '▲' : '▼') : '' }}</button>
                 </th>
                 <th class="colName">
-                  <button class="sortHeader" :disabled="!can.idle" @click="toggleSort('name')">Name {{ sortKey === 'name' ? (sortAsc ? '▲' : '▼') : '' }}</button>
+                  <button class="sortHeader" @click="toggleSort('name')">Name {{ sortKey === 'name' ? (sortAsc ? '▲' : '▼') : '' }}</button>
                 </th>
                 <th class="colDesc">Description</th>
                 <th class="colSyntax">Syntax</th>
                 <th class="colGroup">
-                  <select class="filterSelect" v-model="filterGroup" :disabled="!can.idle">
+                  <select class="filterSelect" v-model="filterGroup">
                     <option value="">Group</option>
                     <option v-for="g in GCODE_GROUPS" :key="g" :value="g">{{ g }}</option>
                   </select>
@@ -97,7 +97,7 @@ function toggleSort(key: "code" | "name") {
           {{ filtered.length }} {{ filtered.length === 1 ? 'code' : 'codes' }}
           <span v-if="filterGroup"> in {{ filterGroup }}</span>
         </div>
-      </div>
+      </Gate>
     </div>
   </div>
 </template>

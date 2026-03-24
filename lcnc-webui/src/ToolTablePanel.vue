@@ -5,6 +5,7 @@ import { usePermissions } from "./permissions";
 import { loadMachineDefaults, STEP_DEFAULT, type ToolChangeMode } from "./defaults";
 import { Pencil, Trash2 } from "lucide-vue-next";
 import Btn from "./Btn.vue";
+import Gate from "./Gate.vue";
 import ToolPreview from "./ToolPreview.vue";
 
 const FETCH_DELAY_MS = 500;
@@ -393,7 +394,7 @@ defineExpose({ openAdd, fetchTools, triggerImport });
 </script>
 
 <template>
-  <div class="container" :class="{ inactive: !can.idle }">
+  <Gate :allow="can.idle" class="container">
     <!-- Hidden file input for import (works via triggerImport / header button) -->
     <input ref="importInputRef" type="file" accept=".json" @change="onImportFileSelect" hidden />
 
@@ -401,9 +402,9 @@ defineExpose({ openAdd, fetchTools, triggerImport });
     <div v-if="!hideHeader" class="header">
       <div class="sub">Tool Table</div>
       <div class="actions">
-        <Btn @click="openAdd" :disabled="!can.idle">+ Add</Btn>
-        <Btn @click="triggerImport" :disabled="!can.idle">Import</Btn>
-        <Btn @click="fetchTools" :disabled="loading || !can.idle">Refresh</Btn>
+        <Btn @click="openAdd">+ Add</Btn>
+        <Btn @click="triggerImport">Import</Btn>
+        <Btn @click="fetchTools" :disabled="loading">Refresh</Btn>
       </div>
     </div>
 
@@ -412,7 +413,6 @@ defineExpose({ openAdd, fetchTools, triggerImport });
       v-model="searchText"
       placeholder="Search tools…"
       class="toolSearch"
-      :disabled="!can.idle"
     />
 
     <!-- Error banner -->
@@ -513,11 +513,11 @@ defineExpose({ openAdd, fetchTools, triggerImport });
 
               <div class="sub">3D Model</div>
               <div class="stack-controls">
-                <input ref="stlInput" type="file" accept=".stl" @change="onStlUpload" :disabled="!can.idle" hidden>
-                <Btn :disabled="!can.idle" class="stlUploadBtn" @click="stlInput?.click()">Upload STL</Btn>
+                <input ref="stlInput" type="file" accept=".stl" @change="onStlUpload" hidden>
+                <Btn class="stlUploadBtn" @click="stlInput?.click()">Upload STL</Btn>
                 <div v-if="editForm.stl_file" class="row-tight stlInfo">
                   <span>{{ editForm.stl_file }}</span>
-                  <button class="btn-icon" @click="removeStl" :disabled="!can.idle">&times;</button>
+                  <button class="btn-icon" @click="removeStl">&times;</button>
                 </div>
                 <span v-else class="stlHint">No STL — using fallback cylinder</span>
               </div>
@@ -570,9 +570,9 @@ defineExpose({ openAdd, fetchTools, triggerImport });
       <table>
         <thead>
           <tr>
-            <th class="colT"><button class="sortHeader" :disabled="!can.idle" @click="toggleSort('T')">T# {{ sortKey === 'T' ? (sortAsc ? '▲' : '▼') : '' }}</button></th>
-            <th class="colNum"><button class="sortHeader" :disabled="!can.idle" @click="toggleSort('D')">Ø {{ sortKey === 'D' ? (sortAsc ? '▲' : '▼') : '' }}</button></th>
-            <th class="colNum"><button class="sortHeader" :disabled="!can.idle" @click="toggleSort('Z')">Z Offset {{ sortKey === 'Z' ? (sortAsc ? '▲' : '▼') : '' }}</button></th>
+            <th class="colT"><button class="sortHeader" @click="toggleSort('T')">T# {{ sortKey === 'T' ? (sortAsc ? '▲' : '▼') : '' }}</button></th>
+            <th class="colNum"><button class="sortHeader" @click="toggleSort('D')">Ø {{ sortKey === 'D' ? (sortAsc ? '▲' : '▼') : '' }}</button></th>
+            <th class="colNum"><button class="sortHeader" @click="toggleSort('Z')">Z Offset {{ sortKey === 'Z' ? (sortAsc ? '▲' : '▼') : '' }}</button></th>
             <th class="colType">
               <select class="filterSelect" v-model="filterType">
                 <option value="">Type</option>
@@ -600,14 +600,13 @@ defineExpose({ openAdd, fetchTools, triggerImport });
             <td class="colSm mono">{{ tool.flutes ?? "-" }}</td>
             <td class="colDesc" :title="tool.description">{{ tool.description || tool.remark || "-" }}</td>
             <td class="colAction">
-              <Btn :disabled="!can.idle" @click="openEdit(tool)" title="Edit tool"><Pencil :size="14" /></Btn>
+              <Btn @click="openEdit(tool)" title="Edit tool"><Pencil :size="14" /></Btn>
             </td>
             <td class="colAction">
               <Btn
                 v-if="tool.T !== currentTool"
                 variant="danger"
                 @click.stop="requestDelete(tool.T)"
-                :disabled="!can.idle"
                 title="Delete tool"
               ><Trash2 :size="14" /></Btn>
             </td>
@@ -618,7 +617,7 @@ defineExpose({ openAdd, fetchTools, triggerImport });
         </tbody>
       </table>
     </div>
-  </div>
+  </Gate>
 </template>
 
 <style scoped>

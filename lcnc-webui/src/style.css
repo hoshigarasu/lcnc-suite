@@ -396,9 +396,8 @@ label:has(input:disabled, select:disabled) {
   gap: inherit;
 }
 
-.fs-reset:disabled {
-  opacity: var(--opacity-disabled);
-}
+/* .fs-reset:disabled opacity intentionally removed — Gate.vue fieldset handles disabled opacity
+   via the fieldset:disabled rule above. Keeping it here would cause double-dimming (0.4 × 0.4). */
 
 
 
@@ -661,6 +660,8 @@ label:has(input:disabled, select:disabled) {
   outline: none;
 }
 
+/* .inactive — retained for non-permission app-state dimming (e.g. keyboard config rows when jog is disabled).
+   NOT for permission gates — use Gate.vue (<fieldset :disabled="!allow">) for that. */
 .inactive {
   opacity: var(--opacity-disabled);
 }

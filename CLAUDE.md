@@ -30,6 +30,7 @@ Gateway connects to LinuxCNC via Python bindings (`linuxcnc.stat`, `linuxcnc.com
 - `toolGeometry.ts` — Shared tool geometry utilities (vertex colors, fallback cylinder)
 - `CameraViewer.vue` — Camera tab with MJPEG feed, SVG crosshair/circle/grid overlay, floating toolbar
 - `SettingsPanel.vue` — Sub-tabbed settings (3D Viewer | Machine | Toolsetter | Display | Camera | Macros | Gamepad | Keyboard | HAL | Debug)
+- `Gate.vue` — Permission gate wrapper: `<fieldset :disabled="!allow">` with `#exempt` slot for always-active controls
 - `permissions.ts` — Centralized button permission system (evaluatePermissions + provide/inject)
 - `lcncWs.ts` — WebSocket client, heartbeat, server-authoritative armed state
 - `lcncApi.ts` — REST helpers for file listing and upload
@@ -145,15 +146,34 @@ base = armed && !estop && enabled
 | `resume` | base, paused | Resume |
 | `abort` | base | Abort |
 
-### Usage in App.vue (direct)
+### Usage — Gate.vue (primary pattern)
 ```vue
-<button :disabled="!permissions.ready" @click="...">Send MDI</button>
+<!-- Wrap a whole section; fieldset :disabled propagates to all children -->
+<Gate :allow="can.ready">
+  <button @click="...">Send MDI</button>
+  <input ... />
+</Gate>
+
+<!-- Use #exempt slot for controls that must always work (Abort, E-Stop) -->
+<Gate :allow="can.ready">
+  <template #exempt>
+    <Btn variant="danger" @click="abort">Abort</Btn>
+  </template>
+  <button @click="...">Normal action</button>
+</Gate>
 ```
 
-### Usage in child components (inject)
+### Usage — individual `:disabled` (secondary, intentional cases only)
 ```vue
 const can = usePermissions();
-<button :disabled="!can.idle">Zero All</button>
+<!-- JogButton: internal JS guard requires its own :disabled prop -->
+<JogButton :disabled="!can.jog" ... />
+<!-- Tighter permission than parent Gate -->
+<Gate :allow="can.idle">
+  <Btn :disabled="!can.ready" ...>Needs ready inside idle Gate</Btn>
+</Gate>
+<!-- Safety-critical buttons outside any Gate (GcodeHUD control row) -->
+<Btn :disabled="!can.abort" @click="abort">Abort</Btn>
 ```
 
 ## Layout Architecture
@@ -168,7 +188,7 @@ const can = usePermissions();
 
 - **No hardcoded visual styles** — never invent custom font-size, padding, border-radius, colors, or font-family for new elements. Always inherit from the nearest parent class or global base styles in `style.css`. New CSS should only override layout properties (flex, width, text-align, opacity). If a visual style doesn't exist, extend the existing class hierarchy or global base — never create one-off overrides. For color semantics: machine active states use `--ok` (green), form controls (toggles, radios, checkboxes) use `--info` (blue), danger/abort uses `--danger`, warnings use `--warn`. Always match existing patterns (e.g. `.controlBtn.active`, `.coolantToggle.active` in App.vue).
 - **Spacing tokens** — use `--gap-tight` (4px, grouped toggles), `--gap-controls` (8px, button rows/form fields), `--gap-section` (12px, between sections), `--gap-panel` (20px, major divisions) for all layout gaps. Never hardcode gap/margin values for spacing between elements. Padding inside buttons/inputs is visual and stays hardcoded. Minimum gap between any clickable elements: `--gap-tight` (4px).
-- `defaults.ts` section registry: `registerSection<T>(name, fallback, migrateFn)` + `loadSection`/`saveSection` with localStorage. Server-synced sections must be added to `SERVER_SECTIONS` in **three** places: `defaults.ts` (Set), `main.ts` (array), and `gateway.py` (`_VALID_SETTINGS_SECTIONS` Set).
+- `defaults.ts` section registry: `registerSection<T>(name, fallback, migrateFn)` + `loadSection`/`saveSection`. All sections are server-synced (no localStorage). Server is the single source of truth. Gateway sends `settings_init` on every WS connect. `sendBeacon` flushes pending saves on page exit. New sections must be added to `_VALID_SETTINGS_SECTIONS` in `gateway.py` and `SERVER_SECTIONS` in `main.ts`.
 - ViewPreset type is duplicated in ThreeViewer.vue and Toolbar.vue — update both when adding presets
 - Camera Z-up: `camera.up.set(0, 0, 1)`, except top view uses `(0, 1, 0)` to avoid gimbal lock
 - ThreeViewer uses ResizeObserver (not window resize) to handle v-show tab switching
@@ -177,6 +197,7 @@ const can = usePermissions();
 - Toolsetter settings live in SettingsPanel (Toolsetter sub-tab), tool actions in sidebar Tool popover
 - **Tool geometry**: Per-tool STL files in `machine/tools/`, loaded via `STLLoader`. Fallback: simple cylinder from diameter + length. Vertex colors split cutter (gold) / shaft (silver) by `flute_length` / `shoulder_length` Z thresholds. STL origin convention: tool tip at (0,0,0), extends in +Z.
 - **No `:deep()` visual overrides** — scoped CSS may use `:deep()` for layout properties (flex, width, height, padding) but NEVER for visual properties (background, color, border, box-shadow). Visual overrides bypass Btn.vue's state system. If a button state looks wrong, fix it in Btn.vue.
+- **Gate.vue** — renders `<fieldset :disabled="!allow">` with `.fs-reset` styling (no border/padding). Browser-enforced default-deny: disabled propagates to all descendant inputs, buttons, selects. Use the `#exempt` slot for controls that must always work regardless of gate state (Abort, E-Stop). Spec: `docs/superpowers/specs/2026-03-24-gate-framework-design.md`
 
 ## Pre-Flight Checklist — MANDATORY for every CSS/UI edit
 
@@ -190,7 +211,7 @@ Before writing or modifying ANY CSS or interactive element, verify ALL items:
 
 **Colors** — Use semantic CSS variables (`--ok`, `--danger`, `--warn`, `--accent`, `--fg`, `--bg`, etc.) with `color-mix()`. Never raw hex. Hover tiers: `--hl-hover` (12%), `--hl-selected` (15%), `--hl-active` (20%) — no other percentages.
 
-**Permission gates** — Every button/input/select gets `:disabled="!can.<class>"`. Only exception: pure navigation (sidebar, tabs). Inactive sections use `:class="{ inactive: !can.X }"` — never inline `:style` opacity.
+**Permission gates** — Wrap sections in `<Gate :allow="can.X">` (renders `<fieldset :disabled="!allow">`). Browser propagates disabled to all descendants — no per-element `:disabled` needed inside a Gate. Use the `#exempt` slot for controls that must always work (Abort, E-Stop). Individual `:disabled="!can.X"` is only correct for: JogButton props (internal JS guard), elements with tighter permissions than the parent Gate, and safety buttons in sections without a Gate. Never use `:class="{ inactive: !can.X }"` for permission gating — `.inactive` is reserved for non-permission app-state dimming.
 
 **Global patterns** — Form elements inherit from `style.css` base (component CSS only adds layout). Tables → `.dataTable`. Dialogs → `.dialogOverlay` + `.dialog` + `.dialog-full`. Close buttons → `.btn-icon`. Check existing components before creating new CSS.
 
@@ -243,6 +264,9 @@ The `tool_touch_off.ngc` subroutine reads parameters from the LinuxCNC var file 
 - Don't hack around permission issues in the backend — use the proper frontend permission gate so the UI reflects machine state (dimming). The gate IS the fix, not a workaround.
 - Any component that emits MDI commands (e.g. `setProbeVars`) must gate those emissions behind `can.ready` — MDI requires homed. Settings persistence (`saveDefaults`) is separate and always works.
 - Fusion 360 tool library geometry params (`TA`, `LCF`, `LB`, `shoulder-length`) are ambiguous per tool type with no official docs — same key means different things for different tool types. STL import eliminates the interpretation guesswork.
+- Settings `saveSection()` must block BEFORE cache write when server isn't ready — otherwise fallback zeros poison the cache and eventually overwrite the server
+- Every component reading settings at setup time needs a `settingsVersion` watcher to re-read when WS delivers server data — stale snapshots cause settings to appear lost on refresh
+- ThreeViewer `buildFromInit` creates scene objects as visible after `onMounted` already applied layer defaults — must re-apply at end of `buildFromInit` using fresh `loadViewerDefaults()`
 
 ## Production DISPLAY Integration
 

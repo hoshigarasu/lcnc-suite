@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted } from "vue";
 import Btn from "./Btn.vue";
+import Gate from "./Gate.vue";
 import DroPanel from "./DroPanel.vue";
 import JogPanel from "./JogPanel.vue";
 import { usePermissions } from "./permissions";
@@ -142,17 +143,18 @@ function onMdiKeydown(e: KeyboardEvent) {
     </div>
 
     <!-- WCS selector -->
-    <div class="row-tight g5xRow" :class="{ inactive: !can.idle }">
-      <Btn
-        v-for="g in g5xOptions"
-        :key="g"
-        size="sm"
-        muted
-        :selected="g === g5xLabel"
-        :disabled="!can.idle"
-        @click="emit('setG5x', g)"
-      >{{ g }}</Btn>
-    </div>
+    <Gate :allow="can.idle">
+      <div class="row-tight g5xRow">
+        <Btn
+          v-for="g in g5xOptions"
+          :key="g"
+          size="sm"
+          muted
+          :selected="g === g5xLabel"
+          @click="emit('setG5x', g)"
+        >{{ g }}</Btn>
+      </div>
+    </Gate>
 
     <!-- ═══ DRO VIEW ═══ -->
     <div v-if="manualView === 'dro'" class="subView scroll-thin">
@@ -175,11 +177,11 @@ function onMdiKeydown(e: KeyboardEvent) {
         @unhomeAxis="emit('unhomeAxis', $event)"
       />
       <div class="sep"></div>
-      <div class="gotoRow" :class="{ inactive: !can.ready }">
-        <Btn :disabled="!can.ready" @click="emit('goToG30')">Go to G30</Btn>
-        <Btn :disabled="!can.ready" @click="emit('goToHome')">Go to Home</Btn>
-        <Btn :disabled="!can.ready" @click="emit('goToZero')">Go to Zero</Btn>
-      </div>
+      <Gate :allow="can.ready" class="gotoRow">
+        <Btn @click="emit('goToG30')">Go to G30</Btn>
+        <Btn @click="emit('goToHome')">Go to Home</Btn>
+        <Btn @click="emit('goToZero')">Go to Zero</Btn>
+      </Gate>
     </div>
 
     <!-- ═══ JOGGING VIEW ═══ -->
@@ -206,7 +208,7 @@ function onMdiKeydown(e: KeyboardEvent) {
     </div>
 
     <!-- ═══ MDI VIEW ═══ -->
-    <div v-if="manualView === 'mdi'" class="mdiSection" :class="{ inactive: !can.ready }">
+    <Gate v-if="manualView === 'mdi'" :allow="can.ready" class="mdiSection">
       <div class="mdiRow">
         <input
           ref="mdiInputRef"
@@ -216,24 +218,23 @@ function onMdiKeydown(e: KeyboardEvent) {
           @input="emit('update:mdiText', ($event.target as HTMLInputElement).value)"
           @keyup.enter="handleSend"
           @keydown="onMdiKeydown"
-          :disabled="!can.ready"
           placeholder="G-code command (↑↓ history)"
         />
-        <Btn inline @click="handleSend" :disabled="!can.ready">
+        <Btn inline @click="handleSend">
           Send
         </Btn>
       </div>
       <div class="mdiHistoryHeader">
         <span class="sub">History</span>
-        <Btn inline @click="clearHistory" :disabled="!can.ready || history.length === 0">Clear</Btn>
+        <Btn inline @click="clearHistory" :disabled="history.length === 0">Clear</Btn>
       </div>
       <div class="mdiHistoryList scroll-thin">
-        <div v-for="(cmd, i) in history" :key="i" class="mdiHistoryItem"
+        <button v-for="(cmd, i) in history" :key="i" class="mdiHistoryItem"
              :class="{ active: historyIndex === i }"
-             @click="emit('update:mdiText', cmd)">{{ cmd }}</div>
+             @click="emit('update:mdiText', cmd)">{{ cmd }}</button>
         <div v-if="history.length === 0" class="mdiHistoryEmpty">No history</div>
       </div>
-    </div>
+    </Gate>
   </div>
 </template>
 
@@ -283,6 +284,9 @@ function onMdiKeydown(e: KeyboardEvent) {
 }
 
 .mdiHistoryItem {
+  display: block;
+  width: 100%;
+  text-align: left;
   padding: 6px 10px;
   cursor: pointer;
   font-family: var(--font-mono);

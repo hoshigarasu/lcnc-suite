@@ -4,6 +4,7 @@ import { send } from "./lcncWs";
 import { usePermissions } from "./permissions";
 import JogButton from "./JogButton.vue";
 import Btn from "./Btn.vue";
+import Gate from "./Gate.vue";
 
 const ABC = new Set(["A", "B", "C"]);
 const UVW = new Set(["U", "V", "W"]);
@@ -69,7 +70,7 @@ const incrementOptions = computed(() => {
   ];
 });
 
-const disabled = computed(() => !can.value.jog);
+const jogDisabled = computed(() => !can.value.jog);
 
 // ---- Wheel geometry (same as JogPanel) ----
 const CX = 100, CY = 100, R = 94, r = 34;
@@ -124,7 +125,7 @@ const sectors: Sector[] = [
 const activeSectors = reactive(new Set<string>());
 
 function startJog(s: Sector, e: PointerEvent) {
-  if (disabled.value || !Number.isFinite(props.jogVel) || props.jogVel <= 0) return;
+  if (jogDisabled.value || !Number.isFinite(props.jogVel) || props.jogVel <= 0) return;
 
   try { (e.currentTarget as Element)?.setPointerCapture?.(e.pointerId); } catch {}
 
@@ -192,6 +193,7 @@ function onAngularVelInput(ev: Event) {
 </script>
 
 <template>
+  <Gate :allow="!props.disabled">
   <div class="jogHud">
     <div class="controlGrid">
       <!-- Mode row -->
@@ -199,7 +201,6 @@ function onAngularVelInput(ev: Event) {
       <Btn
         size="xs"
         :active="isTeleop"
-        :disabled="disabled"
         @click="emit('toggleTeleop')"
         :title="isTeleop ? 'Switch to Joint mode' : (isHomed ? 'Switch to World mode' : 'Home all axes first')"
       >
@@ -217,7 +218,6 @@ function onAngularVelInput(ev: Event) {
         :max="maxJogVel"
         :step="0.1"
         :value="jogVel"
-        :disabled="disabled"
         @input="onVelInput"
       />
       <span class="sliderVal">{{ (jogVel * 60).toFixed(0) }} {{ linearUnit }}/min</span>
@@ -232,7 +232,6 @@ function onAngularVelInput(ev: Event) {
           :max="maxAngularJogVel"
           :step="0.1"
           :value="angularJogVel"
-          :disabled="disabled"
           @input="onAngularVelInput"
         />
         <span class="sliderVal">{{ (angularJogVel * 60).toFixed(0) }} °/min</span>
@@ -247,7 +246,6 @@ function onAngularVelInput(ev: Event) {
           size="xs"
           mono
           :selected="jogIncrement === opt.value"
-          :disabled="disabled"
           @click="emit('update:jogIncrement', opt.value)"
         >{{ opt.label }}</Btn>
       </div>
@@ -258,12 +256,12 @@ function onAngularVelInput(ev: Event) {
     <!-- Wheel + Z column + extra axes -->
     <div class="jogArea">
       <div class="jogMain">
-        <svg class="jogwheel" :class="{ disabled }" viewBox="0 0 200 200">
+        <svg class="jogwheel" :class="{ disabled: jogDisabled }" viewBox="0 0 200 200">
           <path
             v-for="s in sectors"
             :key="s.id"
             class="sector"
-            :class="{ active: activeSectors.has(s.id), disabled }"
+            :class="{ active: activeSectors.has(s.id), disabled: jogDisabled }"
             :d="s.path"
             @pointerdown.prevent="startJog(s, $event)"
             @pointerup.prevent="stopJog(s, $event)"
@@ -281,13 +279,13 @@ function onAngularVelInput(ev: Event) {
             :x="s.labelX"
             :y="s.labelY"
             class="sectorLabel"
-            :class="{ small: s.axis2 != null, disabled }"
+            :class="{ small: s.axis2 != null, disabled: jogDisabled }"
           >{{ s.label }}</text>
         </svg>
 
         <div class="zCol">
-          <JogButton :axis="2" :dir="1" label="Z+" :vel="jogVel" :disabled="disabled" direction="up" :jogIncrement="jogIncrement" />
-          <JogButton :axis="2" :dir="-1" label="Z-" :vel="jogVel" :disabled="disabled" direction="down" :jogIncrement="jogIncrement" />
+          <JogButton :axis="2" :dir="1" label="Z+" :vel="jogVel" :disabled="jogDisabled" direction="up" :jogIncrement="jogIncrement" />
+          <JogButton :axis="2" :dir="-1" label="Z-" :vel="jogVel" :disabled="jogDisabled" direction="down" :jogIncrement="jogIncrement" />
         </div>
       </div>
 
@@ -295,19 +293,20 @@ function onAngularVelInput(ev: Event) {
       <div v-if="extraAxes.length > 0" class="extraAxesRow">
         <div v-if="abcAxes.length > 0" class="rotaryCol">
           <div v-for="ra in abcAxes" :key="ra.letter" class="rotaryPair">
-            <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="angularJogVel" :disabled="disabled" direction="left" :jogIncrement="jogIncrement" />
-            <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="angularJogVel" :disabled="disabled" direction="right" :jogIncrement="jogIncrement" />
+            <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="angularJogVel" :disabled="jogDisabled" direction="left" :jogIncrement="jogIncrement" />
+            <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="angularJogVel" :disabled="jogDisabled" direction="right" :jogIncrement="jogIncrement" />
           </div>
         </div>
         <div v-if="uvwAxes.length > 0" class="rotaryCol">
           <div v-for="ra in uvwAxes" :key="ra.letter" class="rotaryPair">
-            <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="jogVel" :disabled="disabled" direction="left" :jogIncrement="jogIncrement" />
-            <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="jogVel" :disabled="disabled" direction="right" :jogIncrement="jogIncrement" />
+            <JogButton :axis="ra.index" :dir="-1" :label="ra.letter + '-'" :vel="jogVel" :disabled="jogDisabled" direction="left" :jogIncrement="jogIncrement" />
+            <JogButton :axis="ra.index" :dir="1" :label="ra.letter + '+'" :vel="jogVel" :disabled="jogDisabled" direction="right" :jogIncrement="jogIncrement" />
           </div>
         </div>
       </div>
     </div>
   </div>
+  </Gate>
 </template>
 
 <style scoped>

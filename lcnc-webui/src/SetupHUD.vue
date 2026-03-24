@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { usePermissions } from "./permissions";
 import { STEP_DEFAULT } from "./defaults";
 import Btn from "./Btn.vue";
+import Gate from "./Gate.vue";
 
 
 const props = defineProps<{
@@ -26,8 +27,9 @@ const can = usePermissions();
 
 const axesList = computed(() => props.axes ?? ["X", "Y", "Z"]);
 
-const homeDisabled = computed(() => !can.value.idle || props.homed);
-const unhomeDisabled = computed(() => !can.value.idle || !props.homed);
+// Gate guarantees can.idle; these only guard the homed state condition
+const homeDisabled = computed(() => props.homed);
+const unhomeDisabled = computed(() => !props.homed);
 const zeroDisabled = computed(() => !can.value.zero);
 
 function updateTouchoff(axis: number, val: number) {
@@ -39,6 +41,7 @@ function updateTouchoff(axis: number, val: number) {
 </script>
 
 <template>
+  <Gate :allow="can.idle">
   <div class="setupHud">
     <!-- Homing -->
     <div class="row">
@@ -74,6 +77,7 @@ function updateTouchoff(axis: number, val: number) {
       <Btn :disabled="!can.ready" @click="emit('goToZero')">Go to Zero</Btn>
     </div>
   </div>
+  </Gate>
 </template>
 
 <style scoped>

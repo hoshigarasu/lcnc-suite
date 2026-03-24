@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { usePermissions } from "./permissions";
 import { Play, SkipForward, Pause, Square } from "lucide-vue-next";
 import Btn from "./Btn.vue";
+import Gate from "./Gate.vue";
 
 const props = defineProps<{
   gcodeContent: string | null;
@@ -108,10 +109,10 @@ function tokenizeCode(code: string, tokens: Token[]) {
         ><component :is="isPaused ? Play : Pause" :size="16" /></Btn>
         <Btn variant="danger" size="sm" :disabled="!can.abort" @click="emit('abort')"><Square :size="16" /></Btn>
       </div>
-      <div class="row-tight switchGroup">
-        <Btn size="sm" muted :active="optionalStop" :disabled="!can.override" @click="emit('toggleOptionalStop')">M01</Btn>
-        <Btn size="sm" muted :active="blockDelete" :disabled="!can.override" @click="emit('toggleBlockDelete')">/BD</Btn>
-      </div>
+      <Gate :allow="can.override" class="switchGroup">
+        <Btn size="sm" muted :active="optionalStop" @click="emit('toggleOptionalStop')">M01</Btn>
+        <Btn size="sm" muted :active="blockDelete" @click="emit('toggleBlockDelete')">/BD</Btn>
+      </Gate>
     </div>
 
     <!-- Progress bar -->
@@ -237,8 +238,11 @@ function tokenizeCode(code: string, tokens: Token[]) {
   flex: 3;
 }
 
+/* switchGroup is a Gate (fieldset); override fs-reset column direction */
 .switchGroup {
   flex: 2;
+  flex-direction: row;
+  gap: var(--gap-tight);
 }
 
 </style>

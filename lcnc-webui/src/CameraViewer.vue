@@ -158,8 +158,7 @@ CAMERA_SOURCE = rtsp://&lt;host&gt;/live      # IP camera</pre>
       </svg>
 
       <!-- Floating toolbar -->
-      <Gate :allow="can.idle">
-        <div class="cameraToolbar">
+      <Gate :allow="can.idle" class="cameraToolbar">
           <Btn size="xs" :active="showCrosshair"
                   @click="showCrosshair = !showCrosshair" title="Crosshair"><Crosshair :size="14" /></Btn>
           <Btn size="xs" :active="showCircle"
@@ -177,7 +176,6 @@ CAMERA_SOURCE = rtsp://&lt;host&gt;/live      # IP camera</pre>
           <div class="camSliderGroup">
             <input type="color" v-model="overlayColor" class="camColorPicker" title="Overlay color" />
           </div>
-        </div>
       </Gate>
     </template>
   </div>

@@ -17,8 +17,7 @@ const emit = defineEmits<{
 
 <template>
   <div class="tab-panel">
-    <Gate :allow="true">
-      <div class="topBar">
+    <Gate :allow="true" class="topBar">
         <div class="tabRow">
           <Btn
             v-for="tab in tabs"
@@ -33,7 +32,6 @@ const emit = defineEmits<{
           </Btn>
         </div>
         <Btn v-if="closable" icon @click="emit('close')">&times;</Btn>
-      </div>
     </Gate>
 
     <div class="tab-content">

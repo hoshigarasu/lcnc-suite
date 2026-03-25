@@ -391,9 +391,6 @@ label:has(input:disabled, select:disabled) {
   padding: 0;
   margin: 0;
   min-inline-size: 0;
-  display: flex;
-  flex-direction: column;
-  gap: inherit;
 }
 
 /* .fs-reset:disabled opacity intentionally removed — Gate.vue fieldset handles disabled opacity

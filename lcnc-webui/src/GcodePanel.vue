@@ -563,16 +563,13 @@ async function saveEdit() {
     </div>
 
     <!-- Error banner -->
-    <Gate v-if="uploadError" :allow="true">
-      <div class="errorBanner">
+    <Gate v-if="uploadError" :allow="true" class="errorBanner">
         <span>{{ uploadError }}</span>
         <Btn icon @click="uploadError = null">&times;</Btn>
-      </div>
     </Gate>
 
     <!-- File browser (collapsible) -->
-    <Gate v-if="showBrowser" :allow="can.idle">
-      <div class="fileBrowser">
+    <Gate v-if="showBrowser" :allow="can.idle" class="fileBrowser">
         <div class="browserHeader">
           <Btn v-if="currentSubdir" class="backBtn" size="xs" @click="navigateUp">..</Btn>
           <span class="browserPath">{{ currentSubdir || '/' }}</span>
@@ -588,7 +585,6 @@ async function saveEdit() {
           <div v-if="files.length === 0 && !loading" class="emptyBrowser">No program files found</div>
           <div v-if="loading" class="emptyBrowser">Loading...</div>
         </div>
-      </div>
     </Gate>
 
     <!-- Code area wrapper (drop overlay target) -->

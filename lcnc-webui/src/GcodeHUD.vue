@@ -98,7 +98,7 @@ function tokenizeCode(code: string, tokens: Token[]) {
 <template>
   <div class="gcodeHud hud-panel">
     <!-- Program controls -->
-    <Gate :allow="can.abort">
+    <Gate :allow="can.abort" class="row-tight ctrlRow">
       <template #exempt>
         <div class="row-tight ctrlGroup">
           <Btn variant="ok" size="sm" :disabled="!can.ready || !gcodeContent" @click="emit('cycleStart')"><Play :size="16" /></Btn>
@@ -111,14 +111,10 @@ function tokenizeCode(code: string, tokens: Token[]) {
           <Btn variant="danger" size="sm" @click="emit('abort')"><Square :size="16" /></Btn>
         </div>
       </template>
-      <div class="row-tight ctrlRow">
-        <Gate :allow="can.override">
-          <div class="switchGroup">
-            <Btn size="sm" muted :active="optionalStop" @click="emit('toggleOptionalStop')">M01</Btn>
-            <Btn size="sm" muted :active="blockDelete" @click="emit('toggleBlockDelete')">/BD</Btn>
-          </div>
-        </Gate>
-      </div>
+      <Gate :allow="can.override" class="switchGroup">
+        <Btn size="sm" muted :active="optionalStop" @click="emit('toggleOptionalStop')">M01</Btn>
+        <Btn size="sm" muted :active="blockDelete" @click="emit('toggleBlockDelete')">/BD</Btn>
+      </Gate>
     </Gate>
 
     <!-- Progress bar -->

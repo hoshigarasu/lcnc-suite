@@ -526,29 +526,33 @@ async function saveEdit() {
     </div>
 
     <!-- Program control -->
-    <Gate :allow="can.abort">
-      <template #exempt>
-        <Btn class="ctrlBtn" variant="danger" @click="emit('abort')">
-          <Square :size="14" class="ctrlIcon" /> Abort
-        </Btn>
-      </template>
-      <div class="controlRow">
-        <Btn class="ctrlBtn" variant="primary" @click="onStartClick" :disabled="!can.ready || !activeFile || editing">
+    <div class="controlRow">
+      <Gate :allow="can.ready" class="row-tight">
+        <Btn class="ctrlBtn" variant="primary" @click="onStartClick" :disabled="!activeFile || editing">
           <Play :size="14" class="ctrlIcon" /> {{ selectedLine && selectedLine > 1 ? `Start L${selectedLine}` : 'Start' }}
         </Btn>
-        <Btn class="ctrlBtn" @click="emit('cycleStep')" :disabled="!((can.ready && activeFile) || can.resume) || editing">
+        <Btn class="ctrlBtn" @click="emit('cycleStep')" :disabled="!(activeFile || can.resume) || editing">
           <SkipForward :size="14" class="ctrlIcon" /> Step
         </Btn>
+      </Gate>
+      <Gate :allow="can.pause || can.resume">
         <Btn class="ctrlBtn"
           @click="isPaused ? emit('cycleResume') : emit('cyclePause')"
           :disabled="!(can.pause || can.resume)">
           <component :is="isPaused ? Play : Pause" :size="14" class="ctrlIcon" />
           {{ isPaused ? 'Resume' : 'Pause' }}
         </Btn>
-        <Btn class="ctrlBtn switchBtn" :active="optionalStop" :disabled="!can.override" @click="emit('toggleOptionalStop')">M01</Btn>
-        <Btn class="ctrlBtn switchBtn" :active="blockDelete" :disabled="!can.override" @click="emit('toggleBlockDelete')">/BD</Btn>
-      </div>
-    </Gate>
+      </Gate>
+      <Gate :allow="can.abort">
+        <Btn class="ctrlBtn" variant="danger" @click="emit('abort')">
+          <Square :size="14" class="ctrlIcon" /> Abort
+        </Btn>
+      </Gate>
+      <Gate :allow="can.override" class="row-tight switchToggles">
+        <label class="toggleRow"><input type="checkbox" class="toggle" :checked="optionalStop" @change="emit('toggleOptionalStop')"> M01</label>
+        <label class="toggleRow"><input type="checkbox" class="toggle" :checked="blockDelete" @change="emit('toggleBlockDelete')"> /BD</label>
+      </Gate>
+    </div>
 
     <!-- Progress bar -->
     <div class="progressRow" v-if="gcodeContent">

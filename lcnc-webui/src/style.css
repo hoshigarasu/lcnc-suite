@@ -193,6 +193,16 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Gate enforcement: disabled fieldset forces opacity on ALL descendants,
+   overriding any scoped state (muted, active, selected, flashing). */
+fieldset:disabled button,
+fieldset:disabled input,
+fieldset:disabled select,
+fieldset:disabled textarea {
+  opacity: var(--opacity-disabled) !important;
+  cursor: not-allowed;
+}
+
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;

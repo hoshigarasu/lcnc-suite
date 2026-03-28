@@ -5,7 +5,6 @@ import { usePermissions } from "./permissions";
 import { loadMachineDefaults, STEP_RPM } from "./defaults";
 import { GCODE_LOOKUP, GCODE_REFERENCE } from "./gcodeReference";
 import { Play, SkipForward, Pause, Square } from "lucide-vue-next";
-import Btn from "./Btn.vue";
 import Gate from "./Gate.vue";
 import MachineBtn from "./MachineBtn.vue";
 import MachineToggle from "./MachineToggle.vue";
@@ -461,9 +460,9 @@ async function saveEdit() {
         <span class="fileMeta" v-if="gcodeContent">{{ lineCount }} lines</span>
         <div v-if="gcodeStats">
           <div class="statsAnchor">
-          <Btn class="actionBtn" size="sm" @click.stop="showStats = !showStats">Stats</Btn>
+          <MachineBtn type="inline" class="actionBtn" @click.stop="showStats = !showStats">Stats</MachineBtn>
           <div class="popover statsPopover" :class="{ open: showStats }" @click.stop>
-            <div class="popHeader"><span class="popTitle">Program Stats</span><Btn icon @click="showStats = false">&times;</Btn></div>
+            <div class="popHeader"><span class="popTitle">Program Stats</span><MachineBtn type="close" @click="showStats = false">&times;</MachineBtn></div>
             <!-- Donut chart -->
             <div class="donutRow" v-if="donutSegments.length > 0">
               <svg class="donut" viewBox="0 0 100 100">
@@ -573,13 +572,13 @@ async function saveEdit() {
     <!-- Error banner -->
     <div v-if="uploadError" class="errorBanner">
         <span>{{ uploadError }}</span>
-        <Btn icon @click="uploadError = null">&times;</Btn>
+        <MachineBtn type="close" @click="uploadError = null">&times;</MachineBtn>
     </div>
 
     <!-- File browser (collapsible) -->
     <Gate v-if="showBrowser" :allow="can.idle" class="fileBrowser">
         <div class="browserHeader">
-          <Btn v-if="currentSubdir" class="backBtn" size="xs" @click="navigateUp">..</Btn>
+          <MachineBtn v-if="currentSubdir" type="inline" class="backBtn" @click="navigateUp">..</MachineBtn>
           <span class="browserPath">{{ currentSubdir || '/' }}</span>
         </div>
         <div class="fileList">
@@ -615,7 +614,7 @@ async function saveEdit() {
       <div v-if="editing" class="stack-controls editArea">
         <div v-if="saveError" class="errorBanner">
           <span>{{ saveError }}</span>
-          <Btn icon @click="saveError = null">&times;</Btn>
+          <MachineBtn type="close" @click="saveError = null">&times;</MachineBtn>
         </div>
         <textarea class="editTextarea" v-model="editBuffer" spellcheck="false"></textarea>
         <div class="editActions">
@@ -680,12 +679,12 @@ async function saveEdit() {
         <div class="dialogSection">
           <div class="sub">Spindle Preset</div>
           <div class="spindleBtnRow">
-            <Btn class="optBtn" size="sm" :selected="dialogSpindleDir === 'off'"
-                    @click="dialogSpindleDir = 'off'">Off</Btn>
-            <Btn class="optBtn" size="sm" :selected="dialogSpindleDir === 'forward'"
-                    @click="dialogSpindleDir = 'forward'">FWD</Btn>
-            <Btn class="optBtn" size="sm" :selected="dialogSpindleDir === 'reverse'"
-                    @click="dialogSpindleDir = 'reverse'">REV</Btn>
+            <MachineBtn type="tab" class="optBtn" :selected="dialogSpindleDir === 'off'"
+                    @click="dialogSpindleDir = 'off'">Off</MachineBtn>
+            <MachineBtn type="tab" class="optBtn" :selected="dialogSpindleDir === 'forward'"
+                    @click="dialogSpindleDir = 'forward'">FWD</MachineBtn>
+            <MachineBtn type="tab" class="optBtn" :selected="dialogSpindleDir === 'reverse'"
+                    @click="dialogSpindleDir = 'reverse'">REV</MachineBtn>
           </div>
           <div v-if="dialogSpindleDir !== 'off'" class="rpmRow">
             <label>RPM</label>
@@ -694,8 +693,8 @@ async function saveEdit() {
         </div>
 
         <Gate :allow="can.ready" class="dialogActions">
-          <Btn @click="showRunDialog = false">Cancel</Btn>
-          <Btn variant="primary" @click="confirmRunFromLine">Run from Line {{ selectedLine }}</Btn>
+          <MachineBtn type="dialogCancel" @click="showRunDialog = false">Cancel</MachineBtn>
+          <MachineBtn type="dialogConfirm" @click="confirmRunFromLine">Run from Line {{ selectedLine }}</MachineBtn>
         </Gate>
       </div>
     </div>

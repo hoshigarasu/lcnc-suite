@@ -3,10 +3,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { loadCameraDefaults, saveCameraDefaults, settingsVersion } from "./defaults";
 import { Crosshair, Circle, Grid3x3 } from "lucide-vue-next";
 import Btn from "./Btn.vue";
-import Gate from "./Gate.vue";
-import { usePermissions } from "./permissions";
-
-const can = usePermissions();
+import MachineSlider from "./MachineSlider.vue";
+import MachineColor from "./MachineColor.vue";
 
 const props = defineProps<{ active?: boolean }>();
 
@@ -158,7 +156,7 @@ CAMERA_SOURCE = rtsp://&lt;host&gt;/live      # IP camera</pre>
       </svg>
 
       <!-- Floating toolbar -->
-      <Gate :allow="can.idle" class="cameraToolbar">
+      <div class="cameraToolbar">
           <Btn size="xs" :active="showCrosshair"
                   @click="showCrosshair = !showCrosshair" title="Crosshair"><Crosshair :size="14" /></Btn>
           <Btn size="xs" :active="showCircle"
@@ -167,16 +165,16 @@ CAMERA_SOURCE = rtsp://&lt;host&gt;/live      # IP camera</pre>
                   @click="showGrid = !showGrid" title="Grid"><Grid3x3 :size="14" /></Btn>
           <div class="camSliderGroup">
             <Circle :size="12" class="camSliderLabel" />
-            <input type="range" min="10" max="300" v-model.number="circleRadius" class="camSlider" />
+            <MachineSlider gate="cameraSetting" :min="10" :max="300" v-model="circleRadius" class="camSlider" />
           </div>
           <div class="camSliderGroup">
             <Grid3x3 :size="12" class="camSliderLabel" />
-            <input type="range" min="10" max="200" v-model.number="gridSpacing" class="camSlider" />
+            <MachineSlider gate="cameraSetting" :min="10" :max="200" v-model="gridSpacing" class="camSlider" />
           </div>
           <div class="camSliderGroup">
-            <input type="color" v-model="overlayColor" class="camColorPicker" title="Overlay color" />
+            <MachineColor gate="cameraSetting" v-model="overlayColor" class="camColorPicker" title="Overlay color" />
           </div>
-      </Gate>
+      </div>
     </template>
   </div>
 </template>

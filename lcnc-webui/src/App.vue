@@ -72,6 +72,7 @@ applyTheme(themeMode.value);
 
 // ─── Fullscreen ──────────────────────────────────────────────────
 const isFullscreen = ref(!!document.fullscreenElement);
+let _fsListenersActive = false;
 
 function toggleFullscreen() {
   if (document.fullscreenElement) {
@@ -83,6 +84,23 @@ function toggleFullscreen() {
 
 function onFullscreenChange() {
   isFullscreen.value = !!document.fullscreenElement;
+}
+
+// Browsers require a user gesture before requestFullscreen().
+// Register one-shot listeners that enter fullscreen on first interaction.
+function armStartFullscreen() {
+  if (_fsListenersActive || document.fullscreenElement) return;
+  _fsListenersActive = true;
+  const enterFs = () => {
+    document.removeEventListener("pointerdown", enterFs);
+    document.removeEventListener("keydown", enterFs);
+    _fsListenersActive = false;
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  };
+  document.addEventListener("pointerdown", enterFs, { once: true });
+  document.addEventListener("keydown", enterFs, { once: true });
 }
 
 provide("isFullscreen", isFullscreen);
@@ -99,9 +117,7 @@ onMounted(() => {
   themeMql.addEventListener("change", onOsThemeChange);
   document.addEventListener("focusin", onNumFocus);
   document.addEventListener("fullscreenchange", onFullscreenChange);
-  if (loadDisplayDefaults().startFullscreen && !document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(() => {});
-  }
+  if (loadDisplayDefaults().startFullscreen) armStartFullscreen();
 });
 
 watch(lcncError, (newVal, oldVal) => {
@@ -1179,6 +1195,7 @@ watch(settingsVersion, () => {
     themeMode.value = disp.theme;
     applyTheme(disp.theme);
   }
+  if (disp.startFullscreen) armStartFullscreen();
   const vd = loadViewerDefaults();
   workpieceSize.value = vd.workpieceSize;
   workpieceOffset.value = vd.workpieceOffset;

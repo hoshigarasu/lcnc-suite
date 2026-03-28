@@ -4,9 +4,9 @@ import Btn from './Btn.vue';
 import { usePermissions } from './permissions';
 import { BUTTON_TYPES, type ButtonType, type ButtonDef } from './machineControls';
 
-defineOptions({ inheritAttrs: true });
+defineOptions({ inheritAttrs: false });
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   type: ButtonType;
   variant?: 'default' | 'primary' | 'ok' | 'danger' | 'estop';
   disabled?: boolean;
@@ -19,7 +19,14 @@ const props = defineProps<{
   warning?: boolean;
   icon?: boolean;
   inline?: boolean;
-}>();
+}>(), {
+  // Catalog-aware props: undefined means "use catalog default"
+  // Vue coerces absent booleans to false — we need undefined to detect "not passed"
+  icon: undefined,
+  muted: undefined,
+  inline: undefined,
+  variant: undefined,
+});
 
 const can = usePermissions();
 const def = computed(() => BUTTON_TYPES[props.type] as ButtonDef);
@@ -32,6 +39,7 @@ const resolvedInline = computed(() => props.inline ?? def.value.inline);
 
 <template>
   <Btn
+    v-bind="$attrs"
     :variant="resolvedVariant"
     :size="def.size"
     :icon="resolvedIcon"

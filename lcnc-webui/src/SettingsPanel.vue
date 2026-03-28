@@ -3,6 +3,13 @@ import { ref, reactive, computed, inject, onMounted, onUnmounted, watch, type Re
 import TabPanel from "./TabPanel.vue";
 import Btn from "./Btn.vue";
 import Gate from "./Gate.vue";
+import MachineBtn from "./MachineBtn.vue";
+import MachineInput from "./MachineInput.vue";
+import MachineToggle from "./MachineToggle.vue";
+import MachineSlider from "./MachineSlider.vue";
+import MachineSelect from "./MachineSelect.vue";
+import MachineRadio from "./MachineRadio.vue";
+import MachineColor from "./MachineColor.vue";
 import {
   loadViewerDefaults, saveViewerDefaults,
   loadMachineDefaults, saveMachineDefaults,
@@ -313,6 +320,12 @@ function saveTsParams() {
   if (can.value.ready) emit("setProbeVars", buildVarMap());
 }
 
+// ─── Toolsetter boolean wrappers (0/1 ↔ boolean) ───
+const tsUseToolTable = computed({ get: () => tsParams.value.useToolTable === 1, set: (v: boolean) => { tsParams.value.useToolTable = v ? 1 : 0; saveTsParams(); } });
+const tsGoBackToStart = computed({ get: () => tsParams.value.goBackToStart === 1, set: (v: boolean) => { tsParams.value.goBackToStart = v ? 1 : 0; saveTsParams(); } });
+const tsDisablePrePos = computed({ get: () => tsParams.value.disablePrePos === 1, set: (v: boolean) => { tsParams.value.disablePrePos = v ? 1 : 0; saveTsParams(); } });
+const tsLastTry = computed({ get: () => tsParams.value.lastTry === 1, set: (v: boolean) => { tsParams.value.lastTry = v ? 1 : 0; saveTsParams(); } });
+
 // ─── G30 tool change position ────────────────
 const g30X = ref<number | null>(null);
 const g30Y = ref<number | null>(null);
@@ -573,6 +586,12 @@ watch(() => props.gamepadConfig?.mapping, (m) => {
   }
 });
 
+// ─── Gamepad boolean wrappers (emit-based) ───
+const gpEnabled = computed({ get: () => props.gamepadConfig?.enabled ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, enabled: v }); } });
+const gpInvertX = computed({ get: () => props.gamepadConfig?.invertX ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, invertX: v }); } });
+const gpInvertY = computed({ get: () => props.gamepadConfig?.invertY ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, invertY: v }); } });
+const gpInvertZ = computed({ get: () => props.gamepadConfig?.invertZ ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, invertZ: v }); } });
+
 function onGpMappingChanged() {
   if (!props.gamepadConfig) return;
   emit("setGamepadConfig", { ...props.gamepadConfig, mapping: { ...gpMapping } });
@@ -690,16 +709,15 @@ const halStats = computed(() => ({
       <template #viewer>
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
-        <Gate :allow="can.idle">
         <div class="section">
           <div class="sub">Colors</div>
           <div class="colorGrid">
             <div class="colorRow" v-for="cf in colorFields" :key="cf.key">
-              <input
-                type="color"
+              <MachineColor
+                gate="viewerSetting"
                 class="colorInput"
-                :value="colors[cf.key]"
-                @input="onColorChange(cf.key, ($event.target as HTMLInputElement).value)"
+                :modelValue="colors[cf.key]"
+                @update:modelValue="onColorChange(cf.key, $event!)"
               />
               <span class="colorLabel">{{ cf.label }}</span>
             </div>
@@ -713,12 +731,12 @@ const halStats = computed(() => ({
           <div class="stack-controls opacityList">
             <div class="opacityRow" v-for="of_ in opacityFields" :key="of_.key">
               <span class="opacityLabel">{{ of_.label }}</span>
-              <input
-                type="range"
+              <MachineSlider
+                gate="viewerSetting"
                 class="opacitySlider"
-                min="0" max="1" step="0.05"
-                :value="opacities[of_.key]"
-                @input="onOpacityChange(of_.key, parseFloat(($event.target as HTMLInputElement).value))"
+                :min="0" :max="1" :step="0.05"
+                :modelValue="opacities[of_.key]"
+                @update:modelValue="onOpacityChange(of_.key, $event!)"
               />
               <span class="opacityValue">{{ Math.round(opacities[of_.key] * 100) }}%</span>
             </div>
@@ -732,44 +750,39 @@ const halStats = computed(() => ({
           <div class="stack-controls fieldGroup">
             <div class="colorGrid">
               <div class="colorRow" v-for="part in machineParts" :key="part.id">
-                <input
-                  type="color"
+                <MachineColor
+                  gate="viewerSetting"
                   class="colorInput"
-                  :value="machineColors[part.id] ?? defaultMachineColor(part)"
-                  @input="onMachineColorChange(part.id, ($event.target as HTMLInputElement).value)"
+                  :modelValue="machineColors[part.id] ?? defaultMachineColor(part)"
+                  @update:modelValue="onMachineColorChange(part.id, $event!)"
                 />
                 <span class="colorLabel">{{ formatPartLabel(part.id) }}</span>
                 <Btn v-if="machineColors[part.id]" icon @click="resetMachineColor(part.id)">&times;</Btn>
               </div>
             </div>
-            <label class="toggleRow">
-              <input type="checkbox" class="toggle" v-model="machineEdgesOn" @change="setMachineEdges(machineEdgesOn); save()" />
-              Edge outline
-            </label>
+            <MachineToggle gate="viewerSetting" v-model="machineEdgesOn" @update:modelValue="setMachineEdges(machineEdgesOn); save()" label="Edge outline" />
           </div>
         </div>
 
         <div class="resetRow">
-          <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'viewer'">Reset 3D Viewer</Btn>
+          <MachineBtn type="reset" @click="resetTarget = 'viewer'">Reset 3D Viewer</MachineBtn>
         </div>
-        </Gate>
         </div>
       </template>
 
       <template #machine>
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
-          <Gate :allow="can.idle">
           <div class="section">
             <div class="sub">Tool Load Behavior</div>
             <div class="settingDesc">Controls what happens when you load a tool from the Tool Table.</div>
             <div class="radioGroup">
               <label>
-                <input type="radio" v-model="toolChangeMode" value="m6g43" @change="saveMachine()" />
+                <MachineRadio gate="displaySetting" name="toolChangeMode" v-model="toolChangeMode" value="m6g43" @update:modelValue="saveMachine()" />
                 <span><span class="radioLabel">M6 G43</span><br><span class="radioDesc">Load tool, activate length offset</span></span>
               </label>
               <label>
-                <input type="radio" v-model="toolChangeMode" value="m600" @change="saveMachine()" />
+                <MachineRadio gate="displaySetting" name="toolChangeMode" v-model="toolChangeMode" value="m600" @update:modelValue="saveMachine()" />
                 <span><span class="radioLabel">M600</span><br><span class="radioDesc">Load tool, measure with toolsetter, save offset</span></span>
               </label>
             </div>
@@ -780,11 +793,11 @@ const halStats = computed(() => ({
             <div class="settingDesc">What unit does your spindle encoder / VFD driver output on the speed-in HAL pin? Simulators use RPS; most real VFDs output RPM directly.</div>
             <div class="radioGroup">
               <label>
-                <input type="radio" v-model="spindleFeedbackUnit" value="rps" @change="saveMachine()" />
+                <MachineRadio gate="displaySetting" name="spindleFeedbackUnit" v-model="spindleFeedbackUnit" value="rps" @update:modelValue="saveMachine()" />
                 <span><span class="radioLabel">RPS (default)</span><br><span class="radioDesc">Pin outputs revolutions per second (×60 for display)</span></span>
               </label>
               <label>
-                <input type="radio" v-model="spindleFeedbackUnit" value="rpm" @change="saveMachine()" />
+                <MachineRadio gate="displaySetting" name="spindleFeedbackUnit" v-model="spindleFeedbackUnit" value="rpm" @update:modelValue="saveMachine()" />
                 <span><span class="radioLabel">RPM</span><br><span class="radioDesc">Pin outputs RPM directly (most VFDs)</span></span>
               </label>
             </div>
@@ -793,7 +806,8 @@ const halStats = computed(() => ({
           <div class="section">
             <div class="sub">Spindle Load HAL Pin</div>
             <div class="settingDesc">HAL pin that outputs spindle load percentage (e.g. <code>spindle-load-conv.load-percentage</code>). Leave empty to disable.</div>
-            <input
+            <MachineInput
+              gate="displaySetting"
               type="text"
               v-model="spindleLoadPin"
               @change="saveMachine()"
@@ -805,45 +819,40 @@ const halStats = computed(() => ({
           <div class="section">
             <div class="sub">Run from Line</div>
             <div class="settingDesc">Allow starting program execution from a selected line in the code viewer.</div>
-            <label class="toggleRow">
-              <input type="checkbox" class="toggle" v-model="runFromLine" @change="emit('setRunFromLine', runFromLine); saveMachine()" />
-              Enable run from line
-            </label>
+            <MachineToggle gate="displaySetting" v-model="runFromLine" @update:modelValue="emit('setRunFromLine', runFromLine); saveMachine()" label="Enable run from line" />
             <div v-if="runFromLine" class="rflDefaults">
               <div class="settingDesc">Default spindle preset for run-from-line dialog.</div>
               <div class="rflRow">
                 <div class="radioGroup inline">
-                  <label><input type="radio" v-model="rflSpindleDir" value="off" @change="saveMachine()" /> Off</label>
-                  <label><input type="radio" v-model="rflSpindleDir" value="forward" @change="saveMachine()" /> FWD</label>
-                  <label><input type="radio" v-model="rflSpindleDir" value="reverse" @change="saveMachine()" /> REV</label>
+                  <label><MachineRadio gate="displaySetting" name="rflSpindleDir" v-model="rflSpindleDir" value="off" @update:modelValue="saveMachine()" /> Off</label>
+                  <label><MachineRadio gate="displaySetting" name="rflSpindleDir" v-model="rflSpindleDir" value="forward" @update:modelValue="saveMachine()" /> FWD</label>
+                  <label><MachineRadio gate="displaySetting" name="rflSpindleDir" v-model="rflSpindleDir" value="reverse" @update:modelValue="saveMachine()" /> REV</label>
                 </div>
                 <div v-if="rflSpindleDir !== 'off'" class="rflRpm">
                   <label>RPM</label>
-                  <input type="number" v-model.number="rflSpindleRpm" min="0" :step="STEP_RPM" @change="saveMachine()" />
+                  <MachineInput gate="displaySetting" type="number" v-model.number="rflSpindleRpm" min="0" :step="STEP_RPM" @change="saveMachine()" />
                 </div>
               </div>
             </div>
           </div>
           <div class="resetRow">
-            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'machine'">Reset Machine</Btn>
+            <MachineBtn type="reset" @click="resetTarget = 'machine'">Reset Machine</MachineBtn>
           </div>
-          </Gate>
         </div>
       </template>
 
       <template #toolsetter>
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
-          <Gate :allow="can.ready">
           <div class="section">
             <div class="sub">Toolsetter Position (G53)</div>
             <div class="tsGrid">
               <label title="X position (G53 machine coordinates) of the toolsetter button center. Jog to the button with no tool, read the machine X position. (#3100)">Touch X</label>
-              <input type="number" v-model.number="tsParams.touchX" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.touchX" :step="STEP_DEFAULT" @change="saveTsParams" />
               <label title="Y position (G53 machine coordinates) of the toolsetter button center. Jog to the button with no tool, read the machine Y position. (#3101)">Touch Y</label>
-              <input type="number" v-model.number="tsParams.touchY" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.touchY" :step="STEP_DEFAULT" @change="saveTsParams" />
               <label title="Z approach height (G53) above the toolsetter button. The tool moves to this height before probing downward. Set above the button top plus clearance. (#3102)">Touch Z</label>
-              <input type="number" v-model.number="tsParams.touchZ" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.touchZ" :step="STEP_DEFAULT" @change="saveTsParams" />
             </div>
           </div>
 
@@ -860,7 +869,7 @@ const halStats = computed(() => ({
               <span class="readonlyVal">{{ g30Z != null ? g30Z.toFixed(3) : '—' }}</span>
             </div>
             <div class="tsBtnRow" style="margin-top: var(--gap-controls);">
-              <Btn size="sm" class="optBtn" :disabled="!can.idle" @click="setG30">Set Current Position</Btn>
+              <MachineBtn type="manage" @click="setG30">Set Current Position</MachineBtn>
               <Btn size="sm" class="optBtn" @click="loadG30" :disabled="g30Loading">Refresh</Btn>
             </div>
           </div>
@@ -871,17 +880,17 @@ const halStats = computed(() => ({
             <div class="sub">Probe Settings</div>
             <div class="tsGrid">
               <label title="Feed rate for the initial fast probe approach to the touch plate. Higher values reduce cycle time but lower repeatability. (#3004)">Fast Feed</label>
-              <input type="number" v-model.number="tsParams.fastFeed" min="1" :step="STEP_FEED" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.fastFeed" min="1" :step="STEP_FEED" @change="saveTsParams" />
               <label title="Feed rate for the refined slow measurement pass after retract. Set to 0 to skip the slow pass — faster but less accurate. (#3005)">Slow Feed</label>
-              <input type="number" v-model.number="tsParams.slowFeed" min="0" :step="STEP_FEED" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.slowFeed" min="0" :step="STEP_FEED" @change="saveTsParams" />
               <label title="Feed rate for non-probing positioning moves (travel to touch plate, retract, return). Does not affect measurement accuracy. (#3006)">Traverse Feed</label>
-              <input type="number" v-model.number="tsParams.traverseFeed" min="1" :step="STEP_FEED" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.traverseFeed" min="1" :step="STEP_FEED" @change="saveTsParams" />
               <label title="Maximum downward travel before the probe aborts if no contact. Safety limit to prevent crashes if the touch plate is missing. (#3007)">Max Z Travel</label>
-              <input type="number" v-model.number="tsParams.maxZTravel" min="1" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.maxZTravel" min="1" :step="STEP_DEFAULT" @change="saveTsParams" />
               <label title="Distance the tool retracts upward after fast probe contact before the slow pass begins. The slow pass probes 2× this distance. (#3009)">Retract Dist</label>
-              <input type="number" v-model.number="tsParams.retractDist" min="0.1" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.retractDist" min="0.1" :step="STEP_DEFAULT" @change="saveTsParams" />
               <label title="G53 Z distance from spindle nose to touch plate surface with no tool loaded. Reference for zero-length tools. Measure carefully during initial setup. (#3010)">Spindle Zero H</label>
-              <input type="number" v-model.number="tsParams.spindleZeroHeight" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.spindleZeroHeight" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
             </div>
           </div>
 
@@ -890,43 +899,31 @@ const halStats = computed(() => ({
           <div class="section">
             <div class="sub">Options</div>
             <div class="tsToggleGrid">
-              <label class="toggleRow" title="When enabled, uses the tool table length to calculate a closer probe start height — faster for known tools. Disable during initial setup or if tool table data is unreliable. (#3103)">
-                <input type="checkbox" class="toggle" :checked="tsParams.useToolTable === 1" @change="tsParams.useToolTable = ($event.target as HTMLInputElement).checked ? 1 : 0; saveTsParams()" />
-                Use Tool Table
-              </label>
-              <label class="toggleRow" title="After measurement, return to the XYZ position where M600 was called. Disable only if the tool change is at the end of a program. (#3106)">
-                <input type="checkbox" class="toggle" :checked="tsParams.goBackToStart === 1" @change="tsParams.goBackToStart = ($event.target as HTMLInputElement).checked ? 1 : 0; saveTsParams()" />
-                Return to Start
-              </label>
-              <label class="toggleRow" title="Skip the G30 pre-positioning move before traveling to the touch plate. Faster, but risks collision with clamps or fixtures on uncluttered machines only. (#3108)">
-                <input type="checkbox" class="toggle" :checked="tsParams.disablePrePos === 1" @change="tsParams.disablePrePos = ($event.target as HTMLInputElement).checked ? 1 : 0; saveTsParams()" />
-                Skip G30 Pre-Pos
-              </label>
-              <label class="toggleRow" title="On the final retry attempt, ignore tool table offsets and use spindle zero height instead. Provides a fallback for tools with incorrect table entries. (#3110)">
-                <input type="checkbox" class="toggle" :checked="tsParams.lastTry === 1" @change="tsParams.lastTry = ($event.target as HTMLInputElement).checked ? 1 : 0; saveTsParams()" />
-                Last Try w/o Table
-              </label>
+              <MachineToggle gate="toolsetterParam" v-model="tsUseToolTable" label="Use Tool Table" title="When enabled, uses the tool table length to calculate a closer probe start height — faster for known tools. Disable during initial setup or if tool table data is unreliable. (#3103)" />
+              <MachineToggle gate="toolsetterParam" v-model="tsGoBackToStart" label="Return to Start" title="After measurement, return to the XYZ position where M600 was called. Disable only if the tool change is at the end of a program. (#3106)" />
+              <MachineToggle gate="toolsetterParam" v-model="tsDisablePrePos" label="Skip G30 Pre-Pos" title="Skip the G30 pre-positioning move before traveling to the touch plate. Faster, but risks collision with clamps or fixtures on uncluttered machines only. (#3108)" />
+              <MachineToggle gate="toolsetterParam" v-model="tsLastTry" label="Last Try w/o Table" title="On the final retry attempt, ignore tool table offsets and use spindle zero height instead. Provides a fallback for tools with incorrect table entries. (#3110)" />
             </div>
             <div class="tsGrid" style="margin-top: var(--gap-section);">
               <label title="Safety clearance between the expected tool tip position and the touch plate when using tool table pre-positioning. Increase for widely varying tool lengths. (#3104)">Tool Min Dist</label>
-              <input type="number" v-model.number="tsParams.toolMinDis" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.toolMinDis" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
               <label title="Number of extra retry attempts if probe contact fails. Each failure pauses for operator correction before retrying. Set to 0 for ATC. (#3109)">Extra Retries</label>
-              <input type="number" v-model.number="tsParams.addReps" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.addReps" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
 
               <label title="Pause after tool measurement: None = continue immediately, M00 = mandatory stop (press Cycle Start to resume), M01 = optional stop (active only when block delete is off). (#3105)">Brake After</label>
               <div class="radioGroup inline">
-                <label v-for="b in [0, 1, 2]" :key="b"><input type="radio" :value="b" v-model.number="tsParams.brakeAfter" @change="saveTsParams()" /> {{ BRAKE_LABELS[b] }}</label>
+                <label v-for="b in [0, 1, 2]" :key="b"><MachineRadio gate="toolsetterParam" name="brakeAfter" :value="b" v-model.number="tsParams.brakeAfter" @update:modelValue="saveTsParams()" /> {{ BRAKE_LABELS[b] }}</label>
               </div>
 
               <label title="M-code sent to stop the spindle before probing. M5 = standard stop. M500 = stop and wait for spindle to fully decelerate (for VFD-controlled spindles). (#3107)">Spindle Stop</label>
               <div class="radioGroup inline">
-                <label><input type="radio" :value="5" v-model.number="tsParams.spindleStopM" @change="saveTsParams()" /> M5</label>
-                <label><input type="radio" :value="500" v-model.number="tsParams.spindleStopM" @change="saveTsParams()" /> M500</label>
+                <label><MachineRadio gate="toolsetterParam" name="spindleStopM" :value="5" v-model.number="tsParams.spindleStopM" @update:modelValue="saveTsParams()" /> M5</label>
+                <label><MachineRadio gate="toolsetterParam" name="spindleStopM" :value="500" v-model.number="tsParams.spindleStopM" @update:modelValue="saveTsParams()" /> M500</label>
               </div>
 
               <label title="Axis direction to offset the probe position for large tools: X−, X+, Y−, or Y+. Choose based on your machine layout to avoid clamp or fixture collisions. (#3013)">Offset Dir</label>
               <div class="radioGroup inline">
-                <label v-for="d in [0, 1, 2, 3]" :key="d"><input type="radio" :value="d" v-model.number="tsParams.offsetDirection" @change="saveTsParams()" /> {{ OFFSET_DIR_LABELS[d] }}</label>
+                <label v-for="d in [0, 1, 2, 3]" :key="d"><MachineRadio gate="toolsetterParam" name="offsetDirection" :value="d" v-model.number="tsParams.offsetDirection" @update:modelValue="saveTsParams()" /> {{ OFFSET_DIR_LABELS[d] }}</label>
               </div>
             </div>
           </div>
@@ -937,9 +934,9 @@ const halStats = computed(() => ({
             <div class="sub">Diameter Offset</div>
             <div class="tsGrid">
               <label title="Minimum tool diameter that triggers position offset. Tools smaller than this probe on-center. Set to 0 to disable offset for all tools. (#3111)">Min Diameter</label>
-              <input type="number" v-model.number="tsParams.offsetDiameter" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.offsetDiameter" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
               <label title="Percentage of tool diameter to offset the probe position. Example: 20% on a large tool offsets the probe position by 20% of the diameter from center. (#3112)">Offset %</label>
-              <input type="number" v-model.number="tsParams.offsetValue" min="0" max="100" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.offsetValue" min="0" max="100" :step="STEP_DEFAULT" @change="saveTsParams" />
             </div>
           </div>
 
@@ -951,60 +948,53 @@ const halStats = computed(() => ({
               <label title="Probe tool number, shared with the Probing tab. Must match the tool loaded in the spindle before any probe operation. (#3014)">Probe Tool #</label>
               <span class="readonlyVal">T{{ probeTool }}</span>
               <label title="X position (G53) of a secondary edge-finder reference point. Used only when the selected tool matches the probe tool number. (#3113)">Finder X</label>
-              <input type="number" v-model.number="tsParams.finderTouchX" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.finderTouchX" :step="STEP_DEFAULT" @change="saveTsParams" />
               <label title="Y position (G53) of a secondary edge-finder reference point. Used only when the selected tool matches the probe tool number. (#3114)">Finder Y</label>
-              <input type="number" v-model.number="tsParams.finderTouchY" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.finderTouchY" :step="STEP_DEFAULT" @change="saveTsParams" />
               <label title="Height difference between the edge-finder reference surface and the normal touch plate surface. May be negative if the reference is lower. (#3115)">Finder Z Diff</label>
-              <input type="number" v-model.number="tsParams.finderDiffZ" :step="STEP_DEFAULT" @change="saveTsParams" />
+              <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.finderDiffZ" :step="STEP_DEFAULT" @change="saveTsParams" />
             </div>
           </div>
 
           <div class="resetRow">
-            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'toolsetter'">Reset Toolsetter</Btn>
+            <MachineBtn type="reset" @click="resetTarget = 'toolsetter'">Reset Toolsetter</MachineBtn>
           </div>
-          </Gate>
         </div>
       </template>
 
       <template #display>
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
-          <Gate :allow="can.idle">
           <div class="section">
             <div class="sub">Theme</div>
             <div class="radioGroup">
-              <label><input type="radio" name="theme" :checked="themeMode === 'auto'" @change="setTheme('auto')" /> Auto</label>
-              <label><input type="radio" name="theme" :checked="themeMode === 'light'" @change="setTheme('light')" /> Light</label>
-              <label><input type="radio" name="theme" :checked="themeMode === 'dark'" @change="setTheme('dark')" /> Dark</label>
-              <label><input type="radio" name="theme" :checked="themeMode === 'hc-light'" @change="setTheme('hc-light')" /> High Contrast Light</label>
-              <label><input type="radio" name="theme" :checked="themeMode === 'hc-dark'" @change="setTheme('hc-dark')" /> High Contrast Dark</label>
+              <label><MachineRadio gate="displaySetting" name="theme" v-model="themeMode" value="auto" @update:modelValue="setTheme('auto')" /> Auto</label>
+              <label><MachineRadio gate="displaySetting" name="theme" v-model="themeMode" value="light" @update:modelValue="setTheme('light')" /> Light</label>
+              <label><MachineRadio gate="displaySetting" name="theme" v-model="themeMode" value="dark" @update:modelValue="setTheme('dark')" /> Dark</label>
+              <label><MachineRadio gate="displaySetting" name="theme" v-model="themeMode" value="hc-light" @update:modelValue="setTheme('hc-light')" /> High Contrast Light</label>
+              <label><MachineRadio gate="displaySetting" name="theme" v-model="themeMode" value="hc-dark" @update:modelValue="setTheme('hc-dark')" /> High Contrast Dark</label>
             </div>
           </div>
           <div class="sep"></div>
           <div class="section">
             <div class="sub">Fullscreen</div>
-            <label class="toggleRow">
-              <input type="checkbox" class="toggle" v-model="startFullscreen" @change="saveStartFullscreen" />
-              Start in fullscreen mode
-            </label>
+            <MachineToggle gate="displaySetting" v-model="startFullscreen" @update:modelValue="saveStartFullscreen" label="Start in fullscreen mode" />
           </div>
           <div class="resetRow">
-            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'display'">Reset Display</Btn>
+            <MachineBtn type="reset" @click="resetTarget = 'display'">Reset Display</MachineBtn>
           </div>
-          </Gate>
         </div>
       </template>
 
       <template #camera>
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
-          <Gate :allow="can.idle">
           <div class="section">
             <div class="sub">Overlay Toggles</div>
             <div class="stack-controls">
-              <label class="toggleRow"><input type="checkbox" class="toggle" v-model="cam.showCrosshair" @change="saveCam" /> Crosshair</label>
-              <label class="toggleRow"><input type="checkbox" class="toggle" v-model="cam.showCircle" @change="saveCam" /> Circle</label>
-              <label class="toggleRow"><input type="checkbox" class="toggle" v-model="cam.showGrid" @change="saveCam" /> Grid</label>
+              <MachineToggle gate="cameraSetting" v-model="cam.showCrosshair" @update:modelValue="saveCam" label="Crosshair" />
+              <MachineToggle gate="cameraSetting" v-model="cam.showCircle" @update:modelValue="saveCam" label="Circle" />
+              <MachineToggle gate="cameraSetting" v-model="cam.showGrid" @update:modelValue="saveCam" label="Grid" />
             </div>
           </div>
 
@@ -1014,9 +1004,9 @@ const halStats = computed(() => ({
             <div class="sub">Overlay Dimensions</div>
             <div class="tsGrid">
               <label>Circle Radius</label>
-              <input type="number" v-model.number="cam.circleRadius" min="10" max="300" :step="1" @change="saveCam" />
+              <MachineInput gate="cameraSetting" type="number" v-model.number="cam.circleRadius" min="10" max="300" :step="1" @change="saveCam" />
               <label>Grid Spacing</label>
-              <input type="number" v-model.number="cam.gridSpacing" min="10" max="200" :step="1" @change="saveCam" />
+              <MachineInput gate="cameraSetting" type="number" v-model.number="cam.gridSpacing" min="10" max="200" :step="1" @change="saveCam" />
             </div>
           </div>
 
@@ -1027,31 +1017,37 @@ const halStats = computed(() => ({
             <div class="stack-controls opacityList">
               <div class="opacityRow">
                 <span class="opacityLabel">Opacity</span>
-                <input type="range" class="opacitySlider" min="0" max="1" step="0.05"
-                  :value="cam.overlayOpacity"
-                  @input="cam.overlayOpacity = parseFloat(($event.target as HTMLInputElement).value); saveCam()" />
+                <MachineSlider
+                  gate="cameraSetting"
+                  class="opacitySlider"
+                  :min="0" :max="1" :step="0.05"
+                  :modelValue="cam.overlayOpacity"
+                  @update:modelValue="cam.overlayOpacity = $event!; saveCam()"
+                />
                 <span class="opacityValue">{{ Math.round(cam.overlayOpacity * 100) }}%</span>
               </div>
             </div>
             <div class="colorGrid" style="margin-top: var(--gap-controls)">
               <div class="colorRow">
-                <input type="color" class="colorInput" :value="cam.overlayColor"
-                  @input="cam.overlayColor = ($event.target as HTMLInputElement).value; saveCam()" />
+                <MachineColor
+                  gate="cameraSetting"
+                  class="colorInput"
+                  :modelValue="cam.overlayColor"
+                  @update:modelValue="cam.overlayColor = $event!; saveCam()"
+                />
                 <span class="colorLabel">Overlay Color</span>
               </div>
             </div>
           </div>
           <div class="resetRow">
-            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'camera'">Reset Camera</Btn>
+            <MachineBtn type="reset" @click="resetTarget = 'camera'">Reset Camera</MachineBtn>
           </div>
-          </Gate>
         </div>
       </template>
 
       <template #macros>
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
-        <Gate :allow="can.idle">
           <div class="section">
             <div class="sub">User Macros</div>
 
@@ -1079,11 +1075,11 @@ const halStats = computed(() => ({
               <div class="stack-controls fieldGroup">
                 <div class="inputRow">
                   <span class="inputLabel">Name</span>
-                  <input type="text" v-model="editingMacro.name" placeholder="e.g. Face Top" />
+                  <MachineInput gate="macroEdit" type="text" v-model="editingMacro.name" placeholder="e.g. Face Top" />
                 </div>
                 <div class="inputRow">
                   <span class="inputLabel">Command</span>
-                  <input type="text" v-model="editingMacro.command" placeholder="e.g. G0 Z{depth} F{feed}" />
+                  <MachineInput gate="macroEdit" type="text" v-model="editingMacro.command" placeholder="e.g. G0 Z{depth} F{feed}" />
                 </div>
                 <div class="macroParamHint">
                   Use <code>{"{name}"}</code> for parameters. Users will be prompted for values.
@@ -1093,8 +1089,8 @@ const halStats = computed(() => ({
                   <div class="sub">Parameters</div>
                   <div v-for="p in editingMacroParams" :key="p.name" class="macroParamEditRow">
                     <code class="macroParamBadge">{{"{"}}{{ p.name }}{{"}"}}</code>
-                    <input type="text" v-model="p.label" placeholder="Display label" />
-                    <input type="text" v-model="p.default" placeholder="Default value" />
+                    <MachineInput gate="macroEdit" type="text" v-model="p.label" placeholder="Display label" />
+                    <MachineInput gate="macroEdit" type="text" v-model="p.default" placeholder="Default value" />
                   </div>
                 </div>
               </div>
@@ -1104,23 +1100,19 @@ const halStats = computed(() => ({
               </div>
             </div>
 
-            <Btn v-if="!editingMacro && macros.length < 20" variant="primary" @click="addMacro" style="margin-top: var(--gap-section);">Add Macro</Btn>
+            <MachineBtn v-if="!editingMacro && macros.length < 20" type="manage" @click="addMacro" style="margin-top: var(--gap-section);">Add Macro</MachineBtn>
+
           </div>
-        </Gate>
         </div>
       </template>
 
       <template #gamepad>
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
-        <Gate :allow="can.idle">
           <div class="section">
             <div class="sub">Gamepad Jogging</div>
             <div class="settingDesc">Use an Xbox, PlayStation, or standard gamepad to jog the machine.</div>
-            <label class="toggleRow">
-              <input type="checkbox" class="toggle" :checked="props.gamepadConfig?.enabled" @change="emit('setGamepadConfig', { ...props.gamepadConfig!, enabled: ($event.target as HTMLInputElement).checked })" />
-              Enable gamepad jogging
-            </label>
+            <MachineToggle gate="inputConfig" v-model="gpEnabled" label="Enable gamepad jogging" />
           </div>
 
           <div class="sep"></div>
@@ -1137,9 +1129,9 @@ const halStats = computed(() => ({
           <div v-if="props.gamepadConfig?.enabled" class="section">
             <div class="sub">Axis Inversion</div>
             <div class="settingDesc">Flip axis direction if your gamepad moves the wrong way.</div>
-            <label class="toggleRow"><input type="checkbox" class="toggle" :checked="props.gamepadConfig?.invertX" @change="emit('setGamepadConfig', { ...props.gamepadConfig!, invertX: ($event.target as HTMLInputElement).checked })" /> Invert X</label>
-            <label class="toggleRow"><input type="checkbox" class="toggle" :checked="props.gamepadConfig?.invertY" @change="emit('setGamepadConfig', { ...props.gamepadConfig!, invertY: ($event.target as HTMLInputElement).checked })" /> Invert Y</label>
-            <label class="toggleRow"><input type="checkbox" class="toggle" :checked="props.gamepadConfig?.invertZ" @change="emit('setGamepadConfig', { ...props.gamepadConfig!, invertZ: ($event.target as HTMLInputElement).checked })" /> Invert Z</label>
+            <MachineToggle gate="inputConfig" v-model="gpInvertX" label="Invert X" />
+            <MachineToggle gate="inputConfig" v-model="gpInvertY" label="Invert Y" />
+            <MachineToggle gate="inputConfig" v-model="gpInvertZ" label="Invert Z" />
           </div>
 
           <div class="sep" v-if="props.gamepadConfig?.enabled"></div>
@@ -1154,13 +1146,14 @@ const halStats = computed(() => ({
                 <tr v-for="(label, key) in GP_BTN_LABELS" :key="key">
                   <td class="gpMapKey">{{ label }}</td>
                   <td>
-                    <select
+                    <MachineSelect
+                      gate="inputConfig"
                       class="gpActionSelect"
                       v-model="gpMapping[key]"
-                      @change="onGpMappingChanged"
+                      @update:modelValue="onGpMappingChanged"
                     >
                       <option v-for="a in GAMEPAD_ACTIONS" :key="a.value" :value="a.value">{{ a.label }}</option>
-                    </select>
+                    </MachineSelect>
                   </td>
                 </tr>
               </tbody>
@@ -1173,10 +1166,11 @@ const halStats = computed(() => ({
             <div class="sub">Dead Zone & Live Input</div>
             <div class="settingDesc">Ignore stick deflection below this threshold to prevent drift.</div>
             <div class="sliderRow">
-              <input
-                type="range" min="0.05" max="0.50" step="0.01"
-                :value="props.gamepadConfig?.deadZone ?? 0.15"
-                @input="emit('setGamepadConfig', { ...props.gamepadConfig!, deadZone: parseFloat(($event.target as HTMLInputElement).value) })"
+              <MachineSlider
+                gate="inputConfig"
+                :min="0.05" :max="0.50" :step="0.01"
+                :modelValue="props.gamepadConfig?.deadZone ?? 0.15"
+                @update:modelValue="(v: number | undefined) => emit('setGamepadConfig', { ...props.gamepadConfig!, deadZone: v ?? 0.15 })"
               />
               <span class="sliderVal">{{ Math.round((props.gamepadConfig?.deadZone ?? 0.15) * 100) }}%</span>
             </div>
@@ -1187,23 +1181,18 @@ const halStats = computed(() => ({
           </div>
 
           <div class="resetRow">
-            <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'gamepad'">Reset Gamepad</Btn>
+            <MachineBtn type="reset" @click="resetTarget = 'gamepad'">Reset Gamepad</MachineBtn>
           </div>
-        </Gate>
         </div>
       </template>
 
       <template #keyboard>
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
-          <Gate :allow="can.idle">
             <div class="section">
               <div class="sub">Keyboard Shortcuts</div>
               <div class="settingDesc">Allow keyboard keys to control the machine. When disabled, no keyboard shortcuts are active except E-Stop.</div>
-              <label class="toggleRow">
-                <input type="checkbox" class="toggle" v-model="kbConfig.enabled" @change="saveKb()" />
-                Enable keyboard shortcuts
-              </label>
+              <MachineToggle gate="inputConfig" v-model="kbConfig.enabled" @update:modelValue="saveKb()" label="Enable keyboard shortcuts" />
             </div>
 
             <template v-if="kbConfig.enabled">
@@ -1212,10 +1201,7 @@ const halStats = computed(() => ({
               <div class="section">
                 <div class="sub">Keyboard Jogging</div>
                 <div class="settingDesc">Allow jog keys to move axes.</div>
-                <label class="toggleRow">
-                  <input type="checkbox" class="toggle" v-model="kbConfig.jogEnabled" @change="saveKb()" />
-                  Enable keyboard jogging
-                </label>
+                <MachineToggle gate="inputConfig" v-model="kbConfig.jogEnabled" @update:modelValue="saveKb()" label="Enable keyboard jogging" />
               </div>
 
               <div class="sep"></div>
@@ -1267,9 +1253,8 @@ const halStats = computed(() => ({
             </template>
 
             <div class="resetRow">
-              <Btn variant="danger" :disabled="!can.idle" @click="resetTarget = 'keyboard'">Reset Keyboard</Btn>
+              <MachineBtn type="reset" @click="resetTarget = 'keyboard'">Reset Keyboard</MachineBtn>
             </div>
-          </Gate>
         </div>
       </template>
 

@@ -6,9 +6,9 @@
 lcnc-webui/src/     Vue 3 + TypeScript frontend (Vite dev server, port 5173)
 lcnc-gateway/       Python FastAPI + WebSocket backend (uvicorn, port 8000)
 subroutines/        G-code subroutines shipped with the project
-  probe_basic/      44 probing .ngc files (bundled from kcjengr/probe_basic, GPL v3)
-  tool_length_probe/ git submodule → bildobodo/tool_length_probe@lcnc-suite-mods
-  surfacemap/       git submodule → bildobodo/surfacemap_usertab@lcnc-suite-mods
+  probe_basic/      62 probing .ngc files (bundled from kcjengr/probe_basic, GPL v3)
+  tool_length_probe/ bundled from TooTall18T's tool length probe (GPL v3)
+  surfacemap/       bundled from mhubig/surfacemap_usertab (GPL v3)
 ```
 
 Gateway connects to LinuxCNC via Python bindings (`linuxcnc.stat`, `linuxcnc.command`, `linuxcnc.error_channel`). WebUI connects to gateway via WebSocket at `/ws`.
@@ -30,12 +30,16 @@ Gateway connects to LinuxCNC via Python bindings (`linuxcnc.stat`, `linuxcnc.com
 - `toolGeometry.ts` — Shared tool geometry utilities (vertex colors, fallback cylinder)
 - `CameraViewer.vue` — Camera tab with MJPEG feed, SVG crosshair/circle/grid overlay, floating toolbar
 - `SettingsPanel.vue` — Sub-tabbed settings (3D Viewer | Machine | Toolsetter | Display | Camera | Macros | Gamepad | Keyboard | HAL | Debug)
-- `Gate.vue` — Permission gate wrapper: `<fieldset :disabled="!allow">` with `#exempt` slot for always-active controls
-- `permissions.ts` — Centralized button permission system (evaluatePermissions + provide/inject)
+- `Gate.vue` — Permission gate wrapper: `<fieldset :disabled="!allow">` with `#exempt` slot
+- `permissions.ts` — Permission evaluation (evaluatePermissions + provide/inject)
+- `machineControls.ts` — Machine controls catalog: BUTTON_TYPES + INPUT_GATES (single source of truth for permissions + styling)
+- `MachineBtn.vue` — Catalog-aware button (wraps Btn.vue, looks up gate/variant/size from BUTTON_TYPES)
+- `MachineInput.vue`, `MachineToggle.vue`, `MachineSlider.vue`, `MachineSelect.vue`, `MachineRadio.vue`, `MachineColor.vue` — Catalog-aware form controls (look up permission from INPUT_GATES)
+- `Btn.vue` — Internal button component (never used directly in templates — wrapped by MachineBtn)
 - `lcncWs.ts` — WebSocket client, heartbeat, server-authoritative armed state
 - `lcncApi.ts` — REST helpers for file listing and upload
-- `defaults.ts` — localStorage defaults with section registry pattern
-- `style.css` — Global styles/theme vars, button.primary/button.danger
+- `defaults.ts` — Server-synced settings with section registry pattern (no localStorage)
+- `style.css` — Global styles, theme vars, design tokens
 
 ### Main Tabs
 
@@ -126,54 +130,88 @@ Additional safety mechanisms:
 - **Read**: `_hal_read(local_pin, default)` — falls back to default if component unavailable
 - **Fallback**: if component creation fails, `poll_status()` falls back to `hal_get()` (original slow path)
 
-## Permission System
+## Permission System & Machine Controls Catalog
 
-**File**: `permissions.ts` — single source of truth for all button enable/disable logic.
+### Permissions (`permissions.ts`)
 
-**Rule: Every button must be assigned to a permission gate.** Components never compute their own disable conditions — they reference a permission class.
+Single source of truth for all enable/disable logic. Components never compute their own disable conditions.
 
 ```
 base = armed && !estop && enabled
 ```
 
-| Class | Rule | Buttons / Actions |
-|-------|------|-------------------|
-| `idle` | base, idle, !busy | Home, Unhome, Zero, G5x select, file ops |
+| Class | Rule | Usage |
+|-------|------|-------|
+| `always` | unconditional (true) | Arm, E-Stop |
+| `safety` | armed, !estop | Machine On/Off |
+| `idle` | base, idle, !busy | Home, Unhome, file ops, settings management |
 | `jog` | base, idle, homed | Jog buttons, speed slider, keyboard jog |
-| `override` | base, !busy | Feed/Spindle/Rapid override sliders + presets |
-| `ready` | base, idle, !busy, homed | MDI, Cycle Start, Spindle, Coolant, Probe, Tool measure/load, Toolsetter settings |
+| `override` | base, !busy | Feed/Spindle/Rapid overrides, Optional Stop, Block Delete |
+| `ready` | base, idle, !busy, homed | MDI, Cycle Start, Spindle, Coolant, Tool ops, WCS select |
 | `pause` | base, running, !paused | Pause |
 | `resume` | base, paused | Resume |
-| `abort` | base | Abort |
+| `abort` | base | Abort, Shutdown |
+| `probe` | ready, !eoffset | Probe operations (comp active contaminates results) |
+| `zero` | idle, !eoffset | Touch-off (comp active bakes offset into G5x) |
+
+### Machine Controls Catalog (`machineControls.ts`)
+
+Central catalog of every interactive element type — inspired by QtPyVCP's predefined widget types. Each entry defines its permission gate, variant, and size. Components look up their type from the catalog; developers never specify permissions or styling inline.
+
+- **`BUTTON_TYPES`** — 36+ button types (start, abort, probe, close, tab, dialogConfirm, etc.)
+- **`INPUT_GATES`** — 25+ input types (jogSpeed, mdiText, touchoff, feedOverride, etc.)
+
+Machine action types use permission gates (`ready`, `idle`, `probe`, etc.). UI-only types use `gate: 'always'` — they don't gate themselves but are still covered by the outer Gate fieldset.
+
+### Catalog Components (Machine*)
+
+All interactive elements use catalog-aware wrapper components. **Never use `<Btn>` directly in templates** — it's an internal component wrapped by MachineBtn.
+
+| Component | Wraps | Catalog |
+|-----------|-------|---------|
+| `MachineBtn.vue` | `Btn.vue` | `BUTTON_TYPES` — looks up gate, variant, size, icon, muted, inline |
+| `MachineInput.vue` | `<input>` | `INPUT_GATES` — looks up permission from gate prop |
+| `MachineToggle.vue` | toggle input | `INPUT_GATES` |
+| `MachineSlider.vue` | range input | `INPUT_GATES` |
+| `MachineSelect.vue` | `<select>` | `INPUT_GATES` |
+| `MachineRadio.vue` | radio input | `INPUT_GATES` |
+| `MachineColor.vue` | color input | `INPUT_GATES` |
+
+### Gating Architecture — Default-Deny (IEC 62443 / ARINC 661)
+
+Three layers enforce permissions:
+
+1. **Outer Gate** — `<Gate :allow="permissions.safety">` wraps the entire main area (header + panels + dialogs). When disarmed, everything is disabled by browser `<fieldset disabled>` cascade.
+2. **Catalog self-gating** — Each `MachineBtn`/`MachineInput` checks its own permission class for visual dimming (opacity) during normal operation.
+3. **Backend `require_armed()`** — Every motion command in gateway.py checks armed before executing (defense-in-depth).
+
+**DOM layout**: Sidebar and main area are flex siblings — sidebar is always outside the outer Gate, so Arm/E-Stop/Machine On are never locked.
 
 ### Usage — Gate.vue (primary pattern)
 ```vue
-<!-- Wrap a whole section; fieldset :disabled propagates to all children -->
+<!-- Wrap a section; fieldset :disabled propagates to all children -->
 <Gate :allow="can.ready">
-  <button @click="...">Send MDI</button>
-  <input ... />
-</Gate>
-
-<!-- Use #exempt slot for controls that must always work (Abort, E-Stop) -->
-<Gate :allow="can.ready">
-  <template #exempt>
-    <Btn variant="danger" @click="abort">Abort</Btn>
-  </template>
-  <button @click="...">Normal action</button>
+  <MachineBtn type="start" @click="run">Start</MachineBtn>
+  <MachineInput gate="mdiText" v-model="mdi" />
 </Gate>
 ```
 
-### Usage — individual `:disabled` (secondary, intentional cases only)
+### Usage — MachineBtn (catalog-driven)
 ```vue
-const can = usePermissions();
-<!-- JogButton: internal JS guard requires its own :disabled prop -->
+<!-- Gate + variant + size + icon all come from catalog -->
+<MachineBtn type="close" @click="dismiss">×</MachineBtn>
+<MachineBtn type="dialogConfirm" @click="save">Save</MachineBtn>
+<MachineBtn type="tab" :selected="active === 'dro'" @click="active = 'dro'">DRO</MachineBtn>
+```
+
+### When individual `:disabled` is still correct
+```vue
+<!-- JogButton: internal JS guard needs its own :disabled prop -->
 <JogButton :disabled="!can.jog" ... />
 <!-- Tighter permission than parent Gate -->
 <Gate :allow="can.idle">
-  <Btn :disabled="!can.ready" ...>Needs ready inside idle Gate</Btn>
+  <MachineBtn type="mdi" :disabled="!can.ready">Needs ready inside idle Gate</MachineBtn>
 </Gate>
-<!-- Safety-critical buttons outside any Gate (GcodeHUD control row) -->
-<Btn :disabled="!can.abort" @click="abort">Abort</Btn>
 ```
 
 ## Layout Architecture
@@ -197,7 +235,7 @@ const can = usePermissions();
 - Toolsetter settings live in SettingsPanel (Toolsetter sub-tab), tool actions in sidebar Tool popover
 - **Tool geometry**: Per-tool STL files in `machine/tools/`, loaded via `STLLoader`. Fallback: simple cylinder from diameter + length. Vertex colors split cutter (gold) / shaft (silver) by `flute_length` / `shoulder_length` Z thresholds. STL origin convention: tool tip at (0,0,0), extends in +Z.
 - **No `:deep()` visual overrides** — scoped CSS may use `:deep()` for layout properties (flex, width, height, padding) but NEVER for visual properties (background, color, border, box-shadow). Visual overrides bypass Btn.vue's state system. If a button state looks wrong, fix it in Btn.vue.
-- **Gate.vue** — renders `<fieldset :disabled="!allow">` with `.fs-reset` styling (no border/padding). Browser-enforced default-deny: disabled propagates to all descendant inputs, buttons, selects. Use the `#exempt` slot for controls that must always work regardless of gate state (Abort, E-Stop). Spec: `docs/superpowers/specs/2026-03-24-gate-framework-design.md`
+- **Gate.vue** — renders `<fieldset :disabled="!allow">` with `.fs-reset` styling (chrome-only: no border/padding/margin). Browser-enforced default-deny: disabled propagates to all descendants. The outer Gate (`permissions.safety`) wraps the entire main area. `#exempt` slot reserved for safety section only (Arm, E-Stop). All buttons use MachineBtn catalog types; `<Btn>` is never used directly in templates.
 
 ## Pre-Flight Checklist — MANDATORY for every CSS/UI edit
 
@@ -211,7 +249,7 @@ Before writing or modifying ANY CSS or interactive element, verify ALL items:
 
 **Colors** — Use semantic CSS variables (`--ok`, `--danger`, `--warn`, `--accent`, `--fg`, `--bg`, etc.) with `color-mix()`. Never raw hex. Hover tiers: `--hl-hover` (12%), `--hl-selected` (15%), `--hl-active` (20%) — no other percentages.
 
-**Permission gates** — Wrap sections in `<Gate :allow="can.X">` (renders `<fieldset :disabled="!allow">`). Browser propagates disabled to all descendants — no per-element `:disabled` needed inside a Gate. Use the `#exempt` slot for controls that must always work (Abort, E-Stop). Individual `:disabled="!can.X"` is only correct for: JogButton props (internal JS guard), elements with tighter permissions than the parent Gate, and safety buttons in sections without a Gate. Never use `:class="{ inactive: !can.X }"` for permission gating — `.inactive` is reserved for non-permission app-state dimming.
+**Permission gates** — Use `MachineBtn`/`MachineInput`/etc. catalog components for all interactive elements — they self-gate from the catalog. Wrap sections in `<Gate :allow="can.X">` for fieldset-level gating. Never use `<Btn>` directly in templates. Individual `:disabled="!can.X"` is only correct for: JogButton props (internal JS guard) and elements with tighter permissions than the parent Gate. Never use `:class="{ inactive: !can.X }"` for permission gating.
 
 **Global patterns** — Form elements inherit from `style.css` base (component CSS only adds layout). Tables → `.dataTable`. Dialogs → `.dialogOverlay` + `.dialog` + `.dialog-full`. Close buttons → `.btn-icon`. Check existing components before creating new CSS.
 

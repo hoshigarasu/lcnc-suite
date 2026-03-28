@@ -166,17 +166,23 @@ BY USING THIS SOFTWARE, YOU EXPRESSLY ACKNOWLEDGE AND ASSUME ALL RISKS ASSOCIATE
 - Dynamic connection label (local vs. LAN hostname)
 - Error/message panel with persistent log (survives reload), unread count badge, per-message and bulk copy to clipboard, date+time timestamps
 - UI shutdown with confirmation dialog and clean gateway exit
-- Centralized permission system via Vue provide/inject — all button enable/disable logic defined once:
+- **Machine Controls Catalog** — central catalog (`machineControls.ts`) defines every button type and input gate with permission class, variant, and size. Catalog-aware components (`MachineBtn`, `MachineInput`, etc.) look up their permissions automatically — developers never specify permissions inline.
+- **Default-deny gating** — outer `<Gate>` fieldset wraps the entire main area; sidebar safety controls (Arm, E-Stop, Machine On) are DOM siblings, always accessible. Browser `<fieldset disabled>` cascade enforces permissions at the DOM level.
+- **Permission classes** (11 total, defined in `permissions.ts`):
 
-| Class | Rule | Buttons / Actions |
-|-------|------|-------------------|
-| `idle` | base, idle, not busy | Home All, Unhome, Zero X/Y/Z, Zero All, G5x select, file Reload/Unload/Browse/Upload |
-| `jog` | base, idle, homed | Jog X+/X-/Y+/Y-/Z+/Z-, speed slider, increment select, teleop toggle, keyboard jog |
-| `override` | base, not busy | Feed/Spindle/Rapid override sliders + presets, Reset All |
-| `ready` | base, idle, not busy, homed | MDI input + Send, Cycle Start, Spindle FWD/REV/STOP, RPM input, Flood/Mist toggle, all probe buttons + inputs, Toolsetter settings |
+| Class | Rule | Usage |
+|-------|------|-------|
+| `always` | unconditional | Arm, E-Stop |
+| `safety` | armed, not estopped | Machine On/Off |
+| `idle` | base, idle, not busy | Home, Unhome, file ops, settings |
+| `jog` | base, idle, homed | Jog, speed slider, keyboard jog |
+| `override` | base, not busy | Feed/Spindle/Rapid overrides |
+| `ready` | base, idle, not busy, homed | MDI, Cycle Start, Spindle, Coolant, Tool ops, WCS select |
 | `pause` | base, running, not paused | Pause |
 | `resume` | base, paused | Resume |
-| `abort` | armed | Abort |
+| `abort` | base | Abort, Shutdown |
+| `probe` | ready, no eoffset | Probe operations |
+| `zero` | idle, no eoffset | Touch-off / zeroing |
 
 `base` = armed, not estopped, enabled
 

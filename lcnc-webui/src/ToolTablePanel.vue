@@ -145,6 +145,7 @@ watch(() => props.iniFilename, (newIni, oldIni) => {
 const editTool = ref<Tool | null>(null);
 const editForm = ref({
   T: 0,
+  P: 0,
   type: "",
   description: "",
   D: 0,
@@ -167,6 +168,7 @@ function openEdit(tool: Tool) {
   editTool.value = tool;
   editForm.value = {
     T: tool.T,
+    P: tool.P,
     type: tool.type || "",
     description: tool.description || tool.remark || "",
     D: tool.D,
@@ -193,7 +195,7 @@ function openAdd() {
     body_length: null, shaft_diameter: null, taper_angle: null, point_angle: null,
     tip_diameter: null, material: null, holder: null, unit: "" };
   editForm.value = {
-    T: maxT + 1, type: "", description: "", D: 0, Z: 0,
+    T: maxT + 1, P: maxT + 1, type: "", description: "", D: 0, Z: 0,
     flutes: null, oal: null, flute_length: null, corner_radius: null,
     body_length: null, shaft_diameter: null, taper_angle: null, point_angle: null,
     tip_diameter: null, material: "", holder: "",
@@ -204,6 +206,7 @@ function openAdd() {
 function buildToolMsg(form: typeof editForm.value) {
   return {
     tool_number: form.T,
+    pocket: form.P,
     diameter: form.D,
     z_offset: form.Z,
     remark: form.description,
@@ -427,6 +430,8 @@ defineExpose({ openAdd, fetchTools, triggerImport });
                 <div class="sub">General</div>
                 <label>Tool #</label>
                 <MachineInput gate="toolEditNum" type="number" v-model.number="editForm.T" min="1" />
+                <label>Pocket</label>
+                <MachineInput gate="toolEditNum" type="number" v-model.number="editForm.P" min="0" />
                 <label>Type</label>
                 <MachineSelect gate="toolEdit" v-model="editForm.type">
                   <option value="">-</option>
@@ -530,6 +535,7 @@ defineExpose({ openAdd, fetchTools, triggerImport });
         <thead>
           <tr>
             <th class="colT"><button class="sortHeader" @click="toggleSort('T')">T# {{ sortKey === 'T' ? (sortAsc ? '▲' : '▼') : '' }}</button></th>
+            <th class="colSm">P#</th>
             <th class="colNum"><button class="sortHeader" @click="toggleSort('D')">Ø {{ sortKey === 'D' ? (sortAsc ? '▲' : '▼') : '' }}</button></th>
             <th class="colNum"><button class="sortHeader" @click="toggleSort('Z')">Z Offset {{ sortKey === 'Z' ? (sortAsc ? '▲' : '▼') : '' }}</button></th>
             <th class="colType">
@@ -553,6 +559,7 @@ defineExpose({ openAdd, fetchTools, triggerImport });
             <td class="colT">
               <MachineBtn type="toolLoad" @click="requestToolChange(tool.T)">T{{ tool.T }}</MachineBtn>
             </td>
+            <td class="colSm mono">{{ tool.P }}</td>
             <td class="colNum mono">{{ fmtNum(tool.D) }}</td>
             <td class="colNum mono">{{ fmtNum(tool.Z, 6) }}</td>
             <td class="colType">{{ typeLabel(tool.type) }}</td>
@@ -571,7 +578,7 @@ defineExpose({ openAdd, fetchTools, triggerImport });
             </td>
           </tr>
           <tr v-if="!loading && filteredTools.length === 0">
-            <td colspan="8" class="emptyState">No tools loaded. Add tools manually or import a Fusion 360 library.</td>
+            <td colspan="9" class="emptyState">No tools loaded. Add tools manually or import a Fusion 360 library.</td>
           </tr>
         </tbody>
       </table>

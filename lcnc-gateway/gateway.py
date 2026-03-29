@@ -1860,6 +1860,8 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             found = False
             for t in tbl_tools:
                 if t["T"] == tool_num:
+                    if "pocket" in msg:
+                        t["P"] = int(msg["pocket"])
                     if "z_offset" in msg:
                         t["Z"] = float(msg["z_offset"])
                     if "diameter" in msg:
@@ -1902,7 +1904,7 @@ def handle_command(msg: Dict[str, Any], armed: bool):
 
             tbl_tools.append({
                 "T": tool_num,
-                "P": tool_num,
+                "P": int(msg.get("pocket", tool_num)),
                 "Z": float(msg.get("z_offset", 0.0)),
                 "D": float(msg.get("diameter", 0.0)),
                 "remark": str(msg.get("remark", "")),

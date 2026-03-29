@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { usePermissions } from './permissions';
-import { INPUT_GATES, type InputType } from './machineControls';
+import { INPUT_DEFS, type InputType, type InputDef } from './machineControls';
 
 const props = defineProps<{
   gate: InputType;
@@ -10,11 +10,24 @@ const props = defineProps<{
 
 const model = defineModel<string | number>();
 const can = usePermissions();
-const isDisabled = computed(() => !can.value[INPUT_GATES[props.gate]] || props.disabled);
+const def = computed((): InputDef => INPUT_DEFS[props.gate]);
+const isDisabled = computed(() => !can.value[def.value.gate] || props.disabled);
+
+const SIZE_STYLES: Record<string, Record<string, string>> = {
+  sm: { padding: '3px 6px', fontSize: 'var(--fs-sm)' },
+  lg: { padding: '6px 10px', fontSize: 'var(--fs-md)' },
+};
+
+const catalogStyle = computed(() => {
+  const d = def.value;
+  const s: Record<string, string> = {};
+  if (d.size && SIZE_STYLES[d.size]) Object.assign(s, SIZE_STYLES[d.size]);
+  return Object.keys(s).length ? s : undefined;
+});
 </script>
 
 <template>
-  <select v-model="model" :disabled="isDisabled">
+  <select v-model="model" :style="catalogStyle" :disabled="isDisabled">
     <slot />
   </select>
 </template>

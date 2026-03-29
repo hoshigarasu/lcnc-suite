@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { usePermissions } from './permissions';
-import { INPUT_GATES, type InputType } from './machineControls';
+import { INPUT_DEFS, type InputType } from './machineControls';
 
 const props = defineProps<{
   gate: InputType;
@@ -12,7 +12,8 @@ const props = defineProps<{
 
 const model = defineModel<string | number>();
 const can = usePermissions();
-const isDisabled = computed(() => !can.value[INPUT_GATES[props.gate]] || props.disabled);
+const def = computed(() => INPUT_DEFS[props.gate]);
+const isDisabled = computed(() => !can.value[def.value.gate] || props.disabled);
 </script>
 
 <template>

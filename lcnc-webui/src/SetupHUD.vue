@@ -97,8 +97,5 @@ function updateTouchoff(axis: number, val: number) {
 
 .axisRow input {
   width: 60px;
-  text-align: right;
-  font-size: var(--fs-sm);
-  padding: 3px 6px;
 }
 </style>

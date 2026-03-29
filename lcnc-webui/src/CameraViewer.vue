@@ -280,10 +280,5 @@ CAMERA_SOURCE = rtsp://&lt;host&gt;/live      # IP camera</pre>
 .camColorPicker {
   width: 28px;
   height: 28px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  background: none;
 }
 </style>

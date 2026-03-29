@@ -75,33 +75,33 @@
           <div class="popHeader"><span class="popTitle">Workpiece</span><MachineBtn type="close" @click="openPill = null">&times;</MachineBtn></div>
           <div class="inputRow">
             <label class="inputLabel">Size X</label>
-            <MachineInput gate="viewerSetting" type="number" class="numInput" v-model.number="localSize[0]"
+            <MachineInput gate="viewerSettingNum" type="number" class="numInput" v-model.number="localSize[0]"
               @change="commitSize(0)" :step="STEP_DEFAULT" min="0" max="9999" />
           </div>
           <div class="inputRow">
             <label class="inputLabel">Size Y</label>
-            <MachineInput gate="viewerSetting" type="number" class="numInput" v-model.number="localSize[1]"
+            <MachineInput gate="viewerSettingNum" type="number" class="numInput" v-model.number="localSize[1]"
               @change="commitSize(1)" :step="STEP_DEFAULT" min="0" max="9999" />
           </div>
           <div class="inputRow">
             <label class="inputLabel">Size Z</label>
-            <MachineInput gate="viewerSetting" type="number" class="numInput" v-model.number="localSize[2]"
+            <MachineInput gate="viewerSettingNum" type="number" class="numInput" v-model.number="localSize[2]"
               @change="commitSize(2)" :step="STEP_DEFAULT" min="0" max="9999" />
           </div>
           <div class="sep"></div>
           <div class="inputRow">
             <label class="inputLabel">Offset X</label>
-            <MachineInput gate="viewerSetting" type="number" class="numInput" v-model.number="localOffset[0]"
+            <MachineInput gate="viewerSettingNum" type="number" class="numInput" v-model.number="localOffset[0]"
               @change="commitOffset(0)" :step="STEP_DEFAULT" min="-9999" max="9999" />
           </div>
           <div class="inputRow">
             <label class="inputLabel">Offset Y</label>
-            <MachineInput gate="viewerSetting" type="number" class="numInput" v-model.number="localOffset[1]"
+            <MachineInput gate="viewerSettingNum" type="number" class="numInput" v-model.number="localOffset[1]"
               @change="commitOffset(1)" :step="STEP_DEFAULT" min="-9999" max="9999" />
           </div>
           <div class="inputRow">
             <label class="inputLabel">Offset Z</label>
-            <MachineInput gate="viewerSetting" type="number" class="numInput" v-model.number="localOffset[2]"
+            <MachineInput gate="viewerSettingNum" type="number" class="numInput" v-model.number="localOffset[2]"
               @change="commitOffset(2)" :step="STEP_DEFAULT" min="-9999" max="9999" />
           </div>
         </div>
@@ -311,9 +311,6 @@ function togglePill(name: string) {
 
 .numInput {
   flex: 1;
-  padding: 4px 6px;
-  font-size: var(--fs-sm);
-  border-radius: var(--radius-md);
   max-width: 72px;
 }
 

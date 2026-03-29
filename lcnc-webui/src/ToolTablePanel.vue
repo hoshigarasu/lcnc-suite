@@ -364,6 +364,25 @@ function triggerImport() {
   importInputRef.value?.click();
 }
 
+// ---- Hover preview ----
+const hoverTool = ref<Tool | null>(null);
+const hoverPos = ref({ x: 0, y: 0 });
+let hoverTimer = 0;
+
+function onToolEnter(tool: Tool, e: MouseEvent) {
+  clearTimeout(hoverTimer);
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  hoverTimer = window.setTimeout(() => {
+    hoverPos.value = { x: rect.right + 8, y: rect.top };
+    hoverTool.value = tool;
+  }, 300);
+}
+
+function onToolLeave() {
+  clearTimeout(hoverTimer);
+  hoverTool.value = null;
+}
+
 defineExpose({ openAdd, fetchTools, triggerImport });
 </script>
 
@@ -556,7 +575,9 @@ defineExpose({ openAdd, fetchTools, triggerImport });
             :key="tool.T"
             :class="{ activeTool: tool.T === currentTool }"
           >
-            <td class="colT">
+            <td class="colT"
+                @mouseenter="onToolEnter(tool, $event)"
+                @mouseleave="onToolLeave">
               <MachineBtn type="toolLoad" @click="requestToolChange(tool.T)">T{{ tool.T }}</MachineBtn>
             </td>
             <td class="colSm mono">{{ tool.P }}</td>
@@ -583,6 +604,27 @@ defineExpose({ openAdd, fetchTools, triggerImport });
         </tbody>
       </table>
     </div>
+
+    <!-- Hover tool preview -->
+    <Teleport to="body">
+      <div v-if="hoverTool" class="toolHoverPreview"
+           :style="{ left: hoverPos.x + 'px', top: hoverPos.y + 'px' }">
+        <ToolPreview
+          :diameter="hoverTool.D || 6"
+          :length="hoverTool.oal || Math.abs(hoverTool.Z) || 50"
+          :flute-length="hoverTool.flute_length || (hoverTool.oal || 50) * 0.6"
+          :shaft-diameter="hoverTool.shaft_diameter ?? undefined"
+          :tool-type="hoverTool.type || 'other'"
+          :corner-radius="hoverTool.corner_radius ?? undefined"
+          :taper-angle="hoverTool.taper_angle ?? undefined"
+          :point-angle="hoverTool.point_angle ?? undefined"
+          :tip-diameter="hoverTool.tip_diameter ?? undefined"
+          :body-length="hoverTool.body_length ?? undefined"
+          :width="100"
+          :height="160"
+        />
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -807,5 +849,18 @@ defineExpose({ openAdd, fetchTools, triggerImport });
   text-align: center;
   opacity: var(--opacity-muted);
   font-size: var(--fs-md);
+}
+</style>
+
+<style>
+.toolHoverPreview {
+  position: fixed;
+  z-index: 1000;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--gap-controls);
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 </style>

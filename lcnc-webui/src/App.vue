@@ -361,6 +361,19 @@ const rapidOverrideValue = computed(() => {
 });
 const feedOvrEnabled = computed(() => st.value.feed_override_enabled !== false);
 const spindleOvrEnabled = computed(() => st.value.spindle_override_enabled !== false);
+
+const taskMode = computed(() => st.value.task_mode ?? 0);
+const activeGcodes = computed(() => {
+  const codes = st.value.gcodes;
+  if (!codes || !Array.isArray(codes)) return "";
+  return codes.filter((c: number) => c !== -1).map((c: number) => `G${(c / 10).toFixed(c % 10 ? 1 : 0)}`).join(" ");
+});
+const activeMcodes = computed(() => {
+  const codes = st.value.mcodes;
+  if (!codes || !Array.isArray(codes)) return "";
+  return codes.filter((c: number) => c !== -1).map((c: number) => `M${c}`).join(" ");
+});
+
 // Tool change dialog (global — tool changes can happen from any context)
 const toolChangeRequested = computed(() => !!st.value.tool_change_requested);
 const toolChangeTool = computed(() => st.value.tool_change_tool ?? null);
@@ -1391,6 +1404,15 @@ watch(isHomed, (nowHomed, wasHomed) => {
         :isHomed="isHomed"
         :canEstop="canEstop"
         :canResetEstop="canResetEstop"
+        :isTeleop="isTeleop"
+        :taskMode="taskMode"
+        :interpState="interpState"
+        :feedOverride="feedOverrideValue"
+        :spindleOverride="spindleOverrideValue"
+        :rapidOverride="rapidOverrideValue"
+        :gcodes="activeGcodes"
+        :mcodes="activeMcodes"
+        :elapsed="elapsedDisplay"
         @arm="arm"
         @estop="send({ cmd: 'estop' })"
         @estop-reset="send({ cmd: 'estop_reset' })"

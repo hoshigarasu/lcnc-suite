@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 import Gate from "./Gate.vue";
 import MachineBtn from "./MachineBtn.vue";
 import MachineInput from "./MachineInput.vue";
+import MachineToggle from "./MachineToggle.vue";
 import JogHUD from "./JogHUD.vue";
 
 type StripMode = "jog" | "mdi" | "program";
@@ -22,7 +23,6 @@ const props = defineProps<{
   iniIncrements: number[] | null;
   isTeleop: boolean;
   isHomed: boolean;
-  homedJoints: boolean[];
   jogDisabled: boolean;
   // MDI
   mdiText: string;
@@ -54,6 +54,8 @@ const emit = defineEmits<{
   (e: "abort"): void;
   (e: "toggleOptionalStop"): void;
   (e: "toggleBlockDelete"): void;
+  (e: "loadFile", path: string): void;
+  (e: "unloadFile"): void;
 }>();
 
 // ─── MDI History ─────────────────────────────────────────────
@@ -111,6 +113,8 @@ const fileName = computed(() => {
   const parts = props.activeFile.split("/");
   return parts[parts.length - 1] ?? props.activeFile;
 });
+
+const hasFile = computed(() => !!props.activeFile);
 </script>
 
 <template>
@@ -146,29 +150,33 @@ const fileName = computed(() => {
     </div>
 
     <!-- ═══ MDI VIEW ═══ -->
-    <div v-show="mode === 'mdi'" class="modeContent">
+    <div v-show="mode === 'mdi'" class="modeContent mdiContent">
       <Gate gate="ready" class="mdiLayout">
-        <div class="mdiRow">
-          <MachineInput
-            gate="mdiText"
-            type="text"
-            class="mdiInput"
-            :value="mdiText"
-            @input="emit('update:mdiText', ($event.target as HTMLInputElement).value)"
-            @keyup.enter="handleSend"
-            @keydown="onMdiKeydown"
-            placeholder="G-code command..."
-          />
-          <MachineBtn type="mdi" @click="handleSend">Send</MachineBtn>
-        </div>
+        <!-- History above -->
         <div class="mdiHistoryList scroll-thin">
           <button v-for="(cmd, i) in history" :key="i" class="mdiHistoryItem"
                :class="{ active: historyIndex === i }"
                @click="emit('update:mdiText', cmd)">{{ cmd }}</button>
-          <div v-if="history.length === 0" class="mdiHistoryEmpty">No history yet</div>
+          <div v-if="history.length === 0" class="mdiHistoryEmpty">Type a G-code command below</div>
         </div>
-        <div class="mdiFooter">
-          <MachineBtn type="inline" @click="clearHistory" :disabled="history.length === 0">Clear History</MachineBtn>
+        <!-- Input at bottom -->
+        <div class="mdiBottom">
+          <div class="mdiRow">
+            <MachineInput
+              gate="mdiText"
+              type="text"
+              class="mdiInput"
+              :value="mdiText"
+              @input="emit('update:mdiText', ($event.target as HTMLInputElement).value)"
+              @keyup.enter="handleSend"
+              @keydown="onMdiKeydown"
+              placeholder="G-code command..."
+            />
+            <MachineBtn type="mdi" @click="handleSend">Send</MachineBtn>
+          </div>
+          <div class="mdiActions">
+            <MachineBtn type="inline" @click="clearHistory" :disabled="history.length === 0">Clear History</MachineBtn>
+          </div>
         </div>
       </Gate>
     </div>
@@ -176,29 +184,40 @@ const fileName = computed(() => {
     <!-- ═══ PROGRAM VIEW ═══ -->
     <div v-show="mode === 'program'" class="modeContent">
       <Gate gate="safety" class="prgLayout">
-        <div class="prgFile">{{ fileName }}</div>
+        <!-- File info -->
+        <div class="prgFileRow">
+          <span class="prgFile" :title="activeFile ?? ''">{{ fileName }}</span>
+          <span v-if="hasFile" class="prgElapsed">{{ elapsed }}</span>
+        </div>
+
+        <!-- Main controls -->
         <div class="prgBtns">
-          <MachineBtn type="start" @click="emit('cycleStart')" :disabled="!activeFile">Start</MachineBtn>
-          <MachineBtn type="step" @click="emit('cycleStep')" :disabled="!activeFile">Step</MachineBtn>
+          <MachineBtn type="start" @click="emit('cycleStart')" :disabled="!hasFile" block>
+            Start
+          </MachineBtn>
+          <MachineBtn type="step" @click="emit('cycleStep')" :disabled="!hasFile" block>
+            Step
+          </MachineBtn>
           <MachineBtn
             :type="isPaused ? 'resume' : 'pause'"
             @click="isPaused ? emit('cycleResume') : emit('cyclePause')"
             :disabled="!isRunning && !isPaused"
+            block
           >{{ isPaused ? 'Resume' : 'Pause' }}</MachineBtn>
-          <MachineBtn type="abort" @click="emit('abort')">Stop</MachineBtn>
+          <MachineBtn type="abort" @click="emit('abort')" block>
+            Stop
+          </MachineBtn>
         </div>
-        <div class="prgInfo">
-          <span class="prgElapsed">{{ elapsed }}</span>
-        </div>
+
+        <!-- Toggles -->
         <div class="prgToggles">
-          <label class="prgToggle">
-            <input type="checkbox" :checked="optionalStop" @change="emit('toggleOptionalStop')" />
-            Opt Stop
-          </label>
-          <label class="prgToggle">
-            <input type="checkbox" :checked="blockDelete" @change="emit('toggleBlockDelete')" />
-            Blk Delete
-          </label>
+          <MachineToggle gate="optionalStop" :modelValue="optionalStop" @update:modelValue="emit('toggleOptionalStop')" label="Opt Stop" />
+          <MachineToggle gate="blockDelete" :modelValue="blockDelete" @update:modelValue="emit('toggleBlockDelete')" label="Blk Del" />
+        </div>
+
+        <!-- Home if needed -->
+        <div v-if="!isHomed" class="prgHome">
+          <MachineBtn type="home" @click="emit('homeAll')" block>Home All</MachineBtn>
         </div>
       </Gate>
     </div>
@@ -223,21 +242,16 @@ const fileName = computed(() => {
   overflow: hidden;
 }
 
+/* MDI needs fixed height so it doesn't collapse when empty */
+.mdiContent {
+  min-height: 180px;
+}
+
 /* ── MDI ── */
 .mdiLayout {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-tight);
   height: 100%;
-}
-.mdiRow {
-  display: flex;
-  gap: var(--gap-tight);
-  flex-shrink: 0;
-}
-.mdiInput {
-  flex: 1;
-  font-family: var(--font-mono);
 }
 .mdiHistoryList {
   overflow-y: auto;
@@ -261,13 +275,28 @@ const fileName = computed(() => {
   background: var(--hl-hover);
 }
 .mdiHistoryEmpty {
-  padding: var(--gap-controls);
+  padding: var(--gap-panel);
   text-align: center;
   opacity: var(--opacity-muted);
   font-size: var(--fs-sm);
 }
-.mdiFooter {
+.mdiBottom {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-tight);
+  padding-top: var(--gap-tight);
+  border-top: 1px solid var(--border);
+}
+.mdiRow {
+  display: flex;
+  gap: var(--gap-tight);
+}
+.mdiInput {
+  flex: 1;
+  font-family: var(--font-mono);
+}
+.mdiActions {
   display: flex;
   justify-content: flex-end;
 }
@@ -278,6 +307,12 @@ const fileName = computed(() => {
   flex-direction: column;
   gap: var(--gap-controls);
 }
+.prgFileRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-controls);
+}
 .prgFile {
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
@@ -285,30 +320,24 @@ const fileName = computed(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.prgBtns {
-  display: flex;
-  gap: var(--gap-tight);
-  flex-wrap: wrap;
-}
-.prgInfo {
-  display: flex;
-  gap: var(--gap-controls);
-  align-items: center;
+  min-width: 0;
 }
 .prgElapsed {
   font-family: var(--font-mono);
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  flex-shrink: 0;
+}
+.prgBtns {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--gap-tight);
 }
 .prgToggles {
   display: flex;
   gap: var(--gap-section);
 }
-.prgToggle {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-tight);
-  font-size: var(--fs-sm);
-  cursor: pointer;
+.prgHome {
+  margin-top: var(--gap-tight);
 }
 </style>

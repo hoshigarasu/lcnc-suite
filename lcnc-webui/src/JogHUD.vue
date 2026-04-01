@@ -309,8 +309,9 @@ function stopJog(s: Sector, e?: PointerEvent) {
 <style scoped>
 .jogHud {
   display: flex;
-  flex-direction: column;
-  gap: var(--gap-tight);
+  flex-direction: row;
+  gap: var(--gap-section);
+  height: 100%;
 }
 
 /* ---- Control grid (label | slider/buttons | readout) ---- */
@@ -319,6 +320,8 @@ function stopJog(s: Sector, e?: PointerEvent) {
   grid-template-columns: auto 1fr 80px;
   gap: var(--gap-tight) var(--gap-controls);
   align-items: center;
+  align-content: start;
+  min-width: 240px;
 }
 
 .k {
@@ -348,9 +351,11 @@ function stopJog(s: Sector, e?: PointerEvent) {
 /* ---- Wheel + Z layout ---- */
 .jogArea {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: var(--gap-controls);
+  flex-shrink: 0;
 }
 
 .jogMain {
@@ -363,16 +368,6 @@ function stopJog(s: Sector, e?: PointerEvent) {
   display: flex;
   gap: var(--gap-tight);
   justify-content: center;
-}
-
-/* Landscape: stack extra axes below wheel+Z */
-@media (orientation: landscape) {
-  .jogArea { flex-direction: column; }
-}
-
-/* Portrait: flat row */
-@media (orientation: portrait) {
-  .jogArea { flex-direction: row; }
 }
 
 .jogwheel {

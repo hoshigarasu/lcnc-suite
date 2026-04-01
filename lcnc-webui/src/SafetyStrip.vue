@@ -27,34 +27,35 @@ const estopLabel = computed(() => props.isEstop ? "Reset" : "E-Stop");
 
 <template>
   <div class="safetyStrip">
-    <Gate gate="always">
-      <div class="safetyBtns">
-        <MachineBtn
-          type="arm"
-          :variant="armed ? 'ok' : 'default'"
-          :disabled="busy"
-          :title="armed ? 'Disarm' : 'Arm'"
-          @click="emit('arm', !armed)"
-          block
-        >
-          <component :is="armed ? LockOpen : Lock" class="safetyIcon" />
-          <span class="safetyLabel">{{ armed ? 'Armed' : 'Disarmed' }}</span>
-        </MachineBtn>
+    <Gate gate="always" class="safetyGate">
+      <MachineBtn
+        type="arm"
+        :variant="armed ? 'ok' : 'default'"
+        :disabled="busy"
+        :title="armed ? 'Disarm' : 'Arm'"
+        @click="emit('arm', !armed)"
+        block
+      >
+        <component :is="armed ? LockOpen : Lock" class="safetyIcon" />
+      </MachineBtn>
 
-        <MachineBtn
-          type="estop"
-          :flashing="isEstop"
-          :disabled="!(isEstop ? canResetEstop : canEstop)"
-          @click="isEstop ? emit('estopReset') : emit('estop')"
-          block
-        >
-          <TriangleAlert class="safetyIcon" />
-          <span class="safetyLabel">{{ estopLabel }}</span>
-        </MachineBtn>
-      </div>
+      <div class="safetySep"></div>
+
+      <MachineBtn
+        type="estop"
+        :flashing="isEstop"
+        :disabled="!(isEstop ? canResetEstop : canEstop)"
+        @click="isEstop ? emit('estopReset') : emit('estop')"
+        block
+      >
+        <TriangleAlert class="safetyIcon" />
+        <span class="safetyLabel">{{ estopLabel }}</span>
+      </MachineBtn>
+
+      <div class="safetySep"></div>
     </Gate>
 
-    <Gate gate="safety">
+    <Gate gate="safety" class="safetyGate">
       <MachineBtn
         type="machineOn"
         :variant="isEnabled ? 'ok' : 'default'"
@@ -67,9 +68,9 @@ const estopLabel = computed(() => props.isEstop ? "Reset" : "E-Stop");
     </Gate>
 
     <div class="stripStatus">
-      <span class="statusDot" :class="{ on: !isEstop }" title="E-Stop"></span>
-      <span class="statusDot" :class="{ on: isEnabled }" title="Enabled"></span>
-      <span class="statusDot" :class="{ on: isHomed }" title="Homed"></span>
+      <span class="statusDot" :class="{ on: !isEstop }" title="E-Stop clear"></span>
+      <span class="statusDot" :class="{ on: isEnabled }" title="Machine enabled"></span>
+      <span class="statusDot" :class="{ on: isHomed }" title="All homed"></span>
     </div>
   </div>
 </template>
@@ -78,23 +79,26 @@ const estopLabel = computed(() => props.isEstop ? "Reset" : "E-Stop");
 .safetyStrip {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-tight);
+  gap: var(--gap-controls);
   align-items: stretch;
-  width: 90px;
+  width: 120px;
   flex-shrink: 0;
 }
-.safetyBtns {
+.safetyGate {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-tight);
-  flex: 1;
+  gap: var(--gap-controls);
+}
+.safetySep {
+  height: 1px;
+  background: var(--border);
 }
 .safetyIcon {
-  width: var(--fs-xl);
-  height: var(--fs-xl);
+  width: 20px;
+  height: 20px;
 }
 .safetyLabel {
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-sm);
 }
 .stripStatus {
   display: flex;

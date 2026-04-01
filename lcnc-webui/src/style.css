@@ -542,9 +542,8 @@ label:has(input:disabled, select:disabled) {
 
 /* ---- Dialogs ---- */
 .dialogOverlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  padding-left: var(--sidebar-total, 0px);
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;

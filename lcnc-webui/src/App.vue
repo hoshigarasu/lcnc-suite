@@ -1,28 +1,26 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, provide, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, provide, reactive, ref, watch } from "vue";
 import { evaluatePermissions, PERMISSIONS_KEY } from "./permissions";
 import { connectWs, connected, status, send, armed, lastReply, viewerGcode, viewerInit, lcncError, latency, networkLatency, messages, unreadCount, dismissMessage, clearAllMessages, markMessagesRead, type LcncMessage } from "./lcncWs";
 import ThreeViewer from "./ThreeViewer.vue";
 import Toolbar from "./Toolbar.vue";
 import TabPanel from "./TabPanel.vue";
-import ManualPanel from "./ManualPanel.vue";
 import GcodePanel from "./GcodePanel.vue";
+import SafetyStrip from "./SafetyStrip.vue";
+import ControlsStrip from "./ControlsStrip.vue";
+import ModeStrip from "./ModeStrip.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import ToolTablePanel from "./ToolTablePanel.vue";
 import ProbePanel from "./ProbePanel.vue";
-import CameraViewer from "./CameraViewer.vue";
 import Gate from "./Gate.vue";
 import MachineBtn from "./MachineBtn.vue";
-import MachineInput from "./MachineInput.vue";
-import MachineSlider from "./MachineSlider.vue";
-import { LocateFixed, SlidersHorizontal, Gauge, MessageSquare, RotateCw, RotateCcw, Square, Droplets, Drill, CodeXml, Lock, LockOpen, TriangleAlert, Power, PowerOff, Gamepad2, BookOpen, ClipboardCopy, Expand, Shrink } from "lucide-vue-next";
+import { SlidersHorizontal, MessageSquare, PowerOff, Gamepad2, BookOpen, ClipboardCopy, Expand, Shrink } from "lucide-vue-next";
 import GcodeReferenceDialog from "./GcodeReferenceDialog.vue";
-import { loadViewerDefaults, saveViewerDefaults, loadPanelsDefaults, savePanelsDefaults, MAX_PANELS, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, loadMacrosDefaults, loadGamepadDefaults, saveGamepadDefaults, loadKeyboardDefaults, saveKeyboardDefaults, settingsVersion, type ThemeMode, type MacroDef, type GamepadDefaults, type KeyboardDefaults, type KeyboardAction, type Layer, type TrackMode, type Projection, type Vec3, STEP_DEFAULT, STEP_RPM, STEP_OVERRIDE, STEP_RAPID_OVERRIDE } from "./defaults";
+import { loadViewerDefaults, saveViewerDefaults, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, loadMacrosDefaults, loadGamepadDefaults, saveGamepadDefaults, loadKeyboardDefaults, saveKeyboardDefaults, settingsVersion, type ThemeMode, type MacroDef, type GamepadDefaults, type KeyboardDefaults, type KeyboardAction, type Layer, type TrackMode, type Projection, type Vec3 } from "./defaults";
 import { useGamepad } from "./useGamepad";
 import {
   INTERP_IDLE, INTERP_READING, INTERP_PAUSED, INTERP_WAITING,
   TRAJ_MODE_FREE, TRAJ_MODE_TELEOP,
-  TASK_MODE_MANUAL, TASK_MODE_AUTO, TASK_MODE_MDI,
   SPINDLE_FORWARD, SPINDLE_REVERSE,
 } from "./lcnc";
 
@@ -140,45 +138,17 @@ const bannerText = computed(() => {
 
 function reloadPage() { location.reload(); }
 
-/** ---------- tab definitions ---------- */
-const tabs = [
+/** ---------- content tab definitions ---------- */
+const contentTabs = [
   { id: "viewer", label: "3D Viewer" },
-  { id: "manual", label: "Manual Control" },
   { id: "gcode", label: "Program" },
   { id: "probe", label: "Probing" },
-  { id: "camera", label: "Camera" },
+  { id: "tools", label: "Tool Table" },
 ];
 
-/** ---------- dynamic panels ---------- */
-let _nextPanelId = 0;
+const activeTab = ref("viewer");
 
-const _pd = loadPanelsDefaults();
-const panels = ref(_pd.tabs.slice(0, MAX_PANELS).map(tab => ({ id: _nextPanelId++, tab })));
-
-
-const viewerRefs = new Map<number, any>();
-
-function setViewerRef(panelId: number, el: any) {
-  if (el) viewerRefs.set(panelId, el);
-  else viewerRefs.delete(panelId);
-}
-
-function addPanel() {
-  if (panels.value.length >= MAX_PANELS) return;
-  panels.value.push({ id: _nextPanelId++, tab: "manual" });
-}
-
-function removePanel(panelId: number) {
-  if (panels.value.length <= 1 || panels.value[0]!.id === panelId) return;
-  panels.value = panels.value.filter(p => p.id !== panelId);
-  viewerRefs.delete(panelId);
-}
-
-
-watch(
-  () => panels.value.map(p => p.tab),
-  (tabs) => savePanelsDefaults({ tabs })
-);
+const viewerRef = ref<any>(null);
 
 /** ---------- local UI state ---------- */
 const connLabel = computed(() => {
@@ -246,11 +216,13 @@ const workPos = computed<number[]>(() => {
   return Array.isArray(data.work_pos) ? data.work_pos : [];
 });
 
+// @ts-ignore TS6133 — kept for future use
 const machinePos = computed<number[]>(() => {
   const data = st.value ?? {};
   return Array.isArray(data.machine_pos) ? data.machine_pos : [];
 });
 
+// @ts-ignore TS6133 — kept for future use
 const dtg = computed<number[]>(() => {
   const data = st.value ?? {};
   return Array.isArray(data.dtg) ? data.dtg : [];
@@ -374,100 +346,6 @@ const g5xLabel = computed(() => {
   return `G5x[${idx}]`;
 });
 
-const hasRotation = computed(() => {
-  const rot = st.value.rotation_xy;
-  if (rot != null && rot !== 0) return true;
-  const activeRow = wcsTable.value.find(r => r.name === g5xLabel.value);
-  return activeRow != null && activeRow.r !== 0;
-});
-
-const hasOffsetWarning = computed(() => hasRotation.value || !!st.value.eoffset_enabled);
-
-function fmtOff(v: number | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "0.0000";
-  return v.toFixed(4);
-}
-
-// WCS offset table (fetched on demand when popover opens)
-type WcsRow = { name: string; [axis: string]: string | number };
-const wcsTable = ref<WcsRow[]>([]);
-const selectedWcs = ref<string | null>(null);
-const offsetColumns = computed(() => [...axes.value.map(l => l.toLowerCase()), "r"]);
-
-function fetchWcsTable() {
-  send({ cmd: "get_wcs_table" });
-}
-
-// Reset selection to active WCS when popover opens
-function openOffsetsPopover() {
-  toggleChip("offsets");
-  if (openChip.value === "offsets") {
-    selectedWcs.value = g5xLabel.value;
-    fetchWcsTable();
-  }
-}
-
-function clearWcs(target: string) {
-  send({ cmd: "clear_wcs", target });
-  // Local zero for instant feedback; gateway reply will confirm with full table
-  const zeroed = Object.fromEntries(offsetColumns.value.map(k => [k, 0]));
-  if (target === "all") {
-    wcsTable.value = wcsTable.value.map(row => ({ ...row, ...zeroed }));
-  } else {
-    wcsTable.value = wcsTable.value.map(row =>
-      row.name === target ? { ...row, ...zeroed } : row
-    );
-  }
-}
-
-// Inline cell editing
-const editingCell = ref<{ wcs: string; axis: string } | null>(null);
-const editValue = ref("");
-const offsetInputRef = ref<HTMLInputElement | null>(null);
-
-function startEditCell(wcs: string, axis: string, current: number) {
-  if (!permissions.value.ready) return;
-  editingCell.value = { wcs, axis };
-  editValue.value = current.toFixed(4);
-  nextTick(() => {
-    const el = Array.isArray(offsetInputRef.value) ? offsetInputRef.value[0] : offsetInputRef.value;
-    el?.focus();
-  });
-}
-
-function commitCell(wcs: string, axis: string) {
-  if (!editingCell.value) return;
-  const val = parseFloat(editValue.value);
-  editingCell.value = null;
-  if (isNaN(val)) return;
-  send({ cmd: "set_wcs", target: wcs, [axis]: val });
-  const row = wcsTable.value.find(r => r.name === wcs);
-  if (row) (row as any)[axis] = val;
-}
-
-function cancelEdit() { editingCell.value = null; }
-
-// Capture WCS table replies (sync flush to avoid missing rapid updates)
-watch(lastReply, (r) => {
-  if (r?.ok && r.table) wcsTable.value = r.table;
-}, { flush: "sync" });
-
-const taskModeLabel = computed(() => {
-  const mode = st.value.task_mode;
-  if (mode === TASK_MODE_MANUAL) return "MANUAL";
-  if (mode === TASK_MODE_AUTO) return "AUTO";
-  if (mode === TASK_MODE_MDI) return "MDI";
-  return "-";
-});
-
-// Interpreter state label
-const interpStateLabel = computed(() => {
-  if (isPaused.value) return "PAUSED";
-  if (isRunning.value) return "RUNNING";
-  if (isIdle.value) return "IDLE";
-  return "-";
-});
-
 // Override values (raw 0.0-2.0 scale) - with NaN handling
 const feedOverrideValue = computed(() => {
   const val = st.value.feed_override;
@@ -481,13 +359,8 @@ const rapidOverrideValue = computed(() => {
   const val = st.value.rapid_override;
   return (val != null && Number.isFinite(val)) ? val : 1.0;
 });
-const overridesActive = computed(() =>
-  feedOverrideValue.value !== 1.0 || spindleOverrideValue.value !== 1.0 || rapidOverrideValue.value !== 1.0
-);
 const feedOvrEnabled = computed(() => st.value.feed_override_enabled !== false);
 const spindleOvrEnabled = computed(() => st.value.spindle_override_enabled !== false);
-const overridesDisabled = computed(() => !feedOvrEnabled.value || !spindleOvrEnabled.value);
-
 // Tool change dialog (global — tool changes can happen from any context)
 const toolChangeRequested = computed(() => !!st.value.tool_change_requested);
 const toolChangeTool = computed(() => st.value.tool_change_tool ?? null);
@@ -504,8 +377,6 @@ function confirmCompToggle() {
 }
 function cancelCompToggle() { compConfirmPending.value = null; }
 
-// Status chip popovers (click-to-toggle, only one open at a time)
-const openChip = ref<string | null>(null);
 const feedSlider = ref(100);
 const spindleSlider = ref(100);
 const rapidSlider = ref(100);
@@ -514,10 +385,6 @@ watch(feedOverrideValue, (val) => { if (Number.isFinite(val)) feedSlider.value =
 watch(spindleOverrideValue, (val) => { if (Number.isFinite(val)) spindleSlider.value = Math.round(val * 100); });
 watch(rapidOverrideValue, (val) => { if (Number.isFinite(val)) rapidSlider.value = Math.round(val * 100); });
 
-function toggleChip(chip: string) {
-  closeAllDialogs();
-  openChip.value = openChip.value === chip ? null : chip;
-}
 function onFeedChange() { setFeedOverride(feedSlider.value / 100); }
 function onSpindleSliderChange() { setSpindleOverride(spindleSlider.value / 100); }
 function onRapidChange() { setRapidOverride(rapidSlider.value / 100); }
@@ -531,29 +398,6 @@ function resetAllOverrides() {
   spindleSlider.value = 100; onSpindleSliderChange();
   rapidSlider.value = 100; onRapidChange();
 }
-
-// Active modal codes
-const activeGcodes = computed(() => {
-  const raw = st.value.gcodes;
-  if (!Array.isArray(raw)) return "-";
-  return raw
-    .slice(1)  // index 0 is N-word sequence number, not a G-code
-    .filter((v: number) => v >= 0)
-    .sort((a: number, b: number) => a - b)
-    .map((v: number) => `G${(v / 10).toFixed(v % 10 ? 1 : 0)}`)
-    .join(" ") || "-";
-});
-
-const activeMcodes = computed(() => {
-  const raw = st.value.mcodes;
-  if (!Array.isArray(raw)) return "-";
-  return raw
-    .slice(1)  // index 0 is N-word sequence number, not an M-code
-    .filter((v: number) => v >= 0)
-    .sort((a: number, b: number) => a - b)
-    .map((v: number) => `M${v}`)
-    .join(" ") || "-";
-});
 
 // Machine native unit (from INI [TRAJ]LINEAR_UNITS — static, not affected by G20/G21)
 const linearUnit = computed(() => st.value.linear_units ?? "mm");
@@ -631,16 +475,10 @@ const rpmInput = ref(1000);
 const isForward = computed(() => spindleDirection.value === SPINDLE_FORWARD);
 const isReverse = computed(() => spindleDirection.value === SPINDLE_REVERSE);
 const isSpinning = computed(() => isForward.value || isReverse.value);
-const spindleMismatch = computed(() =>
-  !isSpinning.value && Math.abs(spindleActual.value ?? 0) > 1
-);
-
 
 // Coolant state
 const floodOn = computed(() => !!st.value.flood);
 const mistOn = computed(() => !!st.value.mist);
-const coolantActive = computed(() => floodOn.value || mistOn.value);
-
 function toggleFlood() {
   fire({ cmd: floodOn.value ? "flood_off" : "flood_on" });
 }
@@ -659,29 +497,27 @@ function toggleBlockDelete() {
   send({ cmd: "set_block_delete", value: !blockDeleteOn.value });
 }
 
-// Tool sidebar state
-const toolDialogOpen = ref(false);
+// Dialog state
 const settingsDialogOpen = ref(false);
 const gcodeRefOpen = ref(false);
 const gcodeRefInitialSearch = ref("");
+const messagesDialogOpen = ref(false);
 
 function closeAllDialogs() {
-  toolDialogOpen.value = false;
   settingsDialogOpen.value = false;
   gcodeRefOpen.value = false;
+  messagesDialogOpen.value = false;
 }
 
-function openDialog(name: "tool" | "settings" | "gcodeRef") {
-  // Toggle if already open
-  const isOpen = (name === "tool" && toolDialogOpen.value)
-    || (name === "settings" && settingsDialogOpen.value)
-    || (name === "gcodeRef" && gcodeRefOpen.value);
+function openDialog(name: "settings" | "gcodeRef" | "messages") {
+  const isOpen = (name === "settings" && settingsDialogOpen.value)
+    || (name === "gcodeRef" && gcodeRefOpen.value)
+    || (name === "messages" && messagesDialogOpen.value);
   closeAllDialogs();
-  openChip.value = null;
   if (!isOpen) {
-    if (name === "tool") toolDialogOpen.value = true;
-    else if (name === "settings") settingsDialogOpen.value = true;
+    if (name === "settings") settingsDialogOpen.value = true;
     else if (name === "gcodeRef") gcodeRefOpen.value = true;
+    else if (name === "messages") { messagesDialogOpen.value = true; markMessagesRead(); }
   }
 }
 
@@ -700,12 +536,10 @@ provide("updateMacros", (macros: MacroDef[]) => { userMacros.value = macros; });
 function executeMacro(m: MacroDef) {
   if (m.params.length === 0) {
     fire({ cmd: "mdi", text: m.command });
-    openChip.value = null;
   } else {
     const values: Record<string, string> = {};
     for (const p of m.params) values[p.name] = p.default;
     macroParamDialog.value = { macro: m, values };
-    openChip.value = null;
   }
 }
 
@@ -725,6 +559,7 @@ function macroPreview(): string {
   if (!macroParamDialog.value) return "";
   return substituteMacro(macroParamDialog.value.macro.command, macroParamDialog.value.values);
 }
+// @ts-ignore TS6133 — kept for future use
 const toolTableRef = ref<InstanceType<typeof ToolTablePanel> | null>(null);
 const toolNumber = ref(1);
 const TS_TOOL_KEY = "lcnc-tool-number";
@@ -740,18 +575,6 @@ loadToolNumber();
 function saveToolNumber() {
   localStorage.setItem(TS_TOOL_KEY, String(toolNumber.value));
 }
-
-const probeStatus = computed(() => {
-  if (st.value.probing) return "PROBING";
-  if (st.value.probe_tripped) return "TRIPPED";
-  return "IDLE";
-});
-
-const probeStatusClass = computed(() => {
-  if (st.value.probing) return "probing";
-  if (st.value.probe_tripped) return "tripped";
-  return "";
-});
 
 function measureAuto() {
   if (!permissions.value.ready || st.value.probing) return;
@@ -779,11 +602,6 @@ function unloadTool() {
   } else {
     fire({ cmd: "mdi", text: "T0 M6 G49" });
   }
-}
-
-function formatRpm(val: number | null): string {
-  if (val == null || !Number.isFinite(val)) return "\u2014";
-  return Math.round(val).toLocaleString();
 }
 
 // Message popover helpers
@@ -832,10 +650,6 @@ function copyAllMessages() {
   copyToClipboard(text);
 }
 
-watch(openChip, (chip) => {
-  if (chip === "messages") markMessagesRead();
-});
-
 /** ---------- actions ---------- */
 function arm(v: boolean) {
   send({ cmd: "arm", armed: v });
@@ -875,19 +689,16 @@ const machineParts = computed<Array<{ id: string; group: string | null; directio
   });
 });
 
-// Broadcast setMachinePartColor to all ThreeViewer instances
 function setMachinePartColor(partId: string, color: string | null) {
-  for (const v of viewerRefs.values()) v?.setMachinePartColor?.(partId, color);
+  viewerRef.value?.setMachinePartColor?.(partId, color);
 }
 
-// Broadcast setMachineEdges to all ThreeViewer instances
 function setMachineEdges(on: boolean) {
-  for (const v of viewerRefs.values()) v?.setMachineEdges?.(on);
+  viewerRef.value?.setMachineEdges?.(on);
 }
 
-// Broadcast setToolColors to all ThreeViewer instances
 function setToolColors(toolColor: string | null, cutterColor: string | null) {
-  for (const v of viewerRefs.values()) v?.setToolColors?.(toolColor, cutterColor);
+  viewerRef.value?.setToolColors?.(toolColor, cutterColor);
 }
 
 provide("machineParts", machineParts);
@@ -897,13 +708,12 @@ provide("setToolColors", setToolColors);
 
 // Broadcast viewer settings to all ThreeViewer instances
 function setPathOnTop(on: boolean) {
-  for (const v of viewerRefs.values()) v?.setPathAlwaysOnTop?.(on);
+  viewerRef.value?.setPathAlwaysOnTop?.(on);
 }
 function setProjection(proj: "perspective" | "parallel") {
   const wantOrtho = proj === "parallel";
-  for (const v of viewerRefs.values()) {
-    if (v?.isOrtho?.value !== wantOrtho) v?.switchProjection?.();
-  }
+  const v = viewerRef.value;
+  if (v?.isOrtho?.value !== wantOrtho) v?.switchProjection?.();
 }
 
 const runFromLineEnabled = ref(loadMachineDefaults().runFromLine);
@@ -982,10 +792,12 @@ const homedJoints = computed<boolean[]>(() => {
   return Array.isArray(hj) ? hj.map(Boolean) : [];
 });
 
+// @ts-ignore TS6133 — kept for future use
 function homeAxis(joint: number) {
   fire({ cmd: "home", joint });
 }
 
+// @ts-ignore TS6133 — kept for future use
 function unhomeAxis(joint: number) {
   fire({ cmd: "unhome", joint });
 }
@@ -1147,7 +959,7 @@ function onKeyUp(e: KeyboardEvent) {
 
 /** ---------- gamepad jogging ---------- */
 const gamepadConfig = ref<GamepadDefaults>(loadGamepadDefaults());
-const gamepadGated = computed(() => panels.value.some(p => p.tab === "settings"));
+const gamepadGated = computed(() => settingsDialogOpen.value);
 const gamepad = useGamepad({
   jogVel,
   angularJogVel,
@@ -1284,426 +1096,31 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 <template>
   <div class="wrap">
-    <!-- ══ Sidebar — outside outer Gate, never disabled ══ -->
-    <div class="sidebar">
-
-    <!-- Machine Safety — always accessible -->
-    <Gate gate="always" class="card">
-      <div class="sub">Machine Safety</div>
-      <div class="btnrow">
-        <MachineBtn type="arm" :variant="armed ? 'ok' : 'default'" class="safetyBtn" @click="arm(!armed)" :disabled="busy" :title="armed ? 'Disarm' : 'Arm'" block>
-          <component :is="armed ? LockOpen : Lock" class="safetyIcon" />
-        </MachineBtn>
-
-        <div class="vsep"></div>
-
-        <MachineBtn
-          type="estop" class="safetyBtn"
-          :flashing="isEstop"
-          @click="send({ cmd: isEstop ? 'estop_reset' : 'estop' })"
-          :disabled="!(isEstop ? canResetEstop : canEstop)"
-        >
-          <TriangleAlert class="safetyIcon" />
-          <span class="safetyLabel">{{ isEstop ? "Reset" : "E-Stop" }}</span>
-        </MachineBtn>
-
-        <div class="vsep"></div>
-
-        <Gate gate="safety">
-          <MachineBtn
-            type="machineOn" :variant="isEnabled ? 'ok' : 'default'" class="safetyBtn"
-            @click="fire({ cmd: isEnabled ? 'machine_off' : 'machine_on' })"
-            :disabled="busy"
-            :title="isEnabled ? 'Machine Off' : 'Machine On'"
-            block
-          >
-            <Power class="safetyIcon" />
-          </MachineBtn>
-        </Gate>
-      </div>
-    </Gate>
-
-    <section class="card">
-      <div class="sub">Machine Status</div>
-      <div class="machineStatus">
-        <div class="statusRow"><div class="k">E-Stop</div><div class="v" :class="isEstop ? 'badText' : 'okText'">{{ isEstop ? 'TRUE' : 'FALSE' }}</div></div>
-        <div class="statusRow"><div class="k">Enabled</div><div class="v" :class="isEnabled ? 'okText' : 'mutedText'">{{ isEnabled ? 'TRUE' : 'FALSE' }}</div></div>
-        <div class="statusRow"><div class="k">Homed</div><div class="v" :class="isHomed ? 'okText' : 'badText'">{{ isHomed ? 'TRUE' : 'FALSE' }}</div></div>
-        <div class="statusRow"><div class="k">Motion</div><div class="v">{{ isTeleop ? 'WORLD' : 'JOINT' }}</div></div>
-        <div class="statusRow"><div class="k">Mode</div><div class="v">{{ taskModeLabel }}</div></div>
-        <div class="statusRow"><div class="k">Interp</div><div class="v">{{ interpStateLabel }}</div></div>
-        <div class="statusRow"><div class="k">Elapsed</div><div class="v mono">{{ elapsedDisplay }}</div></div>
-        <div class="statusRow"><div class="k">Overrides</div><div class="v" :class="overridesActive ? 'warnText' : ''">{{ overridesActive ? 'ACTIVE' : 'INACTIVE' }}</div></div>
-        <div class="statusRow codesRow">
-          <div class="k">Codes</div>
-          <div class="v mono codesShort">{{ activeGcodes }}</div>
-          <div class="popover codesPopover">
-            <div class="label">G-codes</div>
-            <div class="codesValue">{{ activeGcodes }}</div>
-            <div class="sep"></div>
-            <div class="label">M-codes</div>
-            <div class="codesValue">{{ activeMcodes }}</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="sub">Controls</div>
-      <Gate gate="abort">
-        <div class="controlBtns">
-        <div class="controlGroup">
-        <MachineBtn
-          type="sidebarChip" class="controlBtn"
-          :active="isSpinning"
-          :warning="spindleMismatch"
-          @click.stop="toggleChip('spindle')"
-          title="Spindle"
-          block
-        >
-          <RotateCw class="controlIcon" />
-        </MachineBtn>
-        <div class="popover spindlePopover" :class="{ open: openChip === 'spindle' }" @click.stop>
-          <div class="popHeader"><span class="popTitle">Spindle</span><MachineBtn type="close" @click="openChip = null">&times;</MachineBtn></div>
-          <!-- Direction controls -->
-          <div class="spDirRow">
-            <MachineBtn
-              type="spindleRev" class="spDirBtn"
-              :active="isReverse"
-              @click="spindleReverse(rpmInput)"
-              title="Spindle Reverse (CCW)"
-            >
-              <RotateCcw :size="14" />
-              <span class="label">Rev</span>
-            </MachineBtn>
-            <MachineBtn
-              type="spindleStop" class="spDirBtn"
-              :active="isSpinning"
-              :disabled="!isSpinning"
-              @click="spindleStop()"
-              title="Spindle Stop"
-            >
-              <Square :size="14" />
-              <span class="label">Stop</span>
-            </MachineBtn>
-            <MachineBtn
-              type="spindleFwd" class="spDirBtn"
-              :active="isForward"
-              @click="spindleForward(rpmInput)"
-              title="Spindle Forward (CW)"
-            >
-              <RotateCw :size="14" />
-              <span class="label">Fwd</span>
-            </MachineBtn>
-          </div>
-
-          <!-- RPM input -->
-          <div class="spRpmRow">
-            <span class="spFieldLabel">Speed</span>
-            <MachineInput
-              gate="rpmInput"
-              type="number"
-              class="spRpmInput"
-              v-model.number="rpmInput"
-              :min="minSpindleSpeed"
-              :max="maxSpindleSpeed"
-              :step="STEP_RPM"
-            />
-            <span class="spUnit">RPM</span>
-          </div>
-
-          <!-- Actual speed display -->
-          <div class="spActualGroup">
-            <div class="spActualRow">
-              <span class="spFieldLabel">Actual</span>
-              <span class="spActualValue">{{ formatRpm(spindleActual) }} <span class="spUnit">RPM</span></span>
-            </div>
-            <div class="spActualRow">
-              <span class="spFieldLabel">Commanded</span>
-              <span class="spCommandedValue">{{ formatRpm(spindleSpeed) }} <span class="spUnit">RPM</span></span>
-            </div>
-            <div class="spActualRow">
-              <span class="spFieldLabel">Direction</span>
-              <span class="spDirValue" :class="{ okText: isSpinning }">
-                {{ isForward ? "FWD (CW)" : isReverse ? "REV (CCW)" : "STOPPED" }}
-              </span>
-            </div>
-            <div v-if="spindleLoad != null" class="spActualRow">
-              <span class="spFieldLabel">Load</span>
-              <span class="spActualValue">{{ Math.round(spindleLoad) }} <span class="spUnit">%</span></span>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        <div class="controlGroup">
-        <MachineBtn
-          type="sidebarChip" class="controlBtn"
-          :active="coolantActive"
-          @click.stop="toggleChip('coolant')"
-          title="Coolant"
-          block
-        >
-          <Droplets class="controlIcon" />
-        </MachineBtn>
-        <div class="popover coolantPopover" :class="{ open: openChip === 'coolant' }" @click.stop>
-          <div class="popHeader"><span class="popTitle">Coolant</span><MachineBtn type="close" @click="openChip = null">&times;</MachineBtn></div>
-          <div class="coolantRow">
-            <span class="coolantLabel">Flood</span>
-            <MachineBtn
-              type="flood"
-              class="coolantToggle"
-              :active="floodOn"
-              @click="toggleFlood"
-            >{{ floodOn ? 'ON' : 'OFF' }}</MachineBtn>
-          </div>
-          <div class="coolantRow">
-            <span class="coolantLabel">Mist</span>
-            <MachineBtn
-              type="mist"
-              class="coolantToggle"
-              :active="mistOn"
-              @click="toggleMist"
-            >{{ mistOn ? 'ON' : 'OFF' }}</MachineBtn>
-          </div>
-        </div>
-        </div>
-
-        <div class="controlGroup">
-        <MachineBtn
-          type="sidebarChip" class="controlBtn"
-          :active="!!st.probing"
-          @click.stop="openDialog('tool')"
-          title="Tool"
-          block
-        >
-          <Drill class="controlIcon" />
-        </MachineBtn>
-        </div>
-        <div class="controlGroup">
-        <MachineBtn
-          type="sidebarChip" class="controlBtn"
-          @click.stop="toggleChip('macros')"
-          title="Macros"
-          block
-        >
-          <CodeXml class="controlIcon" />
-        </MachineBtn>
-        <div class="popover macroPopover" :class="{ open: openChip === 'macros' }" @click.stop>
-          <div class="popHeader"><span class="popTitle">Macros</span><MachineBtn type="close" @click="openChip = null">&times;</MachineBtn></div>
-          <div v-if="userMacros.length === 0" class="macroEmpty">
-            No macros configured.<br>Add macros in Settings.
-          </div>
-          <template v-else>
-            <MachineBtn
-              v-for="m in userMacros"
-              :key="m.id"
-              type="macro"
-              class="macroBtn"
-              @click="executeMacro(m)"
-              block
-            >{{ m.name }}</MachineBtn>
-          </template>
-        </div>
-        </div>
-
-        <!-- Overrides -->
-        <div class="controlGroup">
-        <MachineBtn
-          type="sidebarChip" class="controlBtn"
-          :warning="overridesActive || overridesDisabled"
-          @click.stop="toggleChip('overrides')"
-          title="Overrides"
-          block
-        >
-          <Gauge class="controlIcon" />
-        </MachineBtn>
-        <div class="popover overridesPopover" :class="{ open: openChip === 'overrides' }" @click.stop>
-          <div class="popHeader"><span class="popTitle">Overrides</span><MachineBtn type="close" @click="openChip = null">&times;</MachineBtn></div>
-          <div class="ovrRow">
-            <span class="ovrLabel">Feed</span>
-            <MachineSlider gate="feedOverride" v-model="feedSlider" @change="onFeedChange" :min="0" :max="maxFeedOverride" :step="STEP_OVERRIDE" :disabled="!feedOvrEnabled" />
-            <span class="sliderVal" :class="{ warn: feedSlider !== 100 }">{{ feedSlider }}%</span>
-          </div>
-          <div class="ovrPresets">
-            <MachineBtn v-for="p in [50, 100, 150, 200]" :key="'f'+p" type="overridePreset" :disabled="!feedOvrEnabled" @click="setOverridePreset('feed', p)">{{ p }}%</MachineBtn>
-          </div>
-          <div class="ovrRow">
-            <span class="ovrLabel">Spindle</span>
-            <MachineSlider gate="spindleOverride" v-model="spindleSlider" @change="onSpindleSliderChange" :min="minSpindleOverride" :max="maxSpindleOverride" :step="STEP_OVERRIDE" :disabled="!spindleOvrEnabled" />
-            <span class="sliderVal" :class="{ warn: spindleSlider !== 100 }">{{ spindleSlider }}%</span>
-          </div>
-          <div class="ovrPresets">
-            <MachineBtn v-for="p in [50, 100, 150, 200]" :key="'s'+p" type="overridePreset" :disabled="!spindleOvrEnabled" @click="setOverridePreset('spindle', p)">{{ p }}%</MachineBtn>
-          </div>
-          <div class="ovrRow">
-            <span class="ovrLabel">Rapid</span>
-            <MachineSlider gate="rapidOverride" v-model="rapidSlider" @change="onRapidChange" :min="25" :max="100" :step="STEP_RAPID_OVERRIDE" />
-            <span class="sliderVal" :class="{ warn: rapidSlider !== 100 }">{{ rapidSlider }}%</span>
-          </div>
-          <div class="ovrPresets">
-            <MachineBtn v-for="p in [25, 50, 75, 100]" :key="'r'+p" type="overridePreset" @click="setOverridePreset('rapid', p)">{{ p }}%</MachineBtn>
-          </div>
-          <MachineBtn type="overrideReset" class="ovrResetBtn" @click="resetAllOverrides" block>Reset All</MachineBtn>
-        </div>
-        </div>
-
-        <!-- Offsets -->
-        <div class="controlGroup">
-        <MachineBtn
-          type="sidebarChip" class="controlBtn"
-          :warning="hasOffsetWarning"
-          @click.stop="openOffsetsPopover()"
-          title="Offsets"
-          block
-        >
-          <LocateFixed class="controlIcon" />
-        </MachineBtn>
-        <div class="popover offsetsPopover" :class="{ open: openChip === 'offsets' }" @click.stop>
-          <div class="popHeader"><span class="popTitle">Work Offsets</span><MachineBtn type="close" @click="openChip = null">&times;</MachineBtn></div>
-          <table class="offsetTable">
-            <thead>
-              <tr><th></th><th v-for="col in offsetColumns" :key="col">{{ col.toUpperCase() }}</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in wcsTable" :key="row.name"
-                  :class="{ activeRow: row.name === g5xLabel, selectedRow: row.name === selectedWcs }"
-                  @click="selectedWcs = row.name">
-                <td class="offLabel">{{ row.name }}</td>
-                <td v-for="axis in offsetColumns" :key="axis"
-                    :class="{ warn: axis === 'r' && row[axis] !== 0, editableCell: permissions.ready }"
-                    @dblclick.stop="startEditCell(row.name, axis, Number(row[axis]) || 0)">
-                  <MachineInput v-if="editingCell?.wcs === row.name && editingCell?.axis === axis"
-                         gate="touchoff"
-                         ref="offsetInputRef"
-                         v-model="editValue"
-                         type="number"
-                         class="offsetInput"
-                         @keydown.enter.prevent="commitCell(row.name, axis)"
-                         @keydown.escape.prevent="cancelEdit()"
-                         @blur="commitCell(row.name, axis)"
-                         @click.stop />
-                  <span v-else>{{ fmtOff(Number(row[axis])) }}</span>
-                </td>
-              </tr>
-              <tr v-if="st.g92_offset?.some((v: number) => v !== 0)" class="g92Row">
-                <td class="offLabel">G92</td>
-                <td v-for="(col, i) in offsetColumns" :key="col">{{ col === 'r' ? '' : fmtOff(st.g92_offset?.[i]) }}</td>
-              </tr>
-              <tr v-if="st.tool_offset?.some((v: number) => v !== 0)" class="toolRow">
-                <td class="offLabel">Tool</td>
-                <td v-for="(col, i) in offsetColumns" :key="col">{{ col === 'r' ? '' : fmtOff(st.tool_offset?.[i]) }}</td>
-              </tr>
-              <tr v-if="st.eoffset_z != null && st.eoffset_z !== 0" class="eoffsetRow">
-                <td class="offLabel">Comp</td>
-                <td v-for="col in offsetColumns" :key="col">{{ col === 'z' ? fmtOff(st.eoffset_z) : '' }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="offsetActions">
-            <MachineBtn type="wcs" :disabled="!selectedWcs" @click="clearWcs(selectedWcs!)">Clear {{ selectedWcs }}</MachineBtn>
-            <MachineBtn type="wcs" @click="clearWcs('all')">Clear All</MachineBtn>
-          </div>
-        </div>
-        </div>
-
-        <!-- Messages -->
-        <div class="controlGroup">
-        <MachineBtn
-          type="sidebarChip" class="controlBtn"
-          :warning="unreadCount > 0"
-          @click.stop="toggleChip('messages')"
-          title="Messages"
-          block
-        >
-          <MessageSquare class="controlIcon" />
-        </MachineBtn>
-        <div class="popover messagesPopover" :class="{ open: openChip === 'messages' }" @click.stop>
-          <div class="popHeader">
-            <span class="popTitle">Messages</span>
-            <div class="row-tight">
-              <template v-if="messages.length > 0">
-                <MachineBtn type="inlineXs" @click="copyAllMessages">Copy All</MachineBtn>
-                <MachineBtn type="inlineXs" @click="clearAllMessages">Clear All</MachineBtn>
-              </template>
-              <MachineBtn type="close" @click="openChip = null">&times;</MachineBtn>
-            </div>
-          </div>
-          <div v-if="messages.length === 0" class="msgPopEmpty">No messages</div>
-          <div v-else class="msgPopList">
-            <div v-for="msg in [...messages].reverse()" :key="msg.id" class="msgPopItem" :class="msgKindClass(msg.kind)">
-              <div class="msgPopIndicator"></div>
-              <div class="msgPopBody">
-                <div class="msgPopMeta">
-                  <span class="msgPopBadge" :class="msgKindClass(msg.kind)">{{ msgKindLabel(msg.kind) }}</span>
-                  <span class="msgPopTime">{{ msgFormatTime(msg.ts) }}</span>
-                </div>
-                <div class="msgPopText">{{ msg.text }}</div>
-              </div>
-              <MachineBtn type="listAction" title="Copy" @click="copyMessage(msg)"><ClipboardCopy :size="12" /></MachineBtn>
-              <MachineBtn type="close" @click="dismissMessage(msg.id)">&times;</MachineBtn>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        <div class="controlGroup">
-        <MachineBtn type="sidebarNav" class="controlBtn" @click.stop="openGcodeRef()" title="G-code Reference" block>
-          <BookOpen class="controlIcon" />
-        </MachineBtn>
-        </div>
-        <div class="controlGroup">
-        <MachineBtn type="sidebarNav" class="controlBtn" @click.stop="openDialog('settings')" title="Settings" block>
-          <SlidersHorizontal class="controlIcon" />
-        </MachineBtn>
-        </div>
-        <div v-if="st.debug" class="controlGroup simtripGroup">
-        <MachineBtn type="simTrip" class="controlBtn simtrip" :disabled="!st.probing" @click.stop="send({ cmd: 'simulate_probe_trip' })" title="Simulate probe contact (sim/debug)" block>Sim Trip</MachineBtn>
-        </div>
-        </div>
-      </Gate>
-    </section>
-    </div><!-- /sidebar -->
-
-    <!-- ══ Outer Gate — covers everything except sidebar ══ -->
-    <Gate gate="safety" class="mainArea">
-
+    <!-- ══ Header ══ -->
     <header class="hdr">
       <div class="title">LinuxCNC WebUI ({{ connLabel }})</div>
-
       <div class="hdrRight">
-          <div
-            class="pill"
-            :title="connectedClients.map(c => c.ip + (c.armed ? ' (armed)' : '')).join('\n')"
-          >
-            {{ connectedClients.length }} client{{ connectedClients.length !== 1 ? 's' : '' }}
-          </div>
+        <div class="pill" :title="connectedClients.map(c => c.ip + (c.armed ? ' (armed)' : '')).join('\n')">
+          {{ connectedClients.length }} client{{ connectedClients.length !== 1 ? 's' : '' }}
+        </div>
+        <div class="pill" :class="connected ? 'ok' : 'bad'">
+          {{ connected ? "WS connected" : "WS disconnected" }}
+        </div>
+        <div v-if="connected && networkLatency != null" class="pill" title="Network latency">Net {{ networkLatency }}ms</div>
+        <div v-if="connected && latency != null" class="pill" title="Round-trip latency">Ping {{ latency }}ms</div>
+        <div class="pill" :class="lcncError ? 'bad' : (configName ? 'ok' : '')">{{ lcncLabel }}</div>
+        <div class="pill" :class="armed ? 'armed' : 'disarmed'">{{ armed ? "ARMED" : "DISARMED" }}</div>
+        <div v-if="gamepad.gamepadConnected.value" class="pill ok" :title="gamepad.gamepadName.value"><Gamepad2 :size="14" /></div>
 
-          <div class="pill" :class="connected ? 'ok' : 'bad'">
-            {{ connected ? "WS connected" : "WS disconnected" }}
-          </div>
-
-          <div v-if="connected && networkLatency != null" class="pill"
-               title="Network latency: WebSocket ping/pong transit time between browser and gateway">
-            Net {{ networkLatency }}ms
-          </div>
-          <div v-if="connected && latency != null" class="pill"
-               title="Round-trip latency: full cycle from browser → gateway status poll → browser, includes network + server processing">
-            Ping {{ latency }}ms
-          </div>
-
-          <div class="pill" :class="lcncError ? 'bad' : (configName ? 'ok' : '')">
-            {{ lcncLabel }}
-          </div>
-
-          <div class="pill" :class="armed ? 'armed' : 'disarmed'">
-            {{ armed ? "ARMED" : "DISARMED" }}
-          </div>
-
-          <div v-if="gamepad.gamepadConnected.value" class="pill ok" :title="gamepad.gamepadName.value">
-            <Gamepad2 :size="14" />
-          </div>
-
+        <MachineBtn type="headerIcon" :warning="unreadCount > 0" :title="'Messages (' + unreadCount + ')'" @click="openDialog('messages')">
+          <MessageSquare :size="16" />
+        </MachineBtn>
+        <MachineBtn type="headerIcon" title="G-code Reference" @click="openGcodeRef()">
+          <BookOpen :size="16" />
+        </MachineBtn>
+        <MachineBtn type="headerIcon" title="Settings" @click="openDialog('settings')">
+          <SlidersHorizontal :size="16" />
+        </MachineBtn>
         <MachineBtn type="headerIcon" :title="isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'" @click="toggleFullscreen">
           <Shrink v-if="isFullscreen" :size="16" />
           <Expand v-else :size="16" />
@@ -1721,347 +1138,406 @@ watch(isHomed, (nowHomed, wasHomed) => {
       </div>
     </div>
 
-    <!-- Dynamic tab panels (1–4) -->
-    <div class="panels">
-      <div v-for="(panel, idx) in panels" :key="panel.id" class="panel"
-           :class="'panel-' + panel.tab">
-        <TabPanel
-          :tabs="tabs"
-          :modelValue="panel.tab"
-          @update:modelValue="panel.tab = $event"
-          :closable="idx > 0"
-          @close="removePanel(panel.id)"
-        >
-          <template #viewer>
-            <Toolbar
-              @resetBackplot="viewerRefs.get(panel.id)?.resetBackplot?.()"
-              @setView="(p: any) => viewerRefs.get(panel.id)?.setView?.(p)"
-              @toggleLayer="(l: Layer, on: boolean) => { viewerLayers[l] = on; for (const v of viewerRefs.values()) v?.setLayerVisible?.(l, on); saveViewerState(); }"
-              @setPathOnTop="(on: boolean) => { viewerPathOnTop = on; for (const v of viewerRefs.values()) v?.setPathAlwaysOnTop?.(on); saveViewerState(); }"
-              @setTrackMode="(m: string) => { viewerTrackMode = m as TrackMode; for (const v of viewerRefs.values()) v?.setTrackingMode?.(m); saveViewerState(); }"
-              @toggleProjection="() => { viewerProjection = viewerProjection === 'parallel' ? 'perspective' : 'parallel'; viewerRefs.get(panel.id)?.switchProjection?.(); saveViewerState(); }"
+    <!-- ══ Content area — outer Gate wraps tabs ══ -->
+    <Gate gate="safety" class="content">
+      <TabPanel :tabs="contentTabs" :modelValue="activeTab" @update:modelValue="activeTab = $event">
+        <template #viewer>
+          <Toolbar
+            @resetBackplot="viewerRef?.resetBackplot?.()"
+            @setView="(p: any) => viewerRef?.setView?.(p)"
+            @toggleLayer="(l: Layer, on: boolean) => { viewerLayers[l] = on; viewerRef?.setLayerVisible?.(l, on); saveViewerState(); }"
+            @setPathOnTop="(on: boolean) => { viewerPathOnTop = on; viewerRef?.setPathAlwaysOnTop?.(on); saveViewerState(); }"
+            @setTrackMode="(m: string) => { viewerTrackMode = m as TrackMode; viewerRef?.setTrackingMode?.(m); saveViewerState(); }"
+            @toggleProjection="() => { viewerProjection = viewerProjection === 'parallel' ? 'perspective' : 'parallel'; viewerRef?.switchProjection?.(); saveViewerState(); }"
+            :workpieceSize="workpieceSize"
+            :workpieceOffset="workpieceOffset"
+            @update:workpieceSize="workpieceSize = $event; saveViewerState()"
+            @update:workpieceOffset="workpieceOffset = $event; saveViewerState()"
+          >
+            <ThreeViewer
+              ref="viewerRef"
+              :active="activeTab === 'viewer'"
               :workpieceSize="workpieceSize"
               :workpieceOffset="workpieceOffset"
-              @update:workpieceSize="workpieceSize = $event; saveViewerState()"
-              @update:workpieceOffset="workpieceOffset = $event; saveViewerState()"
-            >
-              <ThreeViewer
-                :ref="(el: any) => setViewerRef(panel.id, el)"
-                :active="panel.tab === 'viewer'"
-                :workpieceSize="workpieceSize"
-                :workpieceOffset="workpieceOffset"
-                :g5xLabel="g5xLabel"
-                :linearUnit="linearUnit"
-                :jogVel="jogVel"
-                :angularJogVel="angularJogVel"
-                :isHomed="isHomed"
-                :isTeleop="isTeleop"
-                :maxJogVel="maxJogVel"
-                :maxAngularJogVel="maxAngularJogVel"
-                :minAngularJogVel="minAngularJogVel"
-                :jogIncrement="jogIncrement"
-                :minJogVel="minJogVel"
-                :iniIncrements="iniIncrements"
-                :activeFile="activeFile"
-                :spindleSpeed="spindleSpeed"
-                :spindleActual="spindleActual"
-                :spindleDirection="spindleDirection"
-                :surfacePoints="surfaceLoadedToViewer ? surfacePoints : null"
-                :axes="axes"
-                :touchoff="touchoff"
-                :jogDisabled="!permissions.jog"
-                @update:touchoff="touchoff = $event"
-                @update:jogVel="jogVel = $event"
-                @update:angularJogVel="angularJogVel = $event"
-                @update:jogIncrement="jogIncrement = $event"
-                @toggleTeleop="toggleTeleop"
-                @homeAll="homeAll"
-                @unhomeAll="unhomeAll"
-                @setAxis="setAxis"
-                @setAll="setAll"
-                @goToG30="fire({ cmd: 'mdi', text: 'O<go_to_g30> CALL' })"
-                @goToHome="fire({ cmd: 'mdi', text: 'O<go_to_home> CALL' })"
-                @goToZero="fire({ cmd: 'mdi', text: 'O<go_to_zero> CALL' })"
-              />
-            </Toolbar>
-          </template>
-
-          <template #manual>
-            <ManualPanel
-              :axes="axes"
-              :workPos="workPos" :machinePos="machinePos" :dtg="dtg"
-              :g5xLabel="g5xLabel" :linearUnit="linearUnit" :homed="isHomed"
-              :homedJoints="homedJoints"
-              :jogVel="jogVel" :angularJogVel="angularJogVel"
-              :isTeleop="isTeleop" :isHomed="isHomed"
-              :maxJogVel="maxJogVel" :maxAngularJogVel="maxAngularJogVel"
+              :g5xLabel="g5xLabel"
+              :linearUnit="linearUnit"
+              :jogVel="jogVel"
+              :angularJogVel="angularJogVel"
+              :isHomed="isHomed"
+              :isTeleop="isTeleop"
+              :maxJogVel="maxJogVel"
+              :maxAngularJogVel="maxAngularJogVel"
               :minAngularJogVel="minAngularJogVel"
-              :activeJogActions="jogActions"
               :jogIncrement="jogIncrement"
-              :minJogVel="minJogVel" :iniIncrements="iniIncrements"
-              :mdiText="mdiText"
+              :minJogVel="minJogVel"
+              :iniIncrements="iniIncrements"
+              :activeFile="activeFile"
+              :spindleSpeed="spindleSpeed"
+              :spindleActual="spindleActual"
+              :spindleDirection="spindleDirection"
+              :surfacePoints="surfaceLoadedToViewer ? surfacePoints : null"
+              :axes="axes"
               :touchoff="touchoff"
+              :jogDisabled="!permissions.jog"
               @update:touchoff="touchoff = $event"
-              @setAxis="setAxis" @setAll="setAll" @setG5x="setG5x"
-              @homeAll="homeAll" @unhomeAll="unhomeAll" @homeAxis="homeAxis" @unhomeAxis="unhomeAxis"
               @update:jogVel="jogVel = $event"
               @update:angularJogVel="angularJogVel = $event"
               @update:jogIncrement="jogIncrement = $event"
               @toggleTeleop="toggleTeleop"
-              @update:mdiText="mdiText = $event"
-              @sendMdi="sendMdi"
+              @homeAll="homeAll"
+              @unhomeAll="unhomeAll"
+              @setAxis="setAxis"
+              @setAll="setAll"
               @goToG30="fire({ cmd: 'mdi', text: 'O<go_to_g30> CALL' })"
               @goToHome="fire({ cmd: 'mdi', text: 'O<go_to_home> CALL' })"
               @goToZero="fire({ cmd: 'mdi', text: 'O<go_to_zero> CALL' })"
             />
-          </template>
+          </Toolbar>
+        </template>
 
+        <template #gcode>
+          <GcodePanel
+            :activeFile="activeFile"
+            :gcodeContent="gcodeContent"
+            :gcodeStats="gcodeStats"
+            :currentLine="currentLine"
+            :isPaused="isPaused"
+            :elapsed="elapsedDisplay"
+            :optionalStop="optionalStopOn"
+            :blockDelete="blockDeleteOn"
+            :runFromLine="runFromLineEnabled"
+            @loadFile="loadFile"
+            @unloadFile="unloadFile"
+            @cycleStart="cycleStart"
+            @runFromLine="runFromLine"
+            @cycleStep="cycleStep"
+            @cyclePause="cyclePause"
+            @cycleResume="cycleResume"
+            @abort="fire({ cmd: 'abort' })"
+            @toggleOptionalStop="toggleOptionalStop"
+            @toggleBlockDelete="toggleBlockDelete"
+            @openGcodeRef="openGcodeRef"
+          />
+        </template>
 
-          <template #gcode>
-            <GcodePanel
-              :activeFile="activeFile"
-              :gcodeContent="gcodeContent"
-              :gcodeStats="gcodeStats"
-              :currentLine="currentLine"
-              :isPaused="isPaused"
-              :elapsed="elapsedDisplay"
-              :optionalStop="optionalStopOn"
-              :blockDelete="blockDeleteOn"
-              :runFromLine="runFromLineEnabled"
-              @loadFile="loadFile"
-              @unloadFile="unloadFile"
-              @cycleStart="cycleStart"
-              @runFromLine="runFromLine"
-              @cycleStep="cycleStep"
-              @cyclePause="cyclePause"
-              @cycleResume="cycleResume"
-              @abort="fire({ cmd: 'abort' })"
-              @toggleOptionalStop="toggleOptionalStop"
-              @toggleBlockDelete="toggleBlockDelete"
-              @openGcodeRef="openGcodeRef"
-            />
-          </template>
-
-
-          <template #camera>
-            <CameraViewer :active="panel.tab === 'camera'" />
-          </template>
-
-          <template #probe>
-            <ProbePanel
-              :probing="st.probing === true"
-              :probeTripped="st.probe_tripped === true"
-              :probedPosition="st.probed_position ?? null"
-              :workPos="workPos"
-              :probeResults="probeResults"
-              :g5xLabel="g5xLabel"
-              :eoffsetZ="st.eoffset_z ?? null"
-              :eoffsetEnabled="!!st.eoffset_enabled"
-              :compMethod="st.comp_method ?? null"
-              :surfacePoints="surfacePoints"
-              :surfaceInViewer="surfaceLoadedToViewer"
-              @mdi="send({ cmd: 'mdi', text: $event })"
-              @abort="send({ cmd: 'abort' })"
-              @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
-              @setG5x="setG5x"
-              @getProbeResults="requestProbeResults"
-              @loadSurfaceToViewer="loadSurfaceToViewer"
-              @setCompensation="requestCompToggle"
-              @setCompMethod="send({ cmd: 'set_compensation_method', method: $event })"
-              @clearSurfaceMap="surfacePoints = null; surfaceLoadedToViewer = false"
-            />
-          </template>
-        </TabPanel>
-      </div>
-
-      <div v-if="panels.length < MAX_PANELS">
-        <button
-          class="addPanel"
-          @click="addPanel"
-        >+</button>
-      </div>
-    </div><!-- /panels -->
-
-    <!-- Tool table dialog -->
-    <div v-if="toolDialogOpen" class="dialogOverlay">
-      <div class="dialog lg dialog-full">
-        <div class="dialogHeader">
-          <span class="dialogTitle">Tool Table</span>
-          <MachineBtn type="close" @click="toolDialogOpen = false">&times;</MachineBtn>
-        </div>
-        <div class="toolDialogActions">
-            <div class="toolInputRow">
-              <span class="toolFieldLabel">Tool #</span>
-              <MachineInput
-                gate="toolEdit"
-                type="number"
-                class="toolNumInput"
-                v-model.number="toolNumber"
-                min="1"
-                :step="STEP_DEFAULT"
-                :disabled="!!st.probing"
-                @change="saveToolNumber"
-              />
-            </div>
-            <div class="toolActions">
-              <MachineBtn type="toolMeasure" :disabled="!!st.probing" @click="measureAuto">Measure</MachineBtn>
-              <MachineBtn type="toolLoad" :disabled="!!st.probing" @click="loadTool">Load</MachineBtn>
-              <MachineBtn type="toolUnload" :disabled="!!st.probing || st.tool_number === 0" @click="unloadTool">Unload</MachineBtn>
-            </div>
-            <div class="toolActions">
-              <MachineBtn type="abort" @click="fire({ cmd: 'abort' })">Abort</MachineBtn>
-            </div>
-            <div class="toolActions">
-              <MachineBtn type="manage" @click="toolTableRef?.openAdd()">+ Add</MachineBtn>
-              <MachineBtn type="manage" @click="toolTableRef?.triggerImport()">Import</MachineBtn>
-              <MachineBtn type="manage" @click="toolTableRef?.fetchTools()">Refresh</MachineBtn>
-            </div>
-          <div class="toolStatusRow">
-            <span class="toolStatusDot" :class="probeStatusClass"></span>
-            <span class="toolStatusText">{{ probeStatus }}</span>
-          </div>
-        </div>
-        <div class="toolDialogBody">
-          <ToolTablePanel ref="toolTableRef" :currentTool="st.tool_number ?? null" :iniFilename="st.ini_filename ?? null" hideHeader />
-        </div>
-      </div>
-    </div>
-
-    <!-- Settings dialog -->
-    <div v-if="settingsDialogOpen" class="dialogOverlay">
-      <div class="dialog lg dialog-full">
-        <div class="dialogHeader">
-          <span class="dialogTitle">Settings</span>
-          <MachineBtn type="close" @click="settingsDialogOpen = false">&times;</MachineBtn>
-        </div>
-        <div class="settingsDialogBody">
-          <SettingsPanel
-            :gamepadConnected="gamepad.gamepadConnected.value"
-            :gamepadName="gamepad.gamepadName.value"
-            :gamepadConfig="gamepadConfig"
-            @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
+        <template #probe>
+          <ProbePanel
+            :probing="st.probing === true"
+            :probeTripped="st.probe_tripped === true"
+            :probedPosition="st.probed_position ?? null"
+            :workPos="workPos"
+            :probeResults="probeResults"
+            :g5xLabel="g5xLabel"
+            :eoffsetZ="st.eoffset_z ?? null"
+            :eoffsetEnabled="!!st.eoffset_enabled"
+            :compMethod="st.comp_method ?? null"
+            :surfacePoints="surfacePoints"
+            :surfaceInViewer="surfaceLoadedToViewer"
             @mdi="send({ cmd: 'mdi', text: $event })"
-            @setPathOnTop="setPathOnTop"
-            @setProjection="setProjection"
-            :keyboardConfig="keyboardConfig"
-            @setKeyboardConfig="setKeyboardConfig"
-            @setRunFromLine="runFromLineEnabled = $event"
-            @setGamepadConfig="setGamepadConfig" />
+            @abort="send({ cmd: 'abort' })"
+            @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
+            @setG5x="setG5x"
+            @getProbeResults="requestProbeResults"
+            @loadSurfaceToViewer="loadSurfaceToViewer"
+            @setCompensation="requestCompToggle"
+            @setCompMethod="send({ cmd: 'set_compensation_method', method: $event })"
+            @clearSurfaceMap="surfacePoints = null; surfaceLoadedToViewer = false"
+          />
+        </template>
+
+        <template #tools>
+          <ToolTablePanel ref="toolTableRef" :currentTool="st.tool_number ?? null" :iniFilename="st.ini_filename ?? null" />
+        </template>
+      </TabPanel>
+
+      <!-- Dialogs — inside content area so strip stays accessible beneath -->
+      <!-- Tool table dialog (removed — tool table is now a content tab) -->
+
+      <!-- Settings dialog -->
+      <div v-if="settingsDialogOpen" class="dialogOverlay">
+        <div class="dialog lg dialog-full">
+          <div class="dialogHeader">
+            <span class="dialogTitle">Settings</span>
+            <MachineBtn type="close" @click="settingsDialogOpen = false">&times;</MachineBtn>
+          </div>
+          <div class="settingsDialogBody">
+            <SettingsPanel
+              :gamepadConnected="gamepad.gamepadConnected.value"
+              :gamepadName="gamepad.gamepadName.value"
+              :gamepadConfig="gamepadConfig"
+              @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
+              @mdi="send({ cmd: 'mdi', text: $event })"
+              @setPathOnTop="setPathOnTop"
+              @setProjection="setProjection"
+              :keyboardConfig="keyboardConfig"
+              @setKeyboardConfig="setKeyboardConfig"
+              @setRunFromLine="runFromLineEnabled = $event"
+              @setGamepadConfig="setGamepadConfig" />
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- G-code reference dialog -->
-    <GcodeReferenceDialog :open="gcodeRefOpen" :initialSearch="gcodeRefInitialSearch" @close="gcodeRefOpen = false" />
+      <!-- G-code reference dialog -->
+      <GcodeReferenceDialog :open="gcodeRefOpen" :initialSearch="gcodeRefInitialSearch" @close="gcodeRefOpen = false" />
 
-    <!-- Safety confirmation dialogs — z-index 1010 to always appear above other dialogs -->
-    <div v-if="toolChangeRequested" class="dialogOverlay safetyDialog">
-      <div class="dialog">
-        <div class="dialogTitle">{{ !toolChangeTool ? 'Remove Tool from Spindle' : 'Load Tool into Spindle' }}</div>
-        <div class="dialogBody">
-          <template v-if="toolChangeTool">
-            <strong>T{{ toolChangeTool }}</strong><template v-if="st.tool_change_info"> D{{ st.tool_change_info.D.toFixed(3) }} Z{{ st.tool_change_info.Z.toFixed(3) }}</template><br>
-            <template v-if="st.tool_change_info?.description">{{ st.tool_change_info.description }}<br></template>
-            Insert tool and press Confirm
-          </template>
-          <template v-else>
-            Remove tool and press Confirm
-          </template>
-        </div>
-        <Gate gate="abort" class="dialogActions">
-          <MachineBtn type="dialogDanger" @click="send({ cmd: 'abort' })">Cancel</MachineBtn>
-          <MachineBtn type="dialogConfirm" @click="confirmToolChange">Confirm</MachineBtn>
-        </Gate>
-      </div>
-    </div>
-
-    <div v-if="macroParamDialog" class="dialogOverlay" @click.self="macroParamDialog = null">
-      <div class="dialog">
-        <div class="dialogTitle">{{ macroParamDialog.macro.name }}</div>
-        <div class="dialogBody">
-          <div class="macroParamFields">
-            <div v-for="p in macroParamDialog.macro.params" :key="p.name" class="macroParamRow">
-              <label class="macroParamLabel">{{ p.label || p.name }}</label>
-              <input
-                type="text"
-                v-model="macroParamDialog.values[p.name]"
-                @keydown.enter="confirmMacroParams"
-              />
+      <!-- Messages dialog -->
+      <div v-if="messagesDialogOpen" class="dialogOverlay" @click.self="messagesDialogOpen = false">
+        <div class="dialog lg">
+          <div class="dialogHeader">
+            <span class="dialogTitle">Messages ({{ messages.length }})</span>
+            <div class="row-tight">
+              <MachineBtn type="inline" @click="copyAllMessages" :disabled="messages.length === 0">Copy All</MachineBtn>
+              <MachineBtn type="inline" @click="clearAllMessages" :disabled="messages.length === 0">Clear All</MachineBtn>
+              <MachineBtn type="close" @click="messagesDialogOpen = false; markMessagesRead()">&times;</MachineBtn>
             </div>
           </div>
-          <code class="macroPreview">{{ macroPreview() }}</code>
+          <div class="messagesBody scroll-thin">
+            <div v-for="msg in messages" :key="msg.id" class="msgItem" :class="msgKindClass(msg.kind)">
+              <span class="msgTime">{{ msgFormatTime(msg.ts) }}</span>
+              <span class="msgKind">{{ msgKindLabel(msg.kind) }}</span>
+              <span class="msgText">{{ msg.text }}</span>
+              <MachineBtn type="listAction" @click="copyMessage(msg)" title="Copy"><ClipboardCopy :size="12" /></MachineBtn>
+              <MachineBtn type="listAction" @click="dismissMessage(msg.id)" title="Dismiss">&times;</MachineBtn>
+            </div>
+            <div v-if="messages.length === 0" class="msgEmpty">No messages</div>
+          </div>
         </div>
-        <Gate gate="ready" class="dialogActions">
-          <MachineBtn type="dialogCancel" @click="macroParamDialog = null">Cancel</MachineBtn>
-          <MachineBtn type="dialogConfirm" @click="confirmMacroParams">Execute</MachineBtn>
-        </Gate>
       </div>
-    </div>
 
-    <div v-if="showShutdownConfirm" class="dialogOverlay safetyDialog">
-      <div class="dialog">
-        <div class="dialogTitle danger">Shut Down LinuxCNC?</div>
-        <div class="dialogBody">This will stop all motion and exit LinuxCNC.</div>
-        <Gate gate="abort" class="dialogActions">
-          <MachineBtn type="dialogCancel" @click="showShutdownConfirm = false">Cancel</MachineBtn>
-          <MachineBtn type="dialogDanger" @click="send({ cmd: 'shutdown' }); showShutdownConfirm = false">Shut Down</MachineBtn>
-        </Gate>
-      </div>
-    </div>
-
-    <div v-if="compConfirmPending !== null" class="dialogOverlay safetyDialog">
-      <div class="dialog">
-        <div class="dialogTitle">{{ compConfirmPending ? 'Enable' : 'Disable' }} Compensation</div>
-        <div class="dialogBody">
-          <template v-if="compConfirmPending">
-            Z axis will move based on the surface compensation map.<br>
-            Ensure tool is clear of the workpiece.
-          </template>
-          <template v-else>
-            Z axis will move by approximately
-            <strong>{{ ((st.eoffset_z ?? 0) * -1).toFixed(4) }}</strong> mm.<br>
-            Ensure tool is clear of the workpiece.
-          </template>
+      <!-- Safety confirmation dialogs — z-index 1010 to always appear above other dialogs -->
+      <div v-if="toolChangeRequested" class="dialogOverlay safetyDialog">
+        <div class="dialog">
+          <div class="dialogTitle">{{ !toolChangeTool ? 'Remove Tool from Spindle' : 'Load Tool into Spindle' }}</div>
+          <div class="dialogBody">
+            <template v-if="toolChangeTool">
+              <strong>T{{ toolChangeTool }}</strong><template v-if="st.tool_change_info"> D{{ st.tool_change_info.D.toFixed(3) }} Z{{ st.tool_change_info.Z.toFixed(3) }}</template><br>
+              <template v-if="st.tool_change_info?.description">{{ st.tool_change_info.description }}<br></template>
+              Insert tool and press Confirm
+            </template>
+            <template v-else>
+              Remove tool and press Confirm
+            </template>
+          </div>
+          <Gate gate="abort" class="dialogActions">
+            <MachineBtn type="dialogDanger" @click="send({ cmd: 'abort' })">Cancel</MachineBtn>
+            <MachineBtn type="dialogConfirm" @click="confirmToolChange">Confirm</MachineBtn>
+          </Gate>
         </div>
-        <Gate gate="ready" class="dialogActions">
-          <MachineBtn type="dialogDanger" @click="cancelCompToggle">Cancel</MachineBtn>
-          <MachineBtn type="dialogConfirm" @click="confirmCompToggle">Confirm</MachineBtn>
-        </Gate>
       </div>
-    </div>
 
-    </Gate><!-- /outerGate -->
+      <div v-if="macroParamDialog" class="dialogOverlay" @click.self="macroParamDialog = null">
+        <div class="dialog">
+          <div class="dialogTitle">{{ macroParamDialog.macro.name }}</div>
+          <div class="dialogBody">
+            <div class="macroParamFields">
+              <div v-for="p in macroParamDialog.macro.params" :key="p.name" class="macroParamRow">
+                <label class="macroParamLabel">{{ p.label || p.name }}</label>
+                <input
+                  type="text"
+                  v-model="macroParamDialog.values[p.name]"
+                  @keydown.enter="confirmMacroParams"
+                />
+              </div>
+            </div>
+            <code class="macroPreview">{{ macroPreview() }}</code>
+          </div>
+          <Gate gate="ready" class="dialogActions">
+            <MachineBtn type="dialogCancel" @click="macroParamDialog = null">Cancel</MachineBtn>
+            <MachineBtn type="dialogConfirm" @click="confirmMacroParams">Execute</MachineBtn>
+          </Gate>
+        </div>
+      </div>
+
+      <div v-if="showShutdownConfirm" class="dialogOverlay safetyDialog">
+        <div class="dialog">
+          <div class="dialogTitle danger">Shut Down LinuxCNC?</div>
+          <div class="dialogBody">This will stop all motion and exit LinuxCNC.</div>
+          <Gate gate="abort" class="dialogActions">
+            <MachineBtn type="dialogCancel" @click="showShutdownConfirm = false">Cancel</MachineBtn>
+            <MachineBtn type="dialogDanger" @click="send({ cmd: 'shutdown' }); showShutdownConfirm = false">Shut Down</MachineBtn>
+          </Gate>
+        </div>
+      </div>
+
+      <div v-if="compConfirmPending !== null" class="dialogOverlay safetyDialog">
+        <div class="dialog">
+          <div class="dialogTitle">{{ compConfirmPending ? 'Enable' : 'Disable' }} Compensation</div>
+          <div class="dialogBody">
+            <template v-if="compConfirmPending">
+              Z axis will move based on the surface compensation map.<br>
+              Ensure tool is clear of the workpiece.
+            </template>
+            <template v-else>
+              Z axis will move by approximately
+              <strong>{{ ((st.eoffset_z ?? 0) * -1).toFixed(4) }}</strong> mm.<br>
+              Ensure tool is clear of the workpiece.
+            </template>
+          </div>
+          <Gate gate="ready" class="dialogActions">
+            <MachineBtn type="dialogDanger" @click="cancelCompToggle">Cancel</MachineBtn>
+            <MachineBtn type="dialogConfirm" @click="confirmCompToggle">Confirm</MachineBtn>
+          </Gate>
+        </div>
+      </div>
+    </Gate><!-- /content (outer gate) -->
+
+    <!-- ══ Bottom Action Strip — outside outer Gate, always accessible ══ -->
+    <div class="strip">
+      <SafetyStrip
+        :armed="armed"
+        :busy="busy"
+        :isEstop="isEstop"
+        :isEnabled="isEnabled"
+        :isHomed="isHomed"
+        :canEstop="canEstop"
+        :canResetEstop="canResetEstop"
+        @arm="arm"
+        @estop="send({ cmd: 'estop' })"
+        @estop-reset="send({ cmd: 'estop_reset' })"
+        @machine-on="fire({ cmd: 'machine_on' })"
+        @machine-off="fire({ cmd: 'machine_off' })"
+      />
+
+      <div class="stripSep"></div>
+
+      <ModeStrip
+        :axes="axes"
+        :jogVel="jogVel"
+        :angularJogVel="angularJogVel"
+        :linearUnit="linearUnit"
+        :maxJogVel="maxJogVel"
+        :maxAngularJogVel="maxAngularJogVel"
+        :minAngularJogVel="minAngularJogVel"
+        :jogIncrement="jogIncrement"
+        :minJogVel="minJogVel"
+        :iniIncrements="iniIncrements"
+        :isTeleop="isTeleop"
+        :isHomed="isHomed"
+        :homedJoints="homedJoints"
+        :jogDisabled="!permissions.jog"
+        :touchoff="touchoff"
+        :g5xLabel="g5xLabel"
+        :mdiText="mdiText"
+        :activeFile="activeFile"
+        :isPaused="isPaused"
+        :isRunning="isRunning"
+        :elapsed="elapsedDisplay"
+        :optionalStop="optionalStopOn"
+        :blockDelete="blockDeleteOn"
+        @update:jogVel="jogVel = $event"
+        @update:angularJogVel="angularJogVel = $event"
+        @update:jogIncrement="jogIncrement = $event"
+        @toggleTeleop="toggleTeleop"
+        @homeAll="homeAll"
+        @unhomeAll="unhomeAll"
+        @setAxis="setAxis"
+        @setAll="setAll"
+        @update:touchoff="touchoff = $event"
+        @setG5x="setG5x"
+        @goToG30="fire({ cmd: 'mdi', text: 'O<go_to_g30> CALL' })"
+        @goToHome="fire({ cmd: 'mdi', text: 'O<go_to_home> CALL' })"
+        @goToZero="fire({ cmd: 'mdi', text: 'O<go_to_zero> CALL' })"
+        @update:mdiText="mdiText = $event"
+        @sendMdi="sendMdi"
+        @cycleStart="cycleStart"
+        @cyclePause="cyclePause"
+        @cycleResume="cycleResume"
+        @cycleStep="cycleStep"
+        @abort="fire({ cmd: 'abort' })"
+        @toggleOptionalStop="toggleOptionalStop"
+        @toggleBlockDelete="toggleBlockDelete"
+      />
+
+      <div class="stripSep"></div>
+
+      <ControlsStrip
+        :feedSlider="feedSlider"
+        :spindleSlider="spindleSlider"
+        :rapidSlider="rapidSlider"
+        :feedOvrEnabled="feedOvrEnabled"
+        :spindleOvrEnabled="spindleOvrEnabled"
+        :maxFeedOverride="maxFeedOverride"
+        :minSpindleOverride="minSpindleOverride"
+        :maxSpindleOverride="maxSpindleOverride"
+        :isForward="isForward"
+        :isReverse="isReverse"
+        :isSpinning="isSpinning"
+        :rpmInput="rpmInput"
+        :spindleActual="spindleActual"
+        :spindleSpeed="spindleSpeed"
+        :spindleLoad="spindleLoad"
+        :minSpindleSpeed="minSpindleSpeed"
+        :maxSpindleSpeed="maxSpindleSpeed"
+        :floodOn="floodOn"
+        :mistOn="mistOn"
+        :toolNumber="toolNumber"
+        :currentTool="st.tool_number ?? 0"
+        :probing="!!st.probing"
+        :userMacros="userMacros"
+        @update:feedSlider="feedSlider = $event"
+        @update:spindleSlider="spindleSlider = $event"
+        @update:rapidSlider="rapidSlider = $event"
+        @feedChange="onFeedChange"
+        @spindleSliderChange="onSpindleSliderChange"
+        @rapidChange="onRapidChange"
+        @overridePreset="setOverridePreset"
+        @resetAllOverrides="resetAllOverrides"
+        @spindleFwd="spindleForward"
+        @spindleRev="spindleReverse"
+        @spindleStop="spindleStop"
+        @update:rpmInput="rpmInput = $event"
+        @toggleFlood="toggleFlood"
+        @toggleMist="toggleMist"
+        @update:toolNumber="toolNumber = $event"
+        @saveToolNumber="saveToolNumber"
+        @measureAuto="measureAuto"
+        @loadTool="loadTool"
+        @unloadTool="unloadTool"
+        @openToolTable="activeTab = 'tools'"
+        @executeMacro="executeMacro"
+      />
+    </div><!-- /strip -->
+
   </div>
 </template>
-
 <style scoped>
 .wrap {
-  --sidebar-w: 150px;
-  --sidebar-total: 178px; /* 16px wrap padding + sidebar + 12px gap */
   height: 100%;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   box-sizing: border-box;
-  padding: 16px;
-  gap: var(--gap-section);
+  padding: var(--gap-controls);
+  gap: var(--gap-controls);
   font-family: var(--font-sans);
 }
 
-.sidebar {
-  width: var(--sidebar-w);
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-section);
-  z-index: 1020;
-}
-
-.mainArea {
+.content {
   flex: 1;
-  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  position: relative; /* containing block for dialogs */
+}
+
+.strip {
+  display: flex;
+  gap: var(--gap-section);
+  padding: var(--gap-controls);
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: var(--radius-xl);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: 50vh;
+}
+
+.stripSep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  flex-shrink: 0;
 }
 
 .hdr {
@@ -2112,50 +1588,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   background: color-mix(in oklab, var(--panel) 92%, transparent);
 }
 
-/* ---- Shared panel styles (visual, no layout) ---- */
-.panels {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  gap: var(--gap-section);
-  margin-bottom: var(--gap-section);
-  overflow: hidden;
-}
-
-.panel {
-  box-sizing: border-box;
-  min-width: 0;
-  min-height: 0;
-  position: relative;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-  padding: 12px;
-  background: var(--panel);
-  color: var(--fg);
-  display: flex;
-  flex-direction: column;
-}
-
-.addPanel {
-  flex: 0 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border-radius: var(--radius-2xl);
-  border: 1px dashed var(--border);
-  background: transparent;
-  color: var(--fg);
-  font-size: var(--fs-2xl);
-  opacity: var(--opacity-disabled);
-  transition: opacity 0.15s, background 0.15s;
-}
-
-.addPanel:hover {
-  opacity: 0.8;
-  background: color-mix(in oklab, var(--panel) 50%, transparent);
-}
-
 .statusBanner {
   display: flex;
   align-items: center;
@@ -2175,89 +1607,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
 
 .statusBanner.refresh {
   background: color-mix(in oklab, var(--active-tool) 20%, var(--panel));
-}
-
-.sidebar > .card {
-  margin-bottom: 0;
-}
-
-.sidebar .btnrow {
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--gap-controls);
-}
-
-.sidebar .safetyBtn {
-  width: 100%;
-  padding: 8px 10px;
-  min-width: 0;
-}
-
-.sidebar .vsep {
-  width: 100%;
-  height: 1px;
-  margin: 0;
-}
-
-.machineStatus {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-tight);
-}
-
-.card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
-  padding: 12px;
-  margin-bottom: var(--gap-section);
-  background: var(--panel);
-  color: var(--fg);
-}
-
-
-.statusGroups {
-  display: flex;
-  gap: var(--gap-section);
-  margin-bottom: var(--gap-controls);
-}
-
-.statusGroup {
-  flex: 1;
-  padding: 12px;
-  border: 1px solid color-mix(in oklab, var(--border) 50%, transparent);
-  border-radius: var(--radius-xl);
-  background: color-mix(in oklab, var(--panel) 30%, transparent);
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-controls);
-}
-
-.statusRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--gap-section);
-}
-
-.row {
-  display: grid;
-  grid-template-columns: 90px 1fr 90px 1fr 90px 1fr;
-  gap: var(--gap-controls);
-  align-items: center;
-}
-
-.k {
-  font-size: var(--fs-base);
-  opacity: var(--opacity-muted);
-}
-
-.v {
-  font-weight: var(--fw-semibold);
-}
-
-.v.warn {
-  color: var(--warn);
-  animation: flash-warn 1.2s ease-in-out infinite;
 }
 
 @keyframes flash-warn {
@@ -2281,223 +1630,11 @@ watch(isHomed, (nowHomed, wasHomed) => {
   opacity: var(--opacity-muted);
 }
 
-
-.offsetsPopover {
-  top: 0;
-  left: 100%;
-  margin-left: 6px;
-  min-width: 300px;
-}
-.offsetsPopover.open {
-  display: flex !important;
-  flex-direction: column;
-  gap: var(--gap-tight);
-}
-.offsetTable { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
-.offsetTable th { text-align: right; padding: 2px 6px; color: color-mix(in oklab, var(--fg) 55%, transparent); font-weight: var(--fw-medium); }
-.offsetTable td { text-align: right; padding: 2px 6px; font-family: var(--font-mono); }
-.offsetTable .offLabel { text-align: left; font-weight: var(--fw-semibold); color: color-mix(in oklab, var(--fg) 80%, transparent); }
-.offsetTable tbody tr { cursor: pointer; }
-.offsetTable tbody tr:hover { background: color-mix(in oklab, var(--fg) 5%, transparent); }
-.offsetTable .activeRow .offLabel { color: var(--info); }
-.offsetTable .selectedRow { background: color-mix(in oklab, var(--info) 15%, transparent); outline: 1px solid color-mix(in oklab, var(--info) 40%, transparent); }
-.offsetTable .g92Row, .offsetTable .toolRow { border-top: 1px solid color-mix(in oklab, var(--fg) 10%, transparent); cursor: default; }
-.offsetTable .warn { color: var(--warn); }
-.offsetTable .editableCell { cursor: cell; }
-.offsetTable .editableCell:hover { background: color-mix(in oklab, var(--info) 10%, transparent); }
-.offsetInput {
-  width: 100%; box-sizing: border-box;
-}
-.offsetActions { display: flex; gap: var(--gap-tight); margin-top: var(--gap-controls); justify-content: flex-end; }
-
-.overridesPopover {
-  top: 0;
-  left: 100%;
-  margin-left: 6px;
-  min-width: 260px;
-  cursor: default;
-}
-.overridesPopover.open {
-  display: flex !important;
-  flex-direction: column;
-  gap: var(--gap-controls);
-}
-
-.ovrRow {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-controls);
-}
-
-.ovrLabel {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-medium);
-  opacity: var(--opacity-muted);
-  min-width: 48px;
-}
-
-.ovrRow input[type="range"] {
-  flex: 1;
-  min-width: 0;
-}
-
-
-
-.ovrPresets {
-  display: flex;
-  gap: var(--gap-tight);
-  padding-left: 56px;
-  margin-bottom: var(--gap-tight);
-}
-
-.ovrResetBtn {
-  margin-top: var(--gap-tight);
-}
-
-/* ---- Controls section (Spindle button + popover) ---- */
-.controlBtns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-controls); position: relative; }
-.controlGroup { }
-.controlGroup--wide { grid-column: 1 / -1; }
-
-.codesRow {
-  position: relative;
-}
-.codesShort {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.codesRow .codesPopover {
-  top: 100%;
-  left: 0;
-  margin-top: var(--gap-tight);
-  min-width: 240px;
-}
-.codesRow:hover .codesPopover {
-  display: flex !important;
-  flex-direction: column;
-  gap: var(--gap-controls);
-}
-.codesValue {
+.mono {
   font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-  word-break: break-word;
-  line-height: 1.5;
 }
 
-.controlBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.controlIcon { width: var(--fs-2xl); height: var(--fs-2xl); }
-
-.spindlePopover {
-  top: 0;
-  left: 100%;
-  margin-left: 6px;
-  min-width: 280px;
-}
-
-.spindlePopover.open {
-  display: flex !important;
-  flex-direction: column;
-  gap: var(--gap-section);
-}
-
-.spDirRow {
-  display: flex;
-  gap: var(--gap-controls);
-  justify-content: center;
-}
-
-.spDirBtn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--gap-tight);
-  min-width: 64px;
-}
-
-.spDirIcon { font-size: var(--fs-2xl); line-height: 1; }
-.spStopIcon { font-size: var(--fs-xl); line-height: 1.4; }
-
-.spRpmRow {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-controls);
-}
-
-.spFieldLabel {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-medium);
-  opacity: 0.8;
-  min-width: 72px;
-}
-
-.spRpmInput {
-  flex: 1;
-  max-width: 120px;
-}
-
-.spUnit {
-  font-size: var(--fs-xs);
-  font-weight: 400;
-  opacity: var(--opacity-muted);
-}
-
-.spActualGroup {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-tight);
-}
-
-.spActualRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.spActualValue {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xl);
-  font-weight: var(--fw-bold);
-}
-
-.spCommandedValue {
-  font-family: var(--font-mono);
-  font-size: var(--fs-md);
-  font-weight: var(--fw-semibold);
-  opacity: var(--opacity-muted);
-}
-
-.spDirValue {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-  opacity: var(--opacity-muted);
-}
-
-
-/* ---- Coolant popover ---- */
-.macroPopover {
-  top: 0;
-  left: 100%;
-  margin-left: 6px;
-  min-width: 180px;
-}
-.macroPopover.open {
-  display: flex !important;
-  flex-direction: column;
-  gap: var(--gap-tight);
-}
-.macroBtn { width: 100%; text-align: left; }
-.macroEmpty {
-  font-size: var(--fs-sm);
-  opacity: var(--opacity-disabled);
-  text-align: center;
-  padding: var(--gap-section);
-}
+/* ---- Macro param dialog ---- */
 .macroParamFields {
   display: flex;
   flex-direction: column;
@@ -2520,74 +1657,6 @@ watch(isHomed, (nowHomed, wasHomed) => {
   opacity: var(--opacity-muted);
 }
 
-.coolantPopover {
-  top: 0;
-  left: 100%;
-  margin-left: 6px;
-  min-width: 200px;
-}
-.coolantPopover.open {
-  display: flex !important;
-  flex-direction: column;
-  gap: var(--gap-controls);
-}
-.coolantRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--gap-section);
-}
-.coolantLabel {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-semibold);
-}
-.coolantToggle {
-  min-width: 60px;
-}
-
-/* ---- Tool dialog ---- */
-.toolDialogActions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--gap-controls) var(--gap-section);
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-}
-.toolDialogBody {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-.toolInputRow {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-controls);
-}
-.toolFieldLabel {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-medium);
-  opacity: 0.8;
-  min-width: 48px;
-}
-.toolNumInput {
-  flex: 1;
-  max-width: 80px;
-}
-.toolActions {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-tight);
-}
-.controlBtn.simtrip {
-  background: color-mix(in oklab, var(--accent) 15%, var(--button-bg));
-  border-color: color-mix(in oklab, var(--accent) 30%, var(--border));
-  color: var(--accent);
-  font-style: italic;
-}
-.controlBtn.simtrip:disabled { color: var(--fg); background: var(--button-bg); border-color: var(--border); font-style: normal; }
-.simtripGroup { grid-column: 1 / -1; }
-
 /* ---- Settings dialog ---- */
 .settingsDialogBody {
   flex: 1;
@@ -2595,167 +1664,52 @@ watch(isHomed, (nowHomed, wasHomed) => {
   overflow: hidden;
 }
 
-.toolStatusRow {
+/* ---- Messages dialog ---- */
+.messagesBody {
+  overflow-y: auto;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-tight);
+  padding: var(--gap-controls);
+}
+.msgItem {
   display: flex;
   align-items: center;
-  gap: var(--gap-tight);
+  gap: var(--gap-controls);
+  padding: var(--gap-tight) var(--gap-controls);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
 }
-.toolStatusDot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-round);
-  background: var(--border);
-}
-.toolStatusDot.probing {
-  background: var(--warn);
-  animation: pulse 0.8s ease-in-out infinite alternate;
-}
-.toolStatusDot.tripped {
-  background: var(--ok);
-}
-.toolStatusText {
-  font-size: var(--fs-sm);
+.msgItem.error { border-color: color-mix(in oklab, var(--danger) 40%, var(--border)); }
+.msgItem.display { border-color: color-mix(in oklab, var(--display) 40%, var(--border)); }
+.msgTime {
+  font-size: var(--fs-2xs);
   font-family: var(--font-mono);
   opacity: var(--opacity-muted);
+  flex-shrink: 0;
 }
-
-/* ---- Messages popover ---- */
-.messagesPopover {
-  top: 0;
-  left: 100%;
-  margin-left: 6px;
-  min-width: 320px;
+.msgKind {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  flex-shrink: 0;
+  min-width: 50px;
 }
-.messagesPopover.open {
-  display: flex !important;
-  flex-direction: column;
-  gap: var(--gap-controls);
-}
-.msgPopEmpty { padding: 20px 0; text-align: center; font-size: var(--fs-base); opacity: var(--opacity-disabled); }
-
-.msgPopList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-tight);
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.msgPopItem {
-  display: flex;
-  align-items: stretch;
-  gap: var(--gap-controls);
-  padding: 8px 10px;
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--border);
-  background: var(--button-bg);
-}
-
-.msgPopIndicator { width: 3px; border-radius: var(--radius-sm); flex-shrink: 0; }
-.msgPopItem.error .msgPopIndicator { background: var(--err); }
-.msgPopItem.info .msgPopIndicator { background: var(--fg); opacity: var(--opacity-disabled); }
-.msgPopItem.display .msgPopIndicator { background: var(--display); }
-
-.msgPopBody { flex: 1; min-width: 0; }
-.msgPopMeta { display: flex; align-items: center; gap: var(--gap-tight); margin-bottom: 2px; }
-.msgPopBadge { font-size: var(--fs-2xs); font-weight: var(--fw-bold); padding: 1px 5px; border-radius: var(--radius-sm); letter-spacing: 0.5px; }
-.msgPopBadge.error { background: color-mix(in oklab, var(--err) 20%, var(--panel)); color: var(--danger); }
-.msgPopBadge.info { background: color-mix(in oklab, var(--fg) 10%, var(--panel)); color: var(--fg); opacity: var(--opacity-muted); }
-.msgPopBadge.display { background: color-mix(in oklab, var(--display) 20%, var(--panel)); color: var(--display); }
-
-.msgPopTime { font-size: var(--fs-xs); font-family: var(--font-mono); opacity: var(--opacity-muted); }
-.msgPopText { font-size: var(--fs-base); line-height: 1.3; word-break: break-word; }
-.msgPopItem .btn-icon { align-self: flex-start; font-size: var(--fs-xl); }
-
-.btnrow {
-  display: flex;
-  gap: var(--gap-controls);
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.vsep {
-  width: 1px;
-  height: 26px;
-  background: var(--border);
-  margin: 0 2px;
-}
-
-
-.safetyBtn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--gap-tight);
-  padding: 12px 20px;
-  min-width: 80px;
-  font-size: var(--fs-xl);
-}
-
-.safetyIcon {
-  font-size: var(--fs-3xl);
-  line-height: 1;
-  width: var(--fs-3xl);
-  height: var(--fs-3xl);
-}
-
-.safetyLabel {
+.msgText {
+  flex: 1;
   font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  word-break: break-word;
 }
-
-
-.hint {
-  margin-top: var(--gap-controls);
-  font-size: var(--fs-base);
+.msgEmpty {
+  padding: var(--gap-panel);
+  text-align: center;
   opacity: var(--opacity-muted);
 }
 
-.debugSection {
-  margin-top: var(--gap-controls);
-}
-
-.pre {
-  background: color-mix(in oklab, var(--panel) 50%, transparent);
-  padding: 10px;
-  border-radius: var(--radius-2xl);
-  overflow: auto;
-  font-size: var(--fs-sm);
-  max-height: 400px;
+.dialogBody .danger {
+  color: var(--danger);
 }
 
 .safetyDialog { z-index: 1010; }
-
-/* ---- Landscape layout — panels side by side ---- */
-@media (orientation: landscape) {
-  .panels          { align-items: stretch; flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; }
-  .panel           { flex: 0 0 var(--panel-min-w); min-height: var(--panel-min-h); }
-  .panel-viewer    { flex: 1; min-width: var(--panel-min-w-wide); overflow: hidden; }
-  .panel-manual,
-  .panel-probe { flex: 0.5; min-width: var(--panel-min-w-wide); }
-  .panel-gcode,
-  .panel-camera    { flex: 0.5; min-width: var(--panel-min-w); }
-}
-
-/* ---- Portrait layout — panels stacked vertically ---- */
-@media (orientation: portrait) {
-  .panels          { flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: auto; }
-  .panel           { flex: 0 0 auto; min-width: var(--panel-min-w-wide); }
-  .panel-viewer    { flex: 1; min-height: var(--viewer-min-h-portrait); overflow: hidden; }
-  .panel-gcode     { flex: 0 0 var(--panel-h-portrait); }
-  .addPanel        { flex: 0 0 auto; width: 100%; height: 36px; }
-}
-
-/* ---- Responsive: tablet landscape / narrow desktop (768–1199px) ---- */
-@media (max-width: 1199px) and (min-width: 768px) {
-  .statusGroups {
-    flex-wrap: wrap;
-  }
-  .statusGroup {
-    min-width: calc(50% - 6px);
-  }
-}
 
 </style>

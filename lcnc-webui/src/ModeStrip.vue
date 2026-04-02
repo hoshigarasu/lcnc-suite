@@ -41,6 +41,7 @@ const emit = defineEmits<{
   (e: "setAll", values: number[]): void;
   (e: "update:touchoff", values: number[]): void;
   (e: "setG5x", gcode: string): void;
+  (e: "resetJogVel"): void;
   (e: "goToG30"): void;
   (e: "goToHome"): void;
   (e: "goToZero"): void;
@@ -223,6 +224,7 @@ function stopZJog(dir: 1 | -1, e: PointerEvent) {
         <span class="colVal">{{ (jogVel * 60).toFixed(0) }}</span>
         <MachineSlider gate="jogSpeed" :disabled="isDisabled" :min="minJogVel" :max="maxJogVel" :step="0.1" :modelValue="jogVel" @update:modelValue="(v: number | undefined) => { if (v != null) emit('update:jogVel', v) }" class="vSlider" />
         <span class="colLabel">{{ linearUnit }}/min</span>
+        <MachineBtn type="overrideReset" @click="emit('resetJogVel')">Reset</MachineBtn>
       </div>
 
       <!-- Step increments + mode -->

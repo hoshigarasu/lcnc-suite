@@ -18,6 +18,7 @@ const allow = computed(() => permissions.value[props.gate]);
 
 <style scoped>
 .gate-exempt {
+  display: contents;
   float: none;
   padding: 0;
   width: auto;

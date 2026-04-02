@@ -1394,8 +1394,9 @@ watch(isHomed, (nowHomed, wasHomed) => {
       </div>
     </Gate><!-- /content (outer gate) -->
 
-    <!-- ══ Bottom Action Strip — outside outer Gate, always accessible ══ -->
-    <div class="strip">
+    <!-- ══ Bottom Action Strip — default-deny Gate, SafetyStrip exempt ══ -->
+    <Gate gate="safety" class="strip">
+      <template #exempt>
       <SafetyStrip
         :armed="armed"
         :busy="busy"
@@ -1419,7 +1420,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
         @machine-on="fire({ cmd: 'machine_on' })"
         @machine-off="fire({ cmd: 'machine_off' })"
       />
-
+      </template>
 
       <ModeStrip
         :axes="axes"
@@ -1441,6 +1442,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
         @update:jogVel="jogVel = $event"
         @update:angularJogVel="angularJogVel = $event"
         @update:jogIncrement="jogIncrement = $event"
+        @resetJogVel="jogVel = defaultJogVel"
         @toggleTeleop="toggleTeleop"
         @homeAll="homeAll"
         @unhomeAll="unhomeAll"
@@ -1502,7 +1504,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
         @openToolTable="activeTab = 'tools'"
         @executeMacro="executeMacro"
       />
-    </div><!-- /strip -->
+    </Gate><!-- /strip -->
 
   </div>
 </template>

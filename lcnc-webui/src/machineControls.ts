@@ -37,9 +37,9 @@ export const BUTTON_TYPES = {
   toolUnload:     { gate: 'ready',    variant: 'default', size: 'md' },
 
   // Spindle
-  spindleFwd:     { gate: 'ready',    variant: 'default', size: 'md' },
-  spindleRev:     { gate: 'ready',    variant: 'default', size: 'md' },
-  spindleStop:    { gate: 'ready',    variant: 'danger',  size: 'md' },
+  spindleFwd:     { gate: 'ready',    variant: 'default', size: 'lg' },
+  spindleRev:     { gate: 'ready',    variant: 'default', size: 'lg' },
+  spindleStop:    { gate: 'ready',    variant: 'danger',  size: 'lg' },
 
   // Coolant
   flood:          { gate: 'ready',    variant: 'default', size: 'md' },

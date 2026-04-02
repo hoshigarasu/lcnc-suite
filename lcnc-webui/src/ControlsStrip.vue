@@ -3,7 +3,7 @@ import Gate from "./Gate.vue";
 import MachineBtn from "./MachineBtn.vue";
 import MachineSlider from "./MachineSlider.vue";
 import MachineInput from "./MachineInput.vue";
-import { RotateCw, RotateCcw, CircleStop } from "lucide-vue-next";
+import { RotateCw, RotateCcw, Square } from "lucide-vue-next";
 import { STEP_RPM, STEP_OVERRIDE, STEP_RAPID_OVERRIDE, STEP_DEFAULT, type MacroDef } from "./defaults";
 
 const props = defineProps<{
@@ -89,36 +89,44 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
 
     <!-- RIGHT: Tool + Spindle + Coolant -->
     <div class="rightSection">
-      <!-- Tool display -->
-      <Gate gate="ready" class="toolBlock">
-        <div class="toolHead">
-          <span class="toolLabel">TOOL</span>
-          <span class="toolCurrent">T{{ currentTool }}</span>
-        </div>
-      </Gate>
-
-      <!-- Spindle controls -->
+      <!-- Spindle -->
       <Gate gate="ready" class="spnBlock">
-        <div class="spnDir">
-          <MachineBtn type="spindleFwd" :active="isForward" @click="emit('spindleFwd', rpmInput)" title="Forward (CW)" class="spnBtn">
-            <RotateCw :size="18" />
+        <div class="spDirRow">
+          <MachineBtn type="spindleRev" :active="isReverse" @click="emit('spindleRev', rpmInput)">
+            <span class="btnContent"><RotateCcw :size="14" /> Rev</span>
           </MachineBtn>
-          <MachineBtn type="spindleStop" :active="isSpinning" :disabled="!isSpinning" @click="emit('spindleStop')" title="Stop" class="spnBtn spnStopBtn">
-            <CircleStop :size="18" />
+          <MachineBtn type="spindleStop" :active="isSpinning" :disabled="!isSpinning" @click="emit('spindleStop')">
+            <span class="btnContent"><Square :size="14" /> Stop</span>
           </MachineBtn>
-          <MachineBtn type="spindleRev" :active="isReverse" @click="emit('spindleRev', rpmInput)" title="Reverse (CCW)" class="spnBtn">
-            <RotateCcw :size="18" />
+          <MachineBtn type="spindleFwd" :active="isForward" @click="emit('spindleFwd', rpmInput)">
+            <span class="btnContent"><RotateCw :size="14" /> Fwd</span>
           </MachineBtn>
         </div>
 
-        <div class="rpmBlock">
-          <div class="rpmRow">
-            <span class="rpmLabel">RPM</span>
-            <span class="rpmValue">{{ formatRpm(spindleActual) }}</span>
+        <div class="spRpmRow">
+          <span class="spFieldLabel">Speed</span>
+          <MachineInput gate="rpmInput" type="number" class="spRpmInput" :value="rpmInput" @input="emit('update:rpmInput', +($event.target as HTMLInputElement).value)" :min="minSpindleSpeed" :max="maxSpindleSpeed" :step="STEP_RPM" />
+          <span class="spUnit">RPM</span>
+        </div>
+
+        <div class="spActualGroup">
+          <div class="spActualRow">
+            <span class="spFieldLabel">Actual</span>
+            <span class="spActualValue">{{ formatRpm(spindleActual) }} <span class="spUnit">RPM</span></span>
           </div>
-          <div class="rpmRow rpmCmd">
-            <span class="rpmLabel">CMD</span>
-            <span class="rpmValueSm">{{ formatRpm(spindleSpeed) }}</span>
+          <div class="spActualRow">
+            <span class="spFieldLabel">Cmd</span>
+            <span class="spCommandedValue">{{ formatRpm(spindleSpeed) }} <span class="spUnit">RPM</span></span>
+          </div>
+          <div class="spActualRow">
+            <span class="spFieldLabel">Dir</span>
+            <span class="spDirValue" :class="{ ok: isSpinning }">
+              {{ isForward ? "FWD" : isReverse ? "REV" : "OFF" }}
+            </span>
+          </div>
+          <div v-if="spindleLoad != null" class="spActualRow">
+            <span class="spFieldLabel">Load</span>
+            <span class="spActualValue">{{ Math.round(spindleLoad) }}%</span>
           </div>
         </div>
       </Gate>
@@ -126,8 +134,8 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
       <!-- Coolant -->
       <Gate gate="ready" class="coolBlock">
         <div class="coolBtns">
-          <MachineBtn type="flood" :active="floodOn" @click="emit('toggleFlood')" class="coolBtn">FLOOD</MachineBtn>
-          <MachineBtn type="mist" :active="mistOn" @click="emit('toggleMist')" class="coolBtn">MIST</MachineBtn>
+          <MachineBtn type="flood" :active="floodOn" @click="emit('toggleFlood')">FLOOD</MachineBtn>
+          <MachineBtn type="mist" :active="mistOn" @click="emit('toggleMist')">MIST</MachineBtn>
         </div>
       </Gate>
     </div>
@@ -184,78 +192,63 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
   padding-left: var(--gap-controls);
 }
 
-/* Tool */
-.toolBlock {
-  flex-shrink: 0;
-}
-.toolHead {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--gap-tight) var(--gap-controls);
-  background: color-mix(in oklab, var(--bg) 80%, transparent);
-  border-radius: var(--radius-lg);
-}
-.toolLabel {
-  font-size: var(--fs-2xs);
-  font-family: var(--font-mono);
-  opacity: var(--opacity-muted);
-}
-.toolCurrent {
-  font-family: var(--font-mono);
-  font-size: var(--fs-2xl);
-  font-weight: var(--fw-bold);
-  color: var(--active-tool);
-}
-
 /* Spindle */
 .spnBlock {
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: var(--gap-controls);
+}
+.spDirRow {
+  display: flex;
   gap: var(--gap-tight);
 }
-.spnDir {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: var(--gap-tight);
-}
-.spnBtn {
+.btnContent {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--gap-controls);
+  gap: var(--gap-tight);
 }
-.rpmBlock {
-  padding: var(--gap-tight) var(--gap-controls);
-  background: color-mix(in oklab, var(--bg) 80%, transparent);
-  border-radius: var(--radius-lg);
-}
-.rpmRow {
+.spRpmRow {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: var(--gap-controls);
 }
-.rpmLabel {
-  font-size: var(--fs-2xs);
-  font-family: var(--font-mono);
+.spFieldLabel {
+  font-size: var(--fs-xs);
+  opacity: var(--opacity-muted);
+  min-width: 40px;
+}
+.spRpmInput { flex: 1; }
+.spUnit {
+  font-size: var(--fs-xs);
   opacity: var(--opacity-muted);
 }
-.rpmValue {
+.spActualGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-tight);
+}
+.spActualRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.spActualValue {
   font-family: var(--font-mono);
-  font-size: var(--fs-xl);
+  font-size: var(--fs-base);
   font-weight: var(--fw-bold);
 }
-.rpmCmd {
-  border-top: 1px solid color-mix(in oklab, var(--border) 30%, transparent);
-  padding-top: var(--gap-micro);
-  margin-top: var(--gap-micro);
-}
-.rpmValueSm {
+.spCommandedValue {
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
   opacity: var(--opacity-muted);
 }
+.spDirValue {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  opacity: var(--opacity-muted);
+}
+.spDirValue.ok { color: var(--ok); opacity: 1; }
 
 /* Coolant */
 .coolBlock {
@@ -265,10 +258,5 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--gap-tight);
-}
-.coolBtn {
-  font-size: var(--fs-2xs);
-  font-family: var(--font-mono);
-  text-align: center;
 }
 </style>

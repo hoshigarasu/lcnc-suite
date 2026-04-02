@@ -1527,8 +1527,7 @@ watch(isHomed, (nowHomed, wasHomed) => {
 }
 
 .strip {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   height: 250px;
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);

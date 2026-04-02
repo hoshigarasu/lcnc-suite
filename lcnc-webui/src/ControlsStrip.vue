@@ -144,8 +144,8 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
 
 <style scoped>
 .controlsStrip {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  gap: var(--gap-controls);
   height: 100%;
   overflow: hidden;
 }

@@ -3,6 +3,7 @@ import Gate from "./Gate.vue";
 import MachineBtn from "./MachineBtn.vue";
 import MachineSlider from "./MachineSlider.vue";
 import MachineInput from "./MachineInput.vue";
+import MachineToggle from "./MachineToggle.vue";
 import { RotateCw, RotateCcw, Square } from "lucide-vue-next";
 import { STEP_RPM, STEP_OVERRIDE, STEP_RAPID_OVERRIDE, type MacroDef } from "./defaults";
 
@@ -107,40 +108,37 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
         </div>
 
         <div class="spRpmRow">
-          <span class="label-muted">Speed</span>
+          <span class="label-muted md">Speed</span>
           <MachineInput gate="rpmInput" type="number" class="spRpmInput" :value="rpmInput" @input="emit('update:rpmInput', +($event.target as HTMLInputElement).value)" :min="minSpindleSpeed" :max="maxSpindleSpeed" :step="STEP_RPM" />
-          <span class="label-muted">RPM</span>
         </div>
 
         <div class="spActualGroup">
           <div class="spActualRow">
-            <span class="label-muted">Actual</span>
-            <span class="val-mono lg">{{ formatRpm(spindleActual) }} <span class="label-muted">RPM</span></span>
+            <span class="label-muted md">Actual</span>
+            <span class="val-status md mono">{{ formatRpm(spindleActual) }}</span>
           </div>
           <div class="spActualRow">
-            <span class="label-muted">Cmd</span>
-            <span class="val-status mono muted">{{ formatRpm(spindleSpeed) }} <span class="label-muted">RPM</span></span>
+            <span class="label-muted md">Cmd</span>
+            <span class="val-status md mono muted">{{ formatRpm(spindleSpeed) }}</span>
           </div>
           <div class="spActualRow">
-            <span class="label-muted">Dir</span>
-            <span class="val-status" :class="{ ok: isSpinning }">
+            <span class="label-muted md">Dir</span>
+            <span class="val-status md" :class="{ ok: isSpinning }">
               {{ isForward ? "FWD" : isReverse ? "REV" : "OFF" }}
             </span>
           </div>
           <div v-if="spindleLoad != null" class="spActualRow">
-            <span class="label-muted">Load</span>
-            <span class="val-mono lg">{{ Math.round(spindleLoad) }}%</span>
+            <span class="label-muted md">Load</span>
+            <span class="val-status md mono">{{ Math.round(spindleLoad) }}%</span>
           </div>
         </div>
       </Gate>
 
       <!-- Coolant -->
-      <Gate gate="ready" class="coolBlock">
-        <div class="coolBtns">
-          <MachineBtn type="flood" :active="floodOn" @click="emit('toggleFlood')">FLOOD</MachineBtn>
-          <MachineBtn type="mist" :active="mistOn" @click="emit('toggleMist')">MIST</MachineBtn>
-        </div>
-      </Gate>
+      <div class="coolBlock">
+        <MachineToggle gate="coolant" :modelValue="floodOn" @update:modelValue="emit('toggleFlood')" label="Flood" />
+        <MachineToggle gate="coolant" :modelValue="mistOn" @update:modelValue="emit('toggleMist')" label="Mist" />
+      </div>
     </div>
   </div>
 </template>
@@ -209,11 +207,8 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
 }
 /* Coolant */
 .coolBlock {
+  display: flex;
+  gap: var(--gap-section);
   flex-shrink: 0;
-}
-.coolBtns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--gap-tight);
 }
 </style>

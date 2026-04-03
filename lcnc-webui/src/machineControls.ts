@@ -118,6 +118,7 @@ export const INPUT_DEFS = {
   mdiText:         { gate: 'ready' },
   touchoff:        { gate: 'zero',     mono: true, align: 'right' },
   rpmInput:        { gate: 'ready',    mono: true, align: 'right' },
+  coolant:         { gate: 'ready' },
 
   // Override sliders
   feedOverride:    { gate: 'override' },

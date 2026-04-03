@@ -758,7 +758,7 @@ async function saveEdit() {
 
 .progressTrack {
   flex: 1;
-  height: 6px;
+  height: 10px;
   border-radius: var(--radius-sm);
   background: color-mix(in oklab, var(--panel) 90%, var(--fg));
   overflow: hidden;
@@ -772,21 +772,15 @@ async function saveEdit() {
 }
 
 .progressLabel {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-family: var(--font-mono);
-  opacity: var(--opacity-muted);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-.progressPct {
-  opacity: var(--opacity-muted);
-}
-
 .elapsedLabel {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-family: var(--font-mono);
-  opacity: var(--opacity-muted);
   white-space: nowrap;
   flex-shrink: 0;
   margin-left: auto;

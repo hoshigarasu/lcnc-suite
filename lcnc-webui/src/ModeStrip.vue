@@ -278,6 +278,7 @@ function stopZJog(dir: 1 | -1, e: PointerEvent) {
 <style scoped>
 .modeStrip {
   height: 100%;
+  flex-shrink: 0;
   overflow: hidden;
 }
 .jogContent {

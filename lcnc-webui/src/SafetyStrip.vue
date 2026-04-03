@@ -139,7 +139,7 @@ const overridesActive = computed(() =>
   flex-direction: column;
   gap: var(--gap-controls);
   height: 100%;
-  min-width: 280px;
+  width: 280px;
   flex-shrink: 0;
   overflow: hidden;
 }

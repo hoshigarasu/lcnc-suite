@@ -146,6 +146,7 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
   display: flex;
   gap: var(--gap-controls);
   height: 100%;
+  flex-shrink: 0;
   overflow: hidden;
 }
 

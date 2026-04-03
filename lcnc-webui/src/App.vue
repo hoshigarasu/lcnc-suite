@@ -12,6 +12,7 @@ import ModeStrip from "./ModeStrip.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import ToolTablePanel from "./ToolTablePanel.vue";
 import ProbePanel from "./ProbePanel.vue";
+import OffsetPanel from "./OffsetPanel.vue";
 import Gate from "./Gate.vue";
 import MachineBtn from "./MachineBtn.vue";
 import MachineInput from "./MachineInput.vue";
@@ -146,6 +147,7 @@ const contentTabs = [
   { id: "gcode", label: "Program" },
   { id: "probe", label: "Probing" },
   { id: "mdi", label: "MDI" },
+  { id: "offsets", label: "Offsets" },
 ];
 
 const activeTab = ref("gcode");
@@ -1316,6 +1318,18 @@ watch(viewerGcode, (newGcode) => {
                 <div v-if="mdiHistory.length === 0" class="mdiHistoryEmpty">No history</div>
               </div>
             </div>
+          </template>
+
+          <template #offsets>
+            <OffsetPanel
+              :axes="axes"
+              :g5xLabel="g5xLabel"
+              :g92Offset="st.g92_offset ?? null"
+              :toolOffset="st.tool_offset ?? null"
+              :eoffsetZ="st.eoffset_z ?? null"
+              :eoffsetEnabled="!!st.eoffset_enabled"
+              :rotationXy="st.rotation_xy ?? null"
+            />
           </template>
         </TabPanel>
       </div>

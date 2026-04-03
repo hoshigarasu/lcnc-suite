@@ -4,7 +4,7 @@ import MachineBtn from "./MachineBtn.vue";
 import MachineSlider from "./MachineSlider.vue";
 import MachineInput from "./MachineInput.vue";
 import { RotateCw, RotateCcw, Square } from "lucide-vue-next";
-import { STEP_RPM, STEP_OVERRIDE, STEP_RAPID_OVERRIDE, STEP_DEFAULT, type MacroDef } from "./defaults";
+import { STEP_RPM, STEP_OVERRIDE, STEP_RAPID_OVERRIDE, type MacroDef } from "./defaults";
 
 const props = defineProps<{
   feedSlider: number;
@@ -184,6 +184,10 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
   direction: rtl;
   flex: 1;
   min-height: 0;
+  /* Override global height: 6px — with vertical writing-mode,
+     height is track LENGTH (must stretch), width is track THICKNESS */
+  height: auto;
+  width: 6px;
 }
 
 /* ── Right column: Tool + Spindle + Coolant stacked ── */

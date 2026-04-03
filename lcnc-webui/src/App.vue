@@ -155,6 +155,7 @@ const connLabel = computed(() => {
   const h = location.hostname;
   return (h === "localhost" || h === "127.0.0.1") ? "local" : h;
 });
+// @ts-expect-error TS6133 — mdiText will be wired to MDI panel in strip
 const mdiText = ref("G0 X0 Y0");
 const busy = ref(false);
 
@@ -762,10 +763,6 @@ async function fire(payload: any, cooldownMs = 200) {
   } finally {
     window.setTimeout(() => (busy.value = false), cooldownMs);
   }
-}
-
-function sendMdi() {
-  fire({ cmd: "mdi", text: mdiText.value });
 }
 
 function setAxis(axis: number, value: number = 0) {

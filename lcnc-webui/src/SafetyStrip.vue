@@ -4,7 +4,6 @@ import Gate from "./Gate.vue";
 import MachineBtn from "./MachineBtn.vue";
 import { Lock, LockOpen, TriangleAlert, Power } from "lucide-vue-next";
 import {
-  TRAJ_MODE_TELEOP,
   INTERP_IDLE, INTERP_READING, INTERP_PAUSED, INTERP_WAITING,
   TASK_MODE_MANUAL, TASK_MODE_AUTO, TASK_MODE_MDI,
 } from "./lcnc";

@@ -865,7 +865,7 @@ const halStats = computed(() => ({
               <label>Z</label>
               <span class="readonlyVal">{{ g30Z != null ? g30Z.toFixed(3) : '—' }}</span>
             </div>
-            <div class="tsBtnRow" style="margin-top: var(--gap-controls);">
+            <div class="tsBtnRow">
               <MachineBtn type="manage" @click="setG30">Set Current Position</MachineBtn>
               <MachineBtn type="inline" class="optBtn" @click="loadG30" :disabled="g30Loading">Refresh</MachineBtn>
             </div>
@@ -901,7 +901,7 @@ const halStats = computed(() => ({
               <MachineToggle gate="toolsetterParam" v-model="tsDisablePrePos" label="Skip G30 Pre-Pos" title="Skip the G30 pre-positioning move before traveling to the touch plate. Faster, but risks collision with clamps or fixtures on uncluttered machines only. (#3108)" />
               <MachineToggle gate="toolsetterParam" v-model="tsLastTry" label="Last Try w/o Table" title="On the final retry attempt, ignore tool table offsets and use spindle zero height instead. Provides a fallback for tools with incorrect table entries. (#3110)" />
             </div>
-            <div class="tsGrid" style="margin-top: var(--gap-section);">
+            <div class="tsGrid">
               <label title="Safety clearance between the expected tool tip position and the touch plate when using tool table pre-positioning. Increase for widely varying tool lengths. (#3104)">Tool Min Dist</label>
               <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.toolMinDis" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
               <label title="Number of extra retry attempts if probe contact fails. Each failure pauses for operator correction before retrying. Set to 0 for ATC. (#3109)">Extra Retries</label>
@@ -1024,7 +1024,7 @@ const halStats = computed(() => ({
                 <span class="opacityValue">{{ Math.round(cam.overlayOpacity * 100) }}%</span>
               </div>
             </div>
-            <div class="colorGrid" style="margin-top: var(--gap-controls)">
+            <div class="colorGrid">
               <div class="colorRow">
                 <MachineColor
                   gate="cameraSetting"
@@ -1096,7 +1096,7 @@ const halStats = computed(() => ({
               </Gate>
             </div>
 
-            <MachineBtn v-if="!editingMacro && macros.length < 20" type="manage" @click="addMacro" style="margin-top: var(--gap-section);">Add Macro</MachineBtn>
+            <MachineBtn v-if="!editingMacro && macros.length < 20" type="manage" @click="addMacro">Add Macro</MachineBtn>
 
           </div>
         </div>
@@ -1170,7 +1170,7 @@ const halStats = computed(() => ({
               />
               <span class="sliderVal">{{ Math.round((props.gamepadConfig?.deadZone ?? 0.15) * 100) }}%</span>
             </div>
-            <div v-if="props.gamepadConnected" style="margin-top: var(--gap-section);">
+            <div v-if="props.gamepadConnected">
               <div class="settingDesc">Move sticks and press buttons to verify mapping.</div>
               <GamepadLiveInput :deadZone="props.gamepadConfig?.deadZone ?? 0.15" />
             </div>
@@ -1437,10 +1437,9 @@ const halStats = computed(() => ({
 
 
 .section {
-}
-
-.sub {
-  margin-bottom: var(--gap-section);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-controls);
 }
 
 .wpColumns {

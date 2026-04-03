@@ -514,7 +514,6 @@ label:has(input:disabled, select:disabled) {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   opacity: var(--opacity-muted);
-  margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }

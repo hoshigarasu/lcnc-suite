@@ -366,7 +366,7 @@ function stopZJog(dir: 1 | -1, e: PointerEvent) {
   gap: var(--gap-section);
   height: 100%;
   border-left: 1px solid var(--border-subtle);
-  padding-left: var(--gap-section);
+  padding-left: var(--gap-controls);
 }
 .setupGrid {
   display: grid;

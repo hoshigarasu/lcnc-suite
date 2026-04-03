@@ -257,6 +257,7 @@ function onMdiKeydown(e: KeyboardEvent) {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  gap: var(--gap-controls);
 }
 
 .mdiRow {
@@ -274,7 +275,6 @@ function onMdiKeydown(e: KeyboardEvent) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--gap-controls) 0;
 }
 
 .mdiHistoryList {

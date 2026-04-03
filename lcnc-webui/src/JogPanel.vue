@@ -204,7 +204,7 @@ function stopJog(s: Sector, e?: PointerEvent) {
 </script>
 
 <template>
-  <div>
+  <div class="stack-controls">
     <div class="sub">Jog</div>
 
     <div class="controlGrid">
@@ -334,7 +334,6 @@ function stopJog(s: Sector, e?: PointerEvent) {
   grid-template-columns: auto 1fr 100px;
   gap: var(--gap-controls) var(--gap-controls);
   align-items: center;
-  margin-bottom: var(--gap-controls);
 }
 
 .k {
@@ -350,7 +349,6 @@ function stopJog(s: Sector, e?: PointerEvent) {
 }
 
 .hint {
-  margin-top: var(--gap-controls);
   font-size: var(--fs-base);
   opacity: var(--opacity-muted);
   text-align: center;

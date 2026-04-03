@@ -55,7 +55,7 @@ function setAll() {
       <div class="grid">
         <template v-for="(letter, i) in axes" :key="'w' + letter">
           <div class="axis"><span>{{ letter }}</span><b>{{ fmtCoord(workPos[i], letter) }}</b></div>
-          <MachineInput gate="touchoff" type="number" :step="STEP_DEFAULT" :value="touchoff[i]" @input="updateTouchoff(i, +($event.target as HTMLInputElement).value)" @keydown.enter="setAxis(i)" />
+          <MachineInput gate="touchoff" type="number" :step="STEP_DEFAULT" :value="touchoff[i]" @input="updateTouchoff(i, +($event.target as HTMLInputElement).value)" @keydown.enter="setAxis(i)" style="width: 100%" />
           <MachineBtn type="zero" class="zeroBtn" @click="setAxis(i)">Set {{ letter }}</MachineBtn>
         </template>
         <MachineBtn type="zero" class="homeBtn spanBtn" @click="setAll()" :style="{ gridColumn: 4, gridRow: spanRows }">Set All</MachineBtn>
@@ -85,7 +85,7 @@ function setAll() {
 .section {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-section);
+  gap: var(--gap-controls);
 }
 
 .grid {

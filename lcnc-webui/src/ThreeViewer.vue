@@ -1847,7 +1847,7 @@ defineExpose({
 
 <template>
   <div class="viewerWrapper">
-    <div ref="host" class="viewerHost" />
+    <div ref="host" class="viewerHost bordered-panel" />
 
     <!-- HUD Overlay -->
     <div v-show="hudVisible" class="hud" :style="{ opacity: viewerDefaults.opacities.hud ?? 1 }">
@@ -2005,8 +2005,6 @@ defineExpose({
   width: 100%;
   height: 100%;
   border-radius: var(--radius-2xl);
-  overflow: hidden;
-  border: 1px solid var(--border);
   background: color-mix(in oklab, var(--panel) 70%, transparent);
 }
 

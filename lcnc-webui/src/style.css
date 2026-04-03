@@ -651,6 +651,13 @@ label:has(input:disabled, select:disabled) {
 .row-controls   { display: flex; gap: var(--gap-controls); align-items: center; }
 .row-tight      { display: flex; gap: var(--gap-tight); align-items: center; }
 
+.bordered-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--panel);
+  overflow: hidden;
+}
+
 /* ── Display utilities ── */
 
 /* Monospace value (slider readouts, override %, RPM) */
@@ -673,6 +680,11 @@ label:has(input:disabled, select:disabled) {
 
 /* Radio button label row (jog increments, WCS selector) */
 .radio-label    { display: flex; align-items: center; gap: var(--gap-tight); font-family: var(--font-mono); font-size: var(--fs-base); cursor: pointer; white-space: nowrap; }
+
+/* Stable-width toggle: both labels overlap in same grid cell; hidden one sizes but doesn't show */
+.stable-width   { display: inline-grid; }
+.stable-width > * { grid-area: 1 / 1; display: flex; align-items: center; justify-content: center; }
+.stable-width > .alt { visibility: hidden; }
 
 /* Button inner content (icon + text aligned) */
 .btn-label      { display: flex; align-items: center; gap: var(--gap-tight); }

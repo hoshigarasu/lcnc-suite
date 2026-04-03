@@ -546,8 +546,7 @@ async function saveEdit() {
       </div>
       <MachineBtn :type="isPaused ? 'resume' : 'pause'" class="ctrlBtn"
         @click="isPaused ? emit('cycleResume') : emit('cyclePause')">
-        <component :is="isPaused ? Play : Pause" :size="14" class="ctrlIcon" />
-        {{ isPaused ? 'Resume' : 'Pause' }}
+        <span class="stable-width"><span :class="{ alt: isPaused }"><Pause :size="14" class="ctrlIcon" /> Pause</span><span :class="{ alt: !isPaused }"><Play :size="14" class="ctrlIcon" /> Resume</span></span>
       </MachineBtn>
       <MachineBtn type="abort" class="ctrlBtn" @click="emit('abort')">
         <Square :size="14" class="ctrlIcon" /> Abort

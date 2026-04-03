@@ -76,9 +76,9 @@ function fmt(n: any, letter?: string) {
         <template v-for="(letter, i) in axes" :key="'m' + letter">
           <div class="axis"><span>{{ letter }}</span><b>{{ fmt(machinePos[i], letter) }}</b></div>
           <div></div>
-          <MachineBtn :type="homedJoints[i] ? 'unhome' : 'home'" class="zeroBtn" @click="homedJoints[i] ? emit('unhomeAxis', i) : emit('homeAxis', i)">{{ homedJoints[i] ? `Unhome ${letter}` : `Home ${letter}` }}</MachineBtn>
+          <MachineBtn :type="homedJoints[i] ? 'unhome' : 'home'" class="zeroBtn" @click="homedJoints[i] ? emit('unhomeAxis', i) : emit('homeAxis', i)"><span class="stable-width"><span :class="{ alt: homedJoints[i] }">Home {{ letter }}</span><span :class="{ alt: !homedJoints[i] }">Unhome {{ letter }}</span></span></MachineBtn>
         </template>
-        <MachineBtn :type="homed ? 'unhome' : 'home'" class="homeBtn spanBtn" :style="{ gridColumn: 4, gridRow: spanRows }" @click="homed ? emit('unhomeAll') : emit('homeAll')">{{ homed ? 'Unhome' : 'Home All' }}</MachineBtn>
+        <MachineBtn :type="homed ? 'unhome' : 'home'" class="homeBtn spanBtn" :style="{ gridColumn: 4, gridRow: spanRows }" @click="homed ? emit('unhomeAll') : emit('homeAll')"><span class="stable-width"><span :class="{ alt: homed }">Home All</span><span :class="{ alt: !homed }">Unhome</span></span></MachineBtn>
       </div>
     </div>
   </div>

@@ -256,10 +256,10 @@ function stopZJog(dir: 1 | -1, e: PointerEvent) {
           <template v-for="(letter, i) in axes" :key="letter">
             <MachineInput gate="touchoff" type="number" :step="STEP_DEFAULT" :value="touchoff[i]" @input="updateTouchoff(i, +($event.target as HTMLInputElement).value)" @keydown.enter="emit('setAxis', i, touchoff[i] ?? 0)" class="setupInput" />
             <MachineBtn type="zero" size="xs" @click="emit('setAxis', i, touchoff[i] ?? 0)">Set {{ letter }}</MachineBtn>
-            <MachineBtn :type="homedJoints[i] ? 'unhome' : 'home'" size="xs" @click="homedJoints[i] ? emit('unhomeAxis', i) : emit('homeAxis', i)">{{ homedJoints[i] ? 'Unhome' : 'Home' }} {{ letter }}</MachineBtn>
+            <MachineBtn :type="homedJoints[i] ? 'unhome' : 'home'" size="xs" @click="homedJoints[i] ? emit('unhomeAxis', i) : emit('homeAxis', i)"><span class="stable-width"><span :class="{ alt: homedJoints[i] }">Home {{ letter }}</span><span :class="{ alt: !homedJoints[i] }">Unhome {{ letter }}</span></span></MachineBtn>
           </template>
           <MachineBtn type="zero" size="xs" class="spanAll" @click="emit('setAll', [...touchoff])">Set All</MachineBtn>
-          <MachineBtn :type="isHomed ? 'unhome' : 'home'" size="xs" class="spanAll" @click="isHomed ? emit('unhomeAll') : emit('homeAll')">{{ isHomed ? 'Unhome' : 'Home All' }}</MachineBtn>
+          <MachineBtn :type="isHomed ? 'unhome' : 'home'" size="xs" class="spanAll" @click="isHomed ? emit('unhomeAll') : emit('homeAll')"><span class="stable-width"><span :class="{ alt: isHomed }">Home All</span><span :class="{ alt: !isHomed }">Unhome</span></span></MachineBtn>
           <MachineBtn type="goTo" size="xs" @click="emit('goToG30')">G30</MachineBtn>
           <MachineBtn type="goTo" size="xs" @click="emit('goToHome')">Home Pos</MachineBtn>
           <MachineBtn type="goTo" size="xs" @click="emit('goToZero')">Zero</MachineBtn>

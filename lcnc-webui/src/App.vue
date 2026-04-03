@@ -140,13 +140,11 @@ function reloadPage() { location.reload(); }
 
 /** ---------- content tab definitions ---------- */
 const contentTabs = [
-  { id: "viewer", label: "3D Viewer" },
   { id: "gcode", label: "Program" },
   { id: "probe", label: "Probing" },
-  { id: "tools", label: "Tool Table" },
 ];
 
-const activeTab = ref("viewer");
+const activeTab = ref("gcode");
 
 const viewerRef = ref<any>(null);
 
@@ -516,6 +514,7 @@ const settingsDialogOpen = ref(false);
 const gcodeRefOpen = ref(false);
 const gcodeRefInitialSearch = ref("");
 const messagesDialogOpen = ref(false);
+const toolTableDialogOpen = ref(false);
 
 function closeAllDialogs() {
   settingsDialogOpen.value = false;
@@ -1143,117 +1142,129 @@ watch(viewerGcode, (newGcode) => {
 
     <!-- ══ Content area — outer Gate wraps tabs ══ -->
     <Gate gate="safety" class="content">
-      <TabPanel :tabs="contentTabs" :modelValue="activeTab" @update:modelValue="activeTab = $event">
-        <template #viewer>
-          <Toolbar
-            @resetBackplot="viewerRef?.resetBackplot?.()"
-            @setView="(p: any) => viewerRef?.setView?.(p)"
-            @toggleLayer="(l: Layer, on: boolean) => { viewerLayers[l] = on; viewerRef?.setLayerVisible?.(l, on); saveViewerState(); }"
-            @setPathOnTop="(on: boolean) => { viewerPathOnTop = on; viewerRef?.setPathAlwaysOnTop?.(on); saveViewerState(); }"
-            @setTrackMode="(m: string) => { viewerTrackMode = m as TrackMode; viewerRef?.setTrackingMode?.(m); saveViewerState(); }"
-            @toggleProjection="() => { viewerProjection = viewerProjection === 'parallel' ? 'perspective' : 'parallel'; viewerRef?.switchProjection?.(); saveViewerState(); }"
+      <!-- ══ Left pane — 3D Viewer (always visible) ══ -->
+      <div class="viewerPane">
+        <Toolbar
+          @resetBackplot="viewerRef?.resetBackplot?.()"
+          @setView="(p: any) => viewerRef?.setView?.(p)"
+          @toggleLayer="(l: Layer, on: boolean) => { viewerLayers[l] = on; viewerRef?.setLayerVisible?.(l, on); saveViewerState(); }"
+          @setPathOnTop="(on: boolean) => { viewerPathOnTop = on; viewerRef?.setPathAlwaysOnTop?.(on); saveViewerState(); }"
+          @setTrackMode="(m: string) => { viewerTrackMode = m as TrackMode; viewerRef?.setTrackingMode?.(m); saveViewerState(); }"
+          @toggleProjection="() => { viewerProjection = viewerProjection === 'parallel' ? 'perspective' : 'parallel'; viewerRef?.switchProjection?.(); saveViewerState(); }"
+          :workpieceSize="workpieceSize"
+          :workpieceOffset="workpieceOffset"
+          @update:workpieceSize="workpieceSize = $event; saveViewerState()"
+          @update:workpieceOffset="workpieceOffset = $event; saveViewerState()"
+        >
+          <ThreeViewer
+            ref="viewerRef"
+            :active="true"
             :workpieceSize="workpieceSize"
             :workpieceOffset="workpieceOffset"
-            @update:workpieceSize="workpieceSize = $event; saveViewerState()"
-            @update:workpieceOffset="workpieceOffset = $event; saveViewerState()"
-          >
-            <ThreeViewer
-              ref="viewerRef"
-              :active="activeTab === 'viewer'"
-              :workpieceSize="workpieceSize"
-              :workpieceOffset="workpieceOffset"
-              :g5xLabel="g5xLabel"
-              :linearUnit="linearUnit"
-              :jogVel="jogVel"
-              :angularJogVel="angularJogVel"
-              :isHomed="isHomed"
-              :maxJogVel="maxJogVel"
-              :maxAngularJogVel="maxAngularJogVel"
-              :minAngularJogVel="minAngularJogVel"
-              :jogIncrement="jogIncrement"
-              :minJogVel="minJogVel"
-              :iniIncrements="iniIncrements"
-              :activeFile="activeFile"
-              :spindleSpeed="spindleSpeed"
-              :spindleActual="spindleActual"
-              :spindleDirection="spindleDirection"
-              :surfacePoints="surfaceLoadedToViewer ? surfacePoints : null"
-              :axes="axes"
-              :touchoff="touchoff"
-              :jogDisabled="!permissions.jog"
-              @update:touchoff="touchoff = $event"
-              @update:jogVel="jogVel = $event"
-              @update:angularJogVel="angularJogVel = $event"
-              @update:jogIncrement="jogIncrement = $event"
-
-              @homeAll="homeAll"
-              @unhomeAll="unhomeAll"
-              @setAxis="setAxis"
-              @setAll="setAll"
-              @goToG30="fire({ cmd: 'mdi', text: 'O<go_to_g30> CALL' })"
-              @goToHome="fire({ cmd: 'mdi', text: 'O<go_to_home> CALL' })"
-              @goToZero="fire({ cmd: 'mdi', text: 'O<go_to_zero> CALL' })"
-            />
-          </Toolbar>
-        </template>
-
-        <template #gcode>
-          <GcodePanel
-            :activeFile="activeFile"
-            :gcodeContent="gcodeContent"
-            :gcodeStats="gcodeStats"
-            :currentLine="currentLine"
-            :isPaused="isPaused"
-            :elapsed="elapsedDisplay"
-            :optionalStop="optionalStopOn"
-            :blockDelete="blockDeleteOn"
-            :runFromLine="runFromLineEnabled"
-            @loadFile="loadFile"
-            @unloadFile="unloadFile"
-            @cycleStart="cycleStart"
-            @runFromLine="runFromLine"
-            @cycleStep="cycleStep"
-            @cyclePause="cyclePause"
-            @cycleResume="cycleResume"
-            @abort="fire({ cmd: 'abort' })"
-            @toggleOptionalStop="toggleOptionalStop"
-            @toggleBlockDelete="toggleBlockDelete"
-            @openGcodeRef="openGcodeRef"
-          />
-        </template>
-
-        <template #probe>
-          <ProbePanel
-            :probing="st.probing === true"
-            :probeTripped="st.probe_tripped === true"
-            :probedPosition="st.probed_position ?? null"
-            :workPos="workPos"
-            :probeResults="probeResults"
             :g5xLabel="g5xLabel"
-            :eoffsetZ="st.eoffset_z ?? null"
-            :eoffsetEnabled="!!st.eoffset_enabled"
-            :compMethod="st.comp_method ?? null"
-            :surfacePoints="surfacePoints"
-            :surfaceInViewer="surfaceLoadedToViewer"
-            @mdi="send({ cmd: 'mdi', text: $event })"
-            @abort="send({ cmd: 'abort' })"
-            @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
-            @setG5x="setG5x"
-            @getProbeResults="requestProbeResults"
-            @loadSurfaceToViewer="loadSurfaceToViewer"
-            @setCompensation="requestCompToggle"
-            @setCompMethod="send({ cmd: 'set_compensation_method', method: $event })"
-            @clearSurfaceMap="surfacePoints = null; surfaceLoadedToViewer = false"
-          />
-        </template>
+            :linearUnit="linearUnit"
+            :jogVel="jogVel"
+            :angularJogVel="angularJogVel"
+            :isHomed="isHomed"
+            :maxJogVel="maxJogVel"
+            :maxAngularJogVel="maxAngularJogVel"
+            :minAngularJogVel="minAngularJogVel"
+            :jogIncrement="jogIncrement"
+            :minJogVel="minJogVel"
+            :iniIncrements="iniIncrements"
+            :activeFile="activeFile"
+            :spindleSpeed="spindleSpeed"
+            :spindleActual="spindleActual"
+            :spindleDirection="spindleDirection"
+            :surfacePoints="surfaceLoadedToViewer ? surfacePoints : null"
+            :axes="axes"
+            :touchoff="touchoff"
+            :jogDisabled="!permissions.jog"
+            @update:touchoff="touchoff = $event"
+            @update:jogVel="jogVel = $event"
+            @update:angularJogVel="angularJogVel = $event"
+            @update:jogIncrement="jogIncrement = $event"
 
-        <template #tools>
-          <ToolTablePanel ref="toolTableRef" :currentTool="st.tool_number ?? null" :iniFilename="st.ini_filename ?? null" />
-        </template>
-      </TabPanel>
+            @homeAll="homeAll"
+            @unhomeAll="unhomeAll"
+            @setAxis="setAxis"
+            @setAll="setAll"
+            @goToG30="fire({ cmd: 'mdi', text: 'O<go_to_g30> CALL' })"
+            @goToHome="fire({ cmd: 'mdi', text: 'O<go_to_home> CALL' })"
+            @goToZero="fire({ cmd: 'mdi', text: 'O<go_to_zero> CALL' })"
+          />
+        </Toolbar>
+      </div>
+
+      <!-- ══ Right pane — Program / Probing tabs ══ -->
+      <div class="sidePane bordered-panel">
+        <TabPanel :tabs="contentTabs" :modelValue="activeTab" @update:modelValue="activeTab = $event">
+          <template #gcode>
+            <GcodePanel
+              :activeFile="activeFile"
+              :gcodeContent="gcodeContent"
+              :gcodeStats="gcodeStats"
+              :currentLine="currentLine"
+              :isPaused="isPaused"
+              :elapsed="elapsedDisplay"
+              :optionalStop="optionalStopOn"
+              :blockDelete="blockDeleteOn"
+              :runFromLine="runFromLineEnabled"
+              @loadFile="loadFile"
+              @unloadFile="unloadFile"
+              @cycleStart="cycleStart"
+              @runFromLine="runFromLine"
+              @cycleStep="cycleStep"
+              @cyclePause="cyclePause"
+              @cycleResume="cycleResume"
+              @abort="fire({ cmd: 'abort' })"
+              @toggleOptionalStop="toggleOptionalStop"
+              @toggleBlockDelete="toggleBlockDelete"
+              @openGcodeRef="openGcodeRef"
+            />
+          </template>
+
+          <template #probe>
+            <ProbePanel
+              :probing="st.probing === true"
+              :probeTripped="st.probe_tripped === true"
+              :probedPosition="st.probed_position ?? null"
+              :workPos="workPos"
+              :probeResults="probeResults"
+              :g5xLabel="g5xLabel"
+              :eoffsetZ="st.eoffset_z ?? null"
+              :eoffsetEnabled="!!st.eoffset_enabled"
+              :compMethod="st.comp_method ?? null"
+              :surfacePoints="surfacePoints"
+              :surfaceInViewer="surfaceLoadedToViewer"
+              @mdi="send({ cmd: 'mdi', text: $event })"
+              @abort="send({ cmd: 'abort' })"
+              @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
+              @setG5x="setG5x"
+              @getProbeResults="requestProbeResults"
+              @loadSurfaceToViewer="loadSurfaceToViewer"
+              @setCompensation="requestCompToggle"
+              @setCompMethod="send({ cmd: 'set_compensation_method', method: $event })"
+              @clearSurfaceMap="surfacePoints = null; surfaceLoadedToViewer = false"
+            />
+          </template>
+        </TabPanel>
+      </div>
 
       <!-- Dialogs — inside content area so strip stays accessible beneath -->
-      <!-- Tool table dialog (removed — tool table is now a content tab) -->
+
+      <!-- Tool table dialog -->
+      <div v-if="toolTableDialogOpen" class="dialogOverlay">
+        <div class="dialog lg dialog-full">
+          <div class="dialogHeader">
+            <span class="dialogTitle">Tool Table</span>
+            <MachineBtn type="close" @click="toolTableDialogOpen = false">&times;</MachineBtn>
+          </div>
+          <div class="toolTableDialogBody">
+            <ToolTablePanel ref="toolTableRef" :currentTool="st.tool_number ?? null" :iniFilename="st.ini_filename ?? null" />
+          </div>
+        </div>
+      </div>
 
       <!-- Settings dialog -->
       <div v-if="settingsDialogOpen" class="dialogOverlay">
@@ -1384,7 +1395,7 @@ watch(viewerGcode, (newGcode) => {
     </Gate><!-- /content (outer gate) -->
 
     <!-- ══ Bottom Action Strip — default-deny Gate, SafetyStrip exempt ══ -->
-    <Gate gate="safety" class="strip">
+    <Gate gate="safety" class="strip bordered-panel">
       <template #exempt>
       <SafetyStrip
         :armed="armed"
@@ -1488,7 +1499,7 @@ watch(viewerGcode, (newGcode) => {
         @measureAuto="measureAuto"
         @loadTool="loadTool"
         @unloadTool="unloadTool"
-        @openToolTable="activeTab = 'tools'"
+        @openToolTable="toolTableDialogOpen = true"
         @executeMacro="executeMacro"
       />
     </Gate><!-- /strip -->
@@ -1510,19 +1521,37 @@ watch(viewerGcode, (newGcode) => {
   flex: 1;
   min-height: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  gap: var(--gap-controls);
   overflow: hidden;
   position: relative; /* containing block for dialogs */
+}
+
+.viewerPane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sidePane {
+  width: var(--panel-min-w-wide);
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--gap-controls);
+}
+
+.toolTableDialogBody {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .strip {
   display: flex;
   height: 250px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--panel);
   flex-shrink: 0;
-  overflow: hidden;
   padding: var(--gap-controls);
   gap: var(--gap-controls);
 }

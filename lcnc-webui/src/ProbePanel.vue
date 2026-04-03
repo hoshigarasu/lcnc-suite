@@ -1154,7 +1154,7 @@ function fmtR(key: string): string {
         <MachineBtn type="probe" v-if="!surfaceInViewer" @click="loadSurfaceMap">Load Map</MachineBtn>
         <MachineBtn type="probe" v-else @click="emit('clearSurfaceMap')">Unload Map</MachineBtn>
         <MachineBtn type="probe" @click="if (!surfacePoints?.length) emit('getProbeResults'); mapDialogOpen = true">3D Inspect</MachineBtn>
-        <MachineBtn type="probe" :active="eoffsetEnabled" :disabled="probing" @click="toggleComp">{{ eoffsetEnabled ? 'Disable Comp' : 'Enable Comp' }}</MachineBtn>
+        <MachineBtn type="probe" :active="eoffsetEnabled" :disabled="probing" @click="toggleComp"><span class="stable-width"><span :class="{ alt: eoffsetEnabled }">Enable Comp</span><span :class="{ alt: !eoffsetEnabled }">Disable Comp</span></span></MachineBtn>
       </div>
 
       <div class="compStatus">

@@ -17,7 +17,7 @@ export interface ButtonDef {
 export const BUTTON_TYPES = {
   // Program control
   start:          { gate: 'ready',    variant: 'primary', size: 'md' },
-  step:           { gate: 'ready',    variant: 'default', size: 'md' },
+  step:           { gate: 'step',     variant: 'default', size: 'md' },
   pause:          { gate: 'pause',    variant: 'default', size: 'md' },
   resume:         { gate: 'resume',   variant: 'default', size: 'md' },
   abort:          { gate: 'abort',    variant: 'danger',  size: 'md' },

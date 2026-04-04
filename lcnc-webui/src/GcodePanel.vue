@@ -363,7 +363,7 @@ async function saveEdit() {
       <MachineBtn type="start" class="ctrlBtn" @click="onStartClick" :disabled="!activeFile || editing">
         <Play :size="14" class="ctrlIcon" /> {{ selectedLine && selectedLine > 1 ? `Start L${selectedLine}` : 'Start' }}
       </MachineBtn>
-      <MachineBtn type="step" class="ctrlBtn" @click="emit('cycleStep')" :disabled="!activeFile || editing">
+      <MachineBtn type="step" class="ctrlBtn" @click="emit('cycleStep')" :disabled="!(activeFile || can.resume) || editing">
         <SkipForward :size="14" class="ctrlIcon" /> Step
       </MachineBtn>
       <MachineBtn :type="isPaused ? 'resume' : 'pause'" class="ctrlBtn"

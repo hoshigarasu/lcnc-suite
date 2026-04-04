@@ -28,6 +28,8 @@ export type Permissions = {
   pause: boolean;
   /** resume: can resume a paused program */
   resume: boolean;
+  /** step: can single-step (ready to start OR paused to continue) */
+  step: boolean;
   /** abort: can abort/stop */
   abort: boolean;
   /** probe: ready + no eoffset (probing with comp active contaminates results) */
@@ -50,6 +52,7 @@ export function evaluatePermissions(s: MachineState): Permissions {
     ready:    base && s.isIdle && !s.busy && s.isHomed,
     pause:    base && s.isRunning && !s.isPaused,
     resume:   base && s.isPaused,
+    step:     base && ((s.isIdle && !s.busy && s.isHomed) || s.isPaused),
     abort:    base,
     probe:    base && s.isIdle && !s.busy && s.isHomed && !s.eoffsetEnabled,
     zero:     base && s.isIdle && !s.busy && !s.eoffsetEnabled,

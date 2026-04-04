@@ -496,8 +496,11 @@ defineExpose({ openAdd, fetchTools, triggerImport });
     <!-- Import preview dialog -->
       <div v-if="importPreview" class="dialogOverlay" @click.self="cancelImport">
         <div class="dialog md importDialog">
-          <div class="dialogTitle">Import Tool Library</div>
-          <div class="dialogBody">
+          <div class="dialogHeader">
+            <span class="dialogTitle">Import Tool Library</span>
+            <MachineBtn type="close" @click="cancelImport">&times;</MachineBtn>
+          </div>
+          <div class="dialogContent">
             <div class="importStats">
               {{ importPreview.length }} tools to import.
               <template v-if="importExistingCount">

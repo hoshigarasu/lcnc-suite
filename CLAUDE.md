@@ -186,7 +186,13 @@ Three layers enforce permissions:
 - ViewPreset type is duplicated in ThreeViewer.vue and Toolbar.vue — update both when adding presets
 - Camera Z-up: `camera.up.set(0, 0, 1)`, except top view uses `(0, 1, 0)` to avoid gimbal lock
 - ThreeViewer uses ResizeObserver (not window resize) to handle v-show tab switching
-- **Dialog tiers** — three sizes: `.dialog` (centered confirm), `.dialog.md` (left-aligned structured content, auto-height), `.dialog.lg` (panel dialogs, 70vw×70vh). `.dialog.lg.dialog-full` = 90% height. All dialogs inherit `font-size: var(--fs-base)` from `.dialog` base — never set font-size on dialog body content. Use `.dialogContent` for scrollable body containers (replaces per-dialog body classes). Safety dialogs add `.safetyDialog` (z-index 1010) and omit `@click.self` on overlay.
+- **Dialog tiers** — three sizes, two internal structures:
+  - `.dialog` (sm, centered confirm): `padding: var(--gap-panel)`, uses `.dialogTitle` + `.dialogBody` + `.dialogActions` directly
+  - `.dialog.md` (mid, structured content): `padding: 0`, uses `.dialogHeader` + `.dialogContent` + `.dialogActions`
+  - `.dialog.lg` (large panels, 70vw×70vh): `padding: 0`, uses `.dialogHeader` + `.dialogContent` (+ custom footer if needed)
+  - `.dialog.lg.dialog-full` = 90% height variant
+  - All tiers inherit `font-size: var(--fs-base)` from `.dialog` base — never set font-size on dialog body content
+  - Safety dialogs add `.safetyDialog` (z-index 1010) and omit `@click.self` on overlay
 - Gateway `tool_change` handler is fire-and-forget (no `CMD.wait_complete()` — blocks heartbeat loop)
 - Toolsetter settings live in SettingsPanel (Toolsetter sub-tab), tool actions in sidebar Tool popover
 - **Tool geometry**: Per-tool STL files in `machine/tools/`, loaded via `STLLoader`. Fallback: simple cylinder from diameter + length. Vertex colors split cutter (gold) / shaft (silver) by `flute_length` / `shoulder_length` Z thresholds. STL origin convention: tool tip at (0,0,0), extends in +Z.

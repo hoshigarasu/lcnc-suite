@@ -1534,10 +1534,10 @@ watch(viewerGcode, (newGcode) => {
               Remove tool and press Confirm
             </template>
           </div>
-          <Gate gate="abort" class="dialogActions">
-            <MachineBtn type="dialogDanger" @click="send({ cmd: 'abort' })">Cancel</MachineBtn>
-            <MachineBtn type="dialogConfirm" @click="confirmToolChange">Confirm</MachineBtn>
-          </Gate>
+          <div class="dialogActions">
+            <MachineBtn type="abort" @click="send({ cmd: 'abort' })">Cancel</MachineBtn>
+            <MachineBtn type="dialogReady" @click="confirmToolChange">Confirm</MachineBtn>
+          </div>
         </div>
       </div>
 
@@ -1557,10 +1557,10 @@ watch(viewerGcode, (newGcode) => {
             </div>
             <code class="macroPreview">{{ macroPreview() }}</code>
           </div>
-          <Gate gate="ready" class="dialogActions">
+          <div class="dialogActions">
             <MachineBtn type="dialogCancel" @click="macroParamDialog = null">Cancel</MachineBtn>
-            <MachineBtn type="dialogConfirm" @click="confirmMacroParams">Execute</MachineBtn>
-          </Gate>
+            <MachineBtn type="dialogReady" @click="confirmMacroParams">Execute</MachineBtn>
+          </div>
         </div>
       </div>
 
@@ -1568,10 +1568,10 @@ watch(viewerGcode, (newGcode) => {
         <div class="dialog">
           <div class="dialogTitle danger">Shut Down LinuxCNC?</div>
           <div class="dialogBody">This will stop all motion and exit LinuxCNC.</div>
-          <Gate gate="abort" class="dialogActions">
+          <div class="dialogActions">
             <MachineBtn type="dialogCancel" @click="showShutdownConfirm = false">Cancel</MachineBtn>
-            <MachineBtn type="dialogDanger" @click="send({ cmd: 'shutdown' }); showShutdownConfirm = false">Shut Down</MachineBtn>
-          </Gate>
+            <MachineBtn type="shutdown" @click="send({ cmd: 'shutdown' }); showShutdownConfirm = false">Shut Down</MachineBtn>
+          </div>
         </div>
       </div>
 
@@ -1589,10 +1589,10 @@ watch(viewerGcode, (newGcode) => {
               Ensure tool is clear of the workpiece.
             </template>
           </div>
-          <Gate gate="ready" class="dialogActions">
-            <MachineBtn type="dialogDanger" @click="cancelCompToggle">Cancel</MachineBtn>
-            <MachineBtn type="dialogConfirm" @click="confirmCompToggle">Confirm</MachineBtn>
-          </Gate>
+          <div class="dialogActions">
+            <MachineBtn type="dialogCancel" @click="cancelCompToggle">Cancel</MachineBtn>
+            <MachineBtn type="dialogReady" @click="confirmCompToggle">Confirm</MachineBtn>
+          </div>
         </div>
       </div>
     </Gate><!-- /content (outer gate) -->

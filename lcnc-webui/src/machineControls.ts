@@ -83,6 +83,11 @@ export const BUTTON_TYPES = {
   sidebarNav:     { gate: 'always',   variant: 'default', size: 'lg' },
   simTrip:        { gate: 'always',   variant: 'default', size: 'md' },
 
+  // ── Gated dialog actions (confirm/danger that require machine state) ──
+  dialogAbort:    { gate: 'abort',   variant: 'danger',  size: 'md' },
+  dialogReady:    { gate: 'ready',   variant: 'primary', size: 'md' },
+  dialogReadyDanger: { gate: 'ready', variant: 'danger', size: 'md' },
+
   // ── UI buttons (gate: always — no permission, styling only) ──
   close:          { gate: 'always',  variant: 'default', size: 'md',  icon: true },
   tab:            { gate: 'always',  variant: 'default', size: 'sm',  muted: true },

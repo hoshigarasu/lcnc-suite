@@ -196,4 +196,8 @@ const overridesActive = computed(() =>
   width: 0;
   min-width: 100%;
 }
+.codes-value {
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
 </style>

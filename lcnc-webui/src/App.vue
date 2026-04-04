@@ -453,12 +453,12 @@ const taskMode = computed(() => st.value.task_mode ?? 0);
 const activeGcodes = computed(() => {
   const codes = st.value.gcodes;
   if (!codes || !Array.isArray(codes)) return "";
-  return codes.filter((c: number) => c !== -1).map((c: number) => `G${(c / 10).toFixed(c % 10 ? 1 : 0)}`).join(" ");
+  return codes.slice(1).filter((c: number) => c !== -1).map((c: number) => `G${(c / 10).toFixed(c % 10 ? 1 : 0)}`).join(" ");
 });
 const activeMcodes = computed(() => {
   const codes = st.value.mcodes;
   if (!codes || !Array.isArray(codes)) return "";
-  return codes.filter((c: number) => c !== -1).map((c: number) => `M${c}`).join(" ");
+  return codes.slice(1).filter((c: number) => c !== -1).map((c: number) => `M${c}`).join(" ");
 });
 
 // Tool change dialog (global — tool changes can happen from any context)

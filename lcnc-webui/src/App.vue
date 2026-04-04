@@ -22,6 +22,7 @@ import type { GcodeStats } from "./GcodePanel.vue";
 import { SlidersHorizontal, MessageSquare, PowerOff, Gamepad2, BookOpen, ClipboardCopy, Expand, Shrink } from "lucide-vue-next";
 import GcodeReferenceDialog from "./GcodeReferenceDialog.vue";
 import { loadViewerDefaults, saveViewerDefaults, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, loadMacrosDefaults, loadGamepadDefaults, saveGamepadDefaults, loadKeyboardDefaults, saveKeyboardDefaults, loadMdiHistory, saveMdiHistory, settingsVersion, type ThemeMode, type MacroDef, type GamepadDefaults, type KeyboardDefaults, type KeyboardAction, type Layer, type TrackMode, type Projection, type Vec3 } from "./defaults";
+import { buildToolsetterVarMap } from "./toolsetterVars";
 import { useGamepad } from "./useGamepad";
 import {
   INTERP_IDLE, INTERP_READING, INTERP_PAUSED, INTERP_WAITING,
@@ -680,6 +681,7 @@ function saveToolNumber() {
 function measureAuto() {
   if (!permissions.value.ready || st.value.probing) return;
   saveToolNumber();
+  send({ cmd: "set_probe_vars", vars: buildToolsetterVarMap() });
   fire({ cmd: "mdi", text: `T${toolNumber.value} M600` });
 }
 
@@ -689,6 +691,7 @@ function loadTool() {
   const n = toolNumber.value;
   const mode = loadMachineDefaults().toolChangeMode;
   if (mode === "m600") {
+    send({ cmd: "set_probe_vars", vars: buildToolsetterVarMap() });
     fire({ cmd: "mdi", text: `T${n} M600` });
   } else {
     fire({ cmd: "mdi", text: `T${n} M6 G43 H${n}` });
@@ -699,6 +702,7 @@ function unloadTool() {
   if (!permissions.value.ready) return;
   const mode = loadMachineDefaults().toolChangeMode;
   if (mode === "m600") {
+    send({ cmd: "set_probe_vars", vars: buildToolsetterVarMap() });
     fire({ cmd: "mdi", text: "T0 M600" });
   } else {
     fire({ cmd: "mdi", text: "T0 M6 G49" });

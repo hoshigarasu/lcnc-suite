@@ -1,0 +1,265 @@
+<script setup lang="ts">
+import { ref, computed, onMounted, watch } from "vue";
+import { usePermissions } from "./permissions";
+import {
+  loadToolsetterDefaults, saveToolsetterDefaults,
+  loadProbeDefaults, settingsVersion,
+  STEP_DEFAULT, STEP_FEED,
+} from "./defaults";
+import { buildToolsetterVarMap } from "./toolsetterVars";
+import { fetchG30 } from "./lcncApi";
+import { status } from "./lcncWs";
+import MachineInput from "./MachineInput.vue";
+import MachineToggle from "./MachineToggle.vue";
+import MachineRadio from "./MachineRadio.vue";
+import MachineBtn from "./MachineBtn.vue";
+
+const emit = defineEmits<{
+  (e: "setProbeVars", vars: Record<string, number>): void;
+  (e: "mdi", text: string): void;
+  (e: "resetSection", section: string): void;
+}>();
+
+const can = usePermissions();
+
+const OFFSET_DIR_LABELS: Record<number, string> = { 0: "X-", 1: "X+", 2: "Y-", 3: "Y+" };
+const BRAKE_LABELS: Record<number, string> = { 0: "None", 1: "M00", 2: "M01" };
+
+const probeTool = computed(() => loadProbeDefaults().probeTool);
+
+// ─── Toolsetter params ─────────────────────
+const tsParams = ref({
+  fastFeed: 500,
+  slowFeed: 50,
+  traverseFeed: 6000,
+  maxZTravel: 150,
+  retractDist: 2,
+  spindleZeroHeight: 180,
+  offsetDirection: 0,
+  touchX: 0,
+  touchY: 0,
+  touchZ: 0,
+  useToolTable: 0,
+  toolMinDis: 10,
+  brakeAfter: 0,
+  goBackToStart: 0,
+  spindleStopM: 5,
+  disablePrePos: 1,
+  addReps: 0,
+  lastTry: 0,
+  offsetDiameter: 0,
+  offsetValue: 50,
+  finderTouchX: 0,
+  finderTouchY: 0,
+  finderDiffZ: 0,
+});
+
+function loadTsParams() {
+  Object.assign(tsParams.value, loadToolsetterDefaults());
+}
+
+function saveTsParams() {
+  saveToolsetterDefaults({ ...tsParams.value });
+  if (can.value.ready) emit("setProbeVars", buildToolsetterVarMap());
+}
+
+// ─── Toolsetter boolean wrappers (0/1 ↔ boolean) ───
+const tsUseToolTable = computed({ get: () => tsParams.value.useToolTable === 1, set: (v: boolean) => { tsParams.value.useToolTable = v ? 1 : 0; saveTsParams(); } });
+const tsGoBackToStart = computed({ get: () => tsParams.value.goBackToStart === 1, set: (v: boolean) => { tsParams.value.goBackToStart = v ? 1 : 0; saveTsParams(); } });
+const tsDisablePrePos = computed({ get: () => tsParams.value.disablePrePos === 1, set: (v: boolean) => { tsParams.value.disablePrePos = v ? 1 : 0; saveTsParams(); } });
+const tsLastTry = computed({ get: () => tsParams.value.lastTry === 1, set: (v: boolean) => { tsParams.value.lastTry = v ? 1 : 0; saveTsParams(); } });
+
+// ─── G30 tool change position ────────────────
+const g30X = ref<number | null>(null);
+const g30Y = ref<number | null>(null);
+const g30Z = ref<number | null>(null);
+const g30Loading = ref(false);
+
+async function loadG30() {
+  g30Loading.value = true;
+  try {
+    const data = await fetchG30();
+    if (data.ok) {
+      g30X.value = data.x;
+      g30Y.value = data.y;
+      g30Z.value = data.z;
+    }
+  } catch { /* ignore */ }
+  g30Loading.value = false;
+}
+
+function setG30() {
+  emit("mdi", "G30.1");
+  // After G30.1 saves current position, read back from machine position
+  const st = status.value as any;
+  if (st?.position) {
+    g30X.value = st.position[0];
+    g30Y.value = st.position[1];
+    g30Z.value = st.position[2];
+  }
+}
+
+onMounted(() => {
+  loadTsParams();
+  loadG30();
+});
+
+watch(settingsVersion, () => { loadTsParams(); });
+</script>
+
+<template>
+  <div class="stack-panel scrollContent scroll-thin">
+    <div class="section">
+      <div class="sub">Toolsetter Position (G53)</div>
+      <div class="tsGrid">
+        <label title="X position (G53 machine coordinates) of the toolsetter button center. Jog to the button with no tool, read the machine X position. (#3100)">Touch X</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.touchX" :step="STEP_DEFAULT" @change="saveTsParams" />
+        <label title="Y position (G53 machine coordinates) of the toolsetter button center. Jog to the button with no tool, read the machine Y position. (#3101)">Touch Y</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.touchY" :step="STEP_DEFAULT" @change="saveTsParams" />
+        <label title="Z approach height (G53) above the toolsetter button. The tool moves to this height before probing downward. Set above the button top plus clearance. (#3102)">Touch Z</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.touchZ" :step="STEP_DEFAULT" @change="saveTsParams" />
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="section">
+      <div class="sub" title="G30 tool change position — where the machine moves before a tool change (M6). Read-only, set in the LinuxCNC var file. (#5181–#5183)">Tool Change Position (G30)</div>
+      <div class="tsGrid">
+        <label>X</label>
+        <span class="readonlyVal">{{ g30X != null ? g30X.toFixed(3) : '—' }}</span>
+        <label>Y</label>
+        <span class="readonlyVal">{{ g30Y != null ? g30Y.toFixed(3) : '—' }}</span>
+        <label>Z</label>
+        <span class="readonlyVal">{{ g30Z != null ? g30Z.toFixed(3) : '—' }}</span>
+      </div>
+      <div class="tsBtnRow">
+        <MachineBtn type="manage" @click="setG30">Set Current Position</MachineBtn>
+        <MachineBtn type="inline" class="optBtn" @click="loadG30" :disabled="g30Loading">Refresh</MachineBtn>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="section">
+      <div class="sub">Probe Settings</div>
+      <div class="tsGrid">
+        <label title="Feed rate for the initial fast probe approach to the touch plate. Higher values reduce cycle time but lower repeatability. (#3004)">Fast Feed</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.fastFeed" min="1" :step="STEP_FEED" @change="saveTsParams" />
+        <label title="Feed rate for the refined slow measurement pass after retract. Set to 0 to skip the slow pass — faster but less accurate. (#3005)">Slow Feed</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.slowFeed" min="0" :step="STEP_FEED" @change="saveTsParams" />
+        <label title="Feed rate for non-probing positioning moves (travel to touch plate, retract, return). Does not affect measurement accuracy. (#3006)">Traverse Feed</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.traverseFeed" min="1" :step="STEP_FEED" @change="saveTsParams" />
+        <label title="Maximum downward travel before the probe aborts if no contact. Safety limit to prevent crashes if the touch plate is missing. (#3007)">Max Z Travel</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.maxZTravel" min="1" :step="STEP_DEFAULT" @change="saveTsParams" />
+        <label title="Distance the tool retracts upward after fast probe contact before the slow pass begins. The slow pass probes 2× this distance. (#3009)">Retract Dist</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.retractDist" min="0.1" :step="STEP_DEFAULT" @change="saveTsParams" />
+        <label title="G53 Z distance from spindle nose to touch plate surface with no tool loaded. Reference for zero-length tools. Measure carefully during initial setup. (#3010)">Spindle Zero H</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.spindleZeroHeight" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="section">
+      <div class="sub">Options</div>
+      <div class="tsToggleGrid">
+        <MachineToggle gate="toolsetterParam" v-model="tsUseToolTable" label="Use Tool Table" title="When enabled, uses the tool table length to calculate a closer probe start height — faster for known tools. Disable during initial setup or if tool table data is unreliable. (#3103)" />
+        <MachineToggle gate="toolsetterParam" v-model="tsGoBackToStart" label="Return to Start" title="After measurement, return to the XYZ position where M600 was called. Disable only if the tool change is at the end of a program. (#3106)" />
+        <MachineToggle gate="toolsetterParam" v-model="tsDisablePrePos" label="Skip G30 Pre-Pos" title="Skip the G30 pre-positioning move before traveling to the touch plate. Faster, but risks collision with clamps or fixtures on uncluttered machines only. (#3108)" />
+        <MachineToggle gate="toolsetterParam" v-model="tsLastTry" label="Last Try w/o Table" title="On the final retry attempt, ignore tool table offsets and use spindle zero height instead. Provides a fallback for tools with incorrect table entries. (#3110)" />
+      </div>
+      <div class="tsGrid">
+        <label title="Safety clearance between the expected tool tip position and the touch plate when using tool table pre-positioning. Increase for widely varying tool lengths. (#3104)">Tool Min Dist</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.toolMinDis" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
+        <label title="Number of extra retry attempts if probe contact fails. Each failure pauses for operator correction before retrying. Set to 0 for ATC. (#3109)">Extra Retries</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.addReps" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
+
+        <label title="Pause after tool measurement: None = continue immediately, M00 = mandatory stop (press Cycle Start to resume), M01 = optional stop (active only when block delete is off). (#3105)">Brake After</label>
+        <div class="radioGroup inline">
+          <label v-for="b in [0, 1, 2]" :key="b"><MachineRadio gate="toolsetterParam" name="brakeAfter" :value="b" v-model.number="tsParams.brakeAfter" @update:modelValue="saveTsParams()" /> {{ BRAKE_LABELS[b] }}</label>
+        </div>
+
+        <label title="M-code sent to stop the spindle before probing. M5 = standard stop. M500 = stop and wait for spindle to fully decelerate (for VFD-controlled spindles). (#3107)">Spindle Stop</label>
+        <div class="radioGroup inline">
+          <label><MachineRadio gate="toolsetterParam" name="spindleStopM" :value="5" v-model.number="tsParams.spindleStopM" @update:modelValue="saveTsParams()" /> M5</label>
+          <label><MachineRadio gate="toolsetterParam" name="spindleStopM" :value="500" v-model.number="tsParams.spindleStopM" @update:modelValue="saveTsParams()" /> M500</label>
+        </div>
+
+        <label title="Axis direction to offset the probe position for large tools: X−, X+, Y−, or Y+. Choose based on your machine layout to avoid clamp or fixture collisions. (#3013)">Offset Dir</label>
+        <div class="radioGroup inline">
+          <label v-for="d in [0, 1, 2, 3]" :key="d"><MachineRadio gate="toolsetterParam" name="offsetDirection" :value="d" v-model.number="tsParams.offsetDirection" @update:modelValue="saveTsParams()" /> {{ OFFSET_DIR_LABELS[d] }}</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="section">
+      <div class="sub">Diameter Offset</div>
+      <div class="tsGrid">
+        <label title="Minimum tool diameter that triggers position offset. Tools smaller than this probe on-center. Set to 0 to disable offset for all tools. (#3111)">Min Diameter</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.offsetDiameter" min="0" :step="STEP_DEFAULT" @change="saveTsParams" />
+        <label title="Percentage of tool diameter to offset the probe position. Example: 20% on a large tool offsets the probe position by 20% of the diameter from center. (#3112)">Offset %</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.offsetValue" min="0" max="100" :step="STEP_DEFAULT" @change="saveTsParams" />
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="section">
+      <div class="sub">Edge-Finder</div>
+      <div class="tsGrid">
+        <label title="Probe tool number, shared with the Probing tab. Must match the tool loaded in the spindle before any probe operation. (#3014)">Probe Tool #</label>
+        <span class="readonlyVal">T{{ probeTool }}</span>
+        <label title="X position (G53) of a secondary edge-finder reference point. Used only when the selected tool matches the probe tool number. (#3113)">Finder X</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.finderTouchX" :step="STEP_DEFAULT" @change="saveTsParams" />
+        <label title="Y position (G53) of a secondary edge-finder reference point. Used only when the selected tool matches the probe tool number. (#3114)">Finder Y</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.finderTouchY" :step="STEP_DEFAULT" @change="saveTsParams" />
+        <label title="Height difference between the edge-finder reference surface and the normal touch plate surface. May be negative if the reference is lower. (#3115)">Finder Z Diff</label>
+        <MachineInput gate="toolsetterParam" type="number" v-model.number="tsParams.finderDiffZ" :step="STEP_DEFAULT" @change="saveTsParams" />
+      </div>
+    </div>
+
+    <div class="resetRow">
+      <MachineBtn type="reset" @click="emit('resetSection', 'toolsetter')">Reset Toolsetter</MachineBtn>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+/* ─── Toolsetter sub-tab ───── */
+.tsGrid {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: var(--gap-tight) var(--gap-controls);
+  align-items: center;
+}
+
+.tsGrid > label {
+  font-size: var(--fs-sm);
+  opacity: var(--opacity-muted);
+}
+
+.tsGrid input {
+  max-width: 100px;
+}
+
+.readonlyVal {
+  font-size: var(--fs-base);
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
+  opacity: var(--opacity-muted);
+}
+
+.tsToggleGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap-controls);
+}
+
+.tsBtnRow {
+  display: flex;
+  gap: var(--gap-micro);
+}
+</style>

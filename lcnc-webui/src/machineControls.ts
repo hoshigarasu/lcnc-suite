@@ -131,7 +131,7 @@ export const INPUT_DEFS = {
   scanParam:       { gate: 'ready',    mono: true, align: 'right' },
 
   // Toolsetter parameters
-  toolsetterParam: { gate: 'ready',    mono: true, align: 'right' },
+  toolsetterParam: { gate: 'always',   mono: true, align: 'right' },
 
   // Tool table editing
   toolEdit:        { gate: 'idle' },

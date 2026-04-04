@@ -11,6 +11,7 @@ import { idwInterp } from "./interpolation";
 const props = defineProps<{
   probing: boolean;
   probeTripped: boolean;
+  probeInput: boolean;
   probedPosition: number[] | null;
   workPos: number[];
   probeResults: Record<string, number> | null;
@@ -24,6 +25,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "mdi", text: string): void;
   (e: "abort"): void;
+  (e: "simTrip"): void;
   (e: "listProbeMacros"): void;
   (e: "setProbeVars", vars: Record<string, number>): void;
   (e: "getProbeResults"): void;
@@ -35,6 +37,7 @@ const emit = defineEmits<{
 
 
 const can = usePermissions();
+const isDev = import.meta.env.DEV;
 
 // ─── Sub-view navigation ──────────────────────────────────────────
 const probeView = ref<"outside" | "inside" | "boss" | "ridge" | "angle" | "cal" | "surface">("outside");
@@ -227,6 +230,11 @@ const probeStatus = computed(() => {
 const statusClass = computed(() => {
   if (props.probing) return "probing";
   if (props.probeTripped) return "tripped";
+  return "";
+});
+
+const probeIndicatorClass = computed(() => {
+  if (props.probeInput) return "tripped";
   return "";
 });
 
@@ -545,10 +553,15 @@ function fmtR(key: string): string {
       <MachineToggle gate="probeParam" v-model="autoZero" label="Auto Zero" @update:model-value="saveParams" />
       <MachineToggle gate="probeParam" v-model="setRotation" label="Set Rotation" />
       <div class="controlBarRight">
-        <div class="statusRow">
-          <span class="statusDot" :class="statusClass"></span>
-          <span class="statusText">{{ probeStatus }}</span>
+        <div class="row-tight">
+          <span class="statusDot" :class="probeIndicatorClass"></span>
+          <span class="label-muted md">Probe</span>
         </div>
+        <div class="row-tight">
+          <span class="statusDot" :class="statusClass"></span>
+          <span class="label-muted md mono">{{ probeStatus }}</span>
+        </div>
+        <MachineBtn v-if="isDev" type="simTrip" @click="emit('simTrip')">Sim Trip</MachineBtn>
         <MachineBtn
           type="abort"
           :disabled="!probing"
@@ -1461,19 +1474,6 @@ function fmtR(key: string): string {
 }
 
 
-
-/* Status */
-.statusRow {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-tight);
-}
-
-.statusText {
-  font-size: var(--fs-sm);
-  font-family: var(--font-mono);
-  opacity: var(--opacity-muted);
-}
 
 /* Probe results (PB-style 3×4 grid) */
 .probeResultsGrid {

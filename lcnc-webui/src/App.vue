@@ -1294,6 +1294,7 @@ watch(viewerGcode, (newGcode) => {
             <ProbePanel
               :probing="st.probing === true"
               :probeTripped="st.probe_tripped === true"
+              :probeInput="st.probe_input === true"
               :probedPosition="st.probed_position ?? null"
               :workPos="workPos"
               :probeResults="probeResults"
@@ -1304,6 +1305,7 @@ watch(viewerGcode, (newGcode) => {
               :surfaceInViewer="surfaceLoadedToViewer"
               @mdi="send({ cmd: 'mdi', text: $event })"
               @abort="send({ cmd: 'abort' })"
+              @simTrip="send({ cmd: 'simulate_probe_trip' })"
               @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
               @getProbeResults="requestProbeResults"
               @loadSurfaceToViewer="loadSurfaceToViewer"
@@ -1669,6 +1671,7 @@ watch(viewerGcode, (newGcode) => {
         :toolLength="st.tool_length ?? null"
         :probing="!!st.probing"
         :probeInput="st.probe_input === true"
+        :probeTripped="st.probe_tripped === true"
         :userMacros="userMacros"
         @update:feedSlider="feedSlider = $event"
         @update:spindleSlider="spindleSlider = $event"

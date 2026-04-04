@@ -38,6 +38,7 @@ const props = defineProps<{
   toolLength: number | null;
   probing: boolean;
   probeInput: boolean;
+  probeTripped: boolean;
   userMacros: MacroDef[];
 }>();
 
@@ -69,9 +70,20 @@ const emit = defineEmits<{
 
 const isDev = import.meta.env.DEV;
 
+const probeStatus = computed(() => {
+  if (props.probing) return "PROBING";
+  if (props.probeTripped) return "TRIPPED";
+  return "IDLE";
+});
+
+const statusClass = computed(() => {
+  if (props.probing) return "probing";
+  if (props.probeTripped) return "tripped";
+  return "";
+});
+
 const probeIndicatorClass = computed(() => {
   if (props.probeInput) return "tripped";
-  if (props.probing) return "probing";
   return "";
 });
 
@@ -214,10 +226,18 @@ onBeforeUnmount(() => _previewRo?.disconnect());
           <MachineBtn type="manage" @click="emit('openToolTable')">Table</MachineBtn>
         </div>
 
+        <MachineBtn type="abort" :disabled="!probing" @click="emit('abort')" block>Abort</MachineBtn>
+
         <div class="toolStatusRow">
-          <span class="statusDot" :class="probeIndicatorClass" title="Probe input"></span>
+          <div class="row-tight">
+            <span class="statusDot" :class="probeIndicatorClass"></span>
+            <span class="label-muted md">Probe</span>
+          </div>
+          <div class="row-tight">
+            <span class="statusDot" :class="statusClass"></span>
+            <span class="label-muted md mono">{{ probeStatus }}</span>
+          </div>
           <MachineBtn v-if="isDev" type="simTrip" @click="emit('simTrip')">Sim Trip</MachineBtn>
-          <MachineBtn type="abort" :disabled="!probing" @click="emit('abort')">Abort</MachineBtn>
         </div>
 
         <div class="toolStats inset-panel scroll-thin">

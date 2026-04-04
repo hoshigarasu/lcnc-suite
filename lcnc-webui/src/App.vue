@@ -1370,7 +1370,7 @@ watch(viewerGcode, (newGcode) => {
             <span class="dialogTitle">Tool Table</span>
             <MachineBtn type="close" @click="toolTableDialogOpen = false">&times;</MachineBtn>
           </div>
-          <div class="toolTableDialogBody">
+          <div class="dialogContent">
             <ToolTablePanel ref="toolTableRef" :currentTool="st.tool_number ?? null" :iniFilename="st.ini_filename ?? null" />
           </div>
         </div>
@@ -1383,7 +1383,7 @@ watch(viewerGcode, (newGcode) => {
             <span class="dialogTitle">Settings</span>
             <MachineBtn type="close" @click="settingsDialogOpen = false">&times;</MachineBtn>
           </div>
-          <div class="settingsDialogBody">
+          <div class="dialogContent">
             <SettingsPanel
               :gamepadConnected="gamepad.gamepadConnected.value"
               :gamepadName="gamepad.gamepadName.value"
@@ -1491,7 +1491,7 @@ watch(viewerGcode, (newGcode) => {
               <MachineBtn type="close" @click="messagesDialogOpen = false; markMessagesRead()">&times;</MachineBtn>
             </div>
           </div>
-          <div class="messagesBody stack-tight scroll-thin">
+          <div class="dialogContent stack-tight scroll-thin">
             <div v-for="msg in messages" :key="msg.id" class="msgItem" :class="msgKindClass(msg.kind)">
               <span class="msgTime">{{ msgFormatTime(msg.ts) }}</span>
               <span class="msgKind">{{ msgKindLabel(msg.kind) }}</span>
@@ -1731,11 +1731,6 @@ watch(viewerGcode, (newGcode) => {
   padding: var(--gap-controls);
 }
 
-.toolTableDialogBody {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
 
 .strip {
   display: flex;
@@ -1853,7 +1848,6 @@ watch(viewerGcode, (newGcode) => {
 }
 .macroParamLabel {
   min-width: 100px;
-  font-size: var(--fs-base);
 }
 .macroPreview {
   display: block;
@@ -1863,12 +1857,6 @@ watch(viewerGcode, (newGcode) => {
   opacity: var(--opacity-muted);
 }
 
-/* ---- Settings dialog ---- */
-.settingsDialogBody {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
 
 /* ---- Stats dialog ---- */
 .statsDialog {
@@ -1927,11 +1915,6 @@ watch(viewerGcode, (newGcode) => {
 }
 
 /* ---- Messages dialog ---- */
-.messagesBody {
-  overflow-y: auto;
-  max-height: 60vh;
-  padding: var(--gap-controls);
-}
 .msgItem {
   display: flex;
   align-items: center;

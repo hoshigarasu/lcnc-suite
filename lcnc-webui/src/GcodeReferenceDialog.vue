@@ -46,7 +46,7 @@ function toggleSort(key: "code" | "name") {
 </script>
 
 <template>
-  <div v-if="open" class="dialogOverlay">
+  <div v-if="open" class="dialogOverlay" @click.self="emit('close')">
     <div class="dialog lg dialog-full">
       <div class="dialogHeader">
         <span class="dialogTitle">G-code Reference</span>
@@ -107,7 +107,7 @@ function toggleSort(key: "code" | "name") {
 .refContent {
   flex: 1;
   min-height: 0;
-  padding: var(--gap-section) 14px 14px;
+  padding: var(--gap-section);
 }
 
 .refSearch {

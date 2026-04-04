@@ -577,7 +577,7 @@ label:has(input:disabled, select:disabled) {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-2xl);
-  padding: 24px 32px;
+  padding: var(--gap-panel);
   min-width: 280px;
   text-align: center;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
@@ -602,7 +602,7 @@ label:has(input:disabled, select:disabled) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: var(--gap-controls) var(--gap-section);
   border-bottom: 1px solid var(--border);
 }
 

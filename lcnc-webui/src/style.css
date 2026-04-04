@@ -585,11 +585,17 @@ label:has(input:disabled, select:disabled) {
 }
 
 .dialog.md {
+  padding: 0;
   text-align: left;
   max-height: calc(100% - 2 * var(--gap-panel));
   display: flex;
   flex-direction: column;
   overflow: clip;
+}
+
+.dialog.md > .dialogActions {
+  padding: var(--gap-controls) var(--gap-section);
+  margin-top: 0;
 }
 
 .dialog.lg {

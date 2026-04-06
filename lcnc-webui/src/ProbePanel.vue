@@ -1109,11 +1109,13 @@ function fmtR(key: string): string {
 
       <!-- Calibrate on axis selector -->
       <div class="stack-controls">
-        <div class="calParamTitle">Calibrate on:</div>
-        <div class="calAxisRow">
-          <MachineBtn type="probe" class="calAxisBtn" muted :selected="calAxis === 0" @click="calAxis = 0">Avg XY</MachineBtn>
-          <MachineBtn type="probe" class="calAxisBtn" muted :selected="calAxis === 1" @click="calAxis = 1">X Error</MachineBtn>
-          <MachineBtn type="probe" class="calAxisBtn" muted :selected="calAxis === 2" @click="calAxis = 2">Y Error</MachineBtn>
+        <div class="row-controls">
+          <label class="sub">Calibrate on:</label>
+          <div class="radioGroup inline">
+            <label><MachineRadio gate="probeParam" name="calAxis" :value="0" v-model.number="calAxis" /> Avg XY</label>
+            <label><MachineRadio gate="probeParam" name="calAxis" :value="1" v-model.number="calAxis" /> X Error</label>
+            <label><MachineRadio gate="probeParam" name="calAxis" :value="2" v-model.number="calAxis" /> Y Error</label>
+          </div>
         </div>
       </div>
       </div>
@@ -1525,23 +1527,6 @@ function fmtR(key: string): string {
   font-family: var(--font-mono);
 }
 
-
-.calParamTitle {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  opacity: var(--opacity-muted);
-}
-
-.calAxisRow {
-  display: flex;
-  gap: var(--gap-tight);
-  max-width: 294px;
-}
-
-.calAxisBtn {
-  flex: 1;
-  text-align: center;
-}
 
 .gridCell {
   aspect-ratio: 1;

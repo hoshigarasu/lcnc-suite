@@ -832,7 +832,7 @@ function setAxis(axis: number, value: number = 0) {
   // For Z: subtract current eoffset so G5x doesn't absorb it
   let val = value;
   if (axis === 2 && st.value.eoffset_z) val += st.value.eoffset_z;
-  fire({ cmd: "mdi", text: `G10 L20 P0 ${axisName}${val}` });
+  fire({ cmd: "mdi", text: `G10 L20 P0 ${axisName}${val.toFixed(6)}` });
 }
 
 function setAll(values: number[] = []) {
@@ -840,7 +840,7 @@ function setAll(values: number[] = []) {
   const parts = axes.value.map((letter, i) => {
     let val = values[i] ?? 0;
     if (letter === "Z") val += eoffsetZ;
-    return `${letter}${val}`;
+    return `${letter}${val.toFixed(6)}`;
   });
   fire({ cmd: "mdi", text: `G10 L20 P0 ${parts.join(" ")}` });
 }

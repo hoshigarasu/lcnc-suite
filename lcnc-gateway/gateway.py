@@ -2333,7 +2333,7 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             STAT.poll()
             if armed and bool(safe_get("enabled", False)) and not reject_if_auto_running():
                 try:
-                    items = [f"#{k}={float(v)}" for k, v in vars_to_set.items()]
+                    items = [f"#{k}={float(v):.6f}" for k, v in vars_to_set.items()]
                     chunks, current = [], ""
                     for item in items:
                         if current and len(current) + 1 + len(item) > 250:
@@ -2418,7 +2418,7 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             for axis in all_keys:
                 val = msg.get(axis)
                 if val is not None:
-                    parts.append(f"{axis.upper()}{float(val)}")
+                    parts.append(f"{axis.upper()}{float(val):.6f}")
             if not parts:
                 return {"ok": False, "error": "No axis values provided"}
             set_mode(linuxcnc.MODE_MDI)

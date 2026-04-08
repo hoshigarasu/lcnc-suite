@@ -195,7 +195,7 @@ export function useGamepad(deps: {
   function pollLoop() {
     rafId = requestAnimationFrame(pollLoop);
 
-    if (gpIndex === null || !deps.config.value.enabled) return;
+    if (gpIndex === null) return;
 
     const gp = navigator.getGamepads()[gpIndex];
     if (!gp) return;
@@ -227,7 +227,7 @@ export function useGamepad(deps: {
     }
     prevDeadManOk = deadManOk;
 
-    const canJogNow = canJog && deadManOk;
+    const canJogNow = canJog && deadManOk && cfg.jogEnabled;
 
     // ── Analog sticks → continuous jog ──
     // Left stick: axes 0 (X), 1 (Y)
@@ -247,8 +247,8 @@ export function useGamepad(deps: {
       if (deps.axisCount.value >= 3) {
         sendJog(2, rz * maxVel, now); // Z
       }
-    } else if (!deadManOk || !canJog) {
-      // Lost permission or dead man released — stop everything
+    } else if (!deadManOk || !canJog || !cfg.jogEnabled) {
+      // Lost permission, dead man released, or jog disabled — stop everything
       stopAllJog();
     }
 
@@ -311,7 +311,9 @@ export function useGamepad(deps: {
       if (pressed && !wasPressed) {
         const action = mapping[key];
         if (action && action !== "none" && action !== "z_mod" && action !== "dead_man") {
-          dispatchAction(action);
+          if (action === "estop" || cfg.buttonsEnabled) {
+            dispatchAction(action);
+          }
         }
       }
     }

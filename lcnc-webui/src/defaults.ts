@@ -520,7 +520,8 @@ export const ACTION_LABELS: Record<GamepadAction, string> = {
 };
 
 export interface GamepadDefaults {
-  enabled: boolean;
+  jogEnabled: boolean;
+  buttonsEnabled: boolean;
   deadZone: number;
   invertX: boolean;
   invertY: boolean;
@@ -529,7 +530,8 @@ export interface GamepadDefaults {
 }
 
 export const GAMEPAD_FALLBACK: GamepadDefaults = {
-  enabled: false,
+  jogEnabled: false,
+  buttonsEnabled: false,
   deadZone: 0.15,
   invertX: false,
   invertY: false,
@@ -550,8 +552,13 @@ function mergeMapping(saved: any, fb: GamepadMapping): GamepadMapping {
 
 registerSection<GamepadDefaults>("gamepad", GAMEPAD_FALLBACK, (saved, fb) => {
   if (!saved) return { ...fb, mapping: { ...fb.mapping } };
+  // Migration: old single 'enabled' → both toggles
+  const hadOldEnabled = typeof saved.enabled === "boolean" && saved.jogEnabled === undefined;
+  const jogEnabled = hadOldEnabled ? saved.enabled : (saved.jogEnabled ?? fb.jogEnabled);
+  const buttonsEnabled = hadOldEnabled ? saved.enabled : (saved.buttonsEnabled ?? fb.buttonsEnabled);
   return {
-    enabled: saved.enabled ?? fb.enabled,
+    jogEnabled,
+    buttonsEnabled,
     deadZone: typeof saved.deadZone === "number" ? saved.deadZone : fb.deadZone,
     invertX: saved.invertX ?? fb.invertX,
     invertY: saved.invertY ?? fb.invertY,
@@ -600,14 +607,14 @@ export const DEFAULT_KB_MAPPING: Record<KeyboardAction, string> = {
 };
 
 export interface KeyboardDefaults {
-  enabled: boolean;
   jogEnabled: boolean;
+  buttonsEnabled: boolean;
   mapping: Record<KeyboardAction, string>;
 }
 
 const KEYBOARD_FALLBACK: KeyboardDefaults = {
-  enabled: true,
   jogEnabled: false,
+  buttonsEnabled: true,
   mapping: { ...DEFAULT_KB_MAPPING },
 };
 
@@ -642,9 +649,12 @@ registerSection<KeyboardDefaults>("keyboard", KEYBOARD_FALLBACK, (saved, fb) => 
       }
     }
   }
+  // Migration: old 'enabled' → 'buttonsEnabled'
+  const hadOldEnabled = typeof saved.enabled === "boolean" && saved.buttonsEnabled === undefined;
+  const buttonsEnabled = hadOldEnabled ? saved.enabled : (saved.buttonsEnabled ?? fb.buttonsEnabled);
   return {
-    enabled: saved.enabled ?? fb.enabled,
     jogEnabled: saved.jogEnabled ?? fb.jogEnabled,
+    buttonsEnabled,
     mapping,
   };
 });

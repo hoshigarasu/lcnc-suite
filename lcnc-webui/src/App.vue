@@ -22,7 +22,7 @@ import MachineInput from "./MachineInput.vue";
 import { highlightGcode } from "./gcodeHighlight";
 import { fmtElapsed, fmtDuration, fmtDist, fmtSize } from "./format";
 import type { GcodeStats } from "./GcodePanel.vue";
-import { Settings, MessageSquare, PowerOff, Gamepad2, BookOpen, ClipboardCopy, Expand, Shrink } from "lucide-vue-next";
+import { Settings, MessageSquare, PowerOff, Gamepad2, Keyboard, BookOpen, ClipboardCopy, Expand, Shrink } from "lucide-vue-next";
 import GcodeReferenceDialog from "./GcodeReferenceDialog.vue";
 import { loadViewerDefaults, saveViewerDefaults, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, loadMacrosDefaults, loadGamepadDefaults, saveGamepadDefaults, loadKeyboardDefaults, saveKeyboardDefaults, loadMdiHistory, saveMdiHistory, settingsVersion, type ThemeMode, type MacroDef, type GamepadDefaults, type KeyboardDefaults, type KeyboardAction, type Layer, type TrackMode, type Projection, type Vec3 } from "./defaults";
 import { buildToolsetterVarMap } from "./toolsetterVars";
@@ -977,10 +977,9 @@ function onKeyDown(e: KeyboardEvent) {
     return;
   }
 
-  if (!keyboardConfig.value.enabled) return;
   if (isInputFocused()) return;
 
-  // Jog actions
+  // Jog actions — gated by jogEnabled independently
   if (action.startsWith("jog_")) {
     if (!keyboardConfig.value.jogEnabled) return;
     e.preventDefault();
@@ -997,6 +996,9 @@ function onKeyDown(e: KeyboardEvent) {
     }
     return;
   }
+
+  // Command shortcuts — gated by buttonsEnabled independently
+  if (!keyboardConfig.value.buttonsEnabled) return;
 
   // Cycle start / pause / resume
   if (action === "cycle") {
@@ -1053,13 +1055,12 @@ function setKeyboardConfig(cfg: KeyboardDefaults) {
   saveKeyboardDefaults(cfg);
 }
 
-watch(() => [keyboardConfig.value.enabled, keyboardConfig.value.jogEnabled], (curr, prev) => {
-  if (!prev) return;
-  const [enabled, jogEnabled] = curr;
-  const [prevEnabled, prevJogEnabled] = prev;
-  if ((!enabled && prevEnabled) || (!jogEnabled && prevJogEnabled)) {
-    stopAllJog();
-  }
+watch(() => keyboardConfig.value.jogEnabled, (curr, prev) => {
+  if (!curr && prev) stopAllJog();
+});
+
+watch(() => gamepadConfig.value.jogEnabled, (curr, prev) => {
+  if (!curr && prev) gamepad.stopAllJog();
 });
 
 provide("gamepadAxes", gamepad.gamepadAxesState);
@@ -1187,6 +1188,7 @@ watch(viewerGcode, (newGcode) => {
         <div class="pill" :class="lcncError ? 'bad' : (configName ? 'ok' : '')">{{ lcncLabel }}</div>
         <div class="pill" :class="armed ? 'armed' : 'disarmed'"><span class="stable-width"><span :class="{ alt: !armed }">ARMED</span><span :class="{ alt: armed }">DISARMED</span></span></div>
         <div v-if="gamepad.gamepadConnected.value" class="pill ok" :title="gamepad.gamepadName.value"><Gamepad2 :size="14" /></div>
+        <div v-if="keyboardConfig.jogEnabled || keyboardConfig.buttonsEnabled" class="pill ok" title="Keyboard shortcuts active"><Keyboard :size="14" /></div>
 
         <MachineBtn type="headerIcon" :warning="unreadCount > 0" :title="'Messages (' + unreadCount + ')'" @click="openDialog('messages')">
           <MessageSquare :size="22" />

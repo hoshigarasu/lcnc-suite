@@ -359,8 +359,8 @@ function cancelCapture() {
 
 function resetKeyboard() {
   kbConfig.value = {
-    enabled: true,
     jogEnabled: false,
+    buttonsEnabled: true,
     mapping: { ...DEFAULT_KB_MAPPING },
   };
   saveKb();
@@ -475,7 +475,8 @@ watch(() => props.gamepadConfig?.mapping, (m) => {
 });
 
 // ─── Gamepad boolean wrappers (emit-based) ───
-const gpEnabled = computed({ get: () => props.gamepadConfig?.enabled ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, enabled: v }); } });
+const gpJogEnabled = computed({ get: () => props.gamepadConfig?.jogEnabled ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, jogEnabled: v }); } });
+const gpButtonsEnabled = computed({ get: () => props.gamepadConfig?.buttonsEnabled ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, buttonsEnabled: v }); } });
 const gpInvertX = computed({ get: () => props.gamepadConfig?.invertX ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, invertX: v }); } });
 const gpInvertY = computed({ get: () => props.gamepadConfig?.invertY ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, invertY: v }); } });
 const gpInvertZ = computed({ get: () => props.gamepadConfig?.invertZ ?? false, set: (v: boolean) => { emit('setGamepadConfig', { ...props.gamepadConfig!, invertZ: v }); } });
@@ -874,9 +875,10 @@ const halStats = computed(() => ({
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
           <div class="section">
-            <div class="sub">Gamepad Jogging</div>
-            <div class="settingDesc">Use an Xbox, PlayStation, or standard gamepad to jog the machine.</div>
-            <MachineToggle gate="inputConfig" v-model="gpEnabled" label="Enable gamepad jogging" />
+            <div class="sub">Gamepad</div>
+            <div class="settingDesc">Use an Xbox, PlayStation, or standard gamepad to control the machine.</div>
+            <MachineToggle gate="inputConfig" v-model="gpJogEnabled" label="Enable gamepad jogging" />
+            <MachineToggle gate="inputConfig" v-model="gpButtonsEnabled" label="Enable gamepad buttons" />
           </div>
 
           <div class="sep"></div>
@@ -888,9 +890,9 @@ const halStats = computed(() => ({
             </div>
           </div>
 
-          <div class="sep" v-if="props.gamepadConfig?.enabled"></div>
+          <div class="sep" v-if="props.gamepadConfig?.jogEnabled"></div>
 
-          <div v-if="props.gamepadConfig?.enabled" class="section">
+          <div v-if="props.gamepadConfig?.jogEnabled" class="section">
             <div class="sub">Axis Inversion</div>
             <div class="settingDesc">Flip axis direction if your gamepad moves the wrong way.</div>
             <MachineToggle gate="inputConfig" v-model="gpInvertX" label="Invert X" />
@@ -898,9 +900,9 @@ const halStats = computed(() => ({
             <MachineToggle gate="inputConfig" v-model="gpInvertZ" label="Invert Z" />
           </div>
 
-          <div class="sep" v-if="props.gamepadConfig?.enabled"></div>
+          <div class="sep" v-if="props.gamepadConfig?.buttonsEnabled"></div>
 
-          <div v-if="props.gamepadConfig?.enabled" class="section">
+          <div v-if="props.gamepadConfig?.buttonsEnabled" class="section">
             <div class="sub">Button Mapping</div>
             <table class="gpMapTable">
               <tbody>
@@ -924,9 +926,9 @@ const halStats = computed(() => ({
             </table>
           </div>
 
-          <div class="sep" v-if="props.gamepadConfig?.enabled"></div>
+          <div class="sep" v-if="props.gamepadConfig?.jogEnabled"></div>
 
-          <div v-if="props.gamepadConfig?.enabled" class="section">
+          <div v-if="props.gamepadConfig?.jogEnabled" class="section">
             <div class="sub">Dead Zone & Live Input</div>
             <div class="settingDesc">Ignore stick deflection below this threshold to prevent drift.</div>
             <div class="sliderRow">
@@ -954,20 +956,13 @@ const halStats = computed(() => ({
         <div v-if="!serverSettingsReady" class="settingsLoading">Waiting for server settings…</div>
         <div v-else class="stack-panel scrollContent scroll-thin">
             <div class="section">
-              <div class="sub">Keyboard Shortcuts</div>
-              <div class="settingDesc">Allow keyboard keys to control the machine. When disabled, no keyboard shortcuts are active except E-Stop.</div>
-              <MachineToggle gate="inputConfig" v-model="kbConfig.enabled" @update:modelValue="saveKb()" label="Enable keyboard shortcuts" />
+              <div class="sub">Keyboard</div>
+              <div class="settingDesc">Allow keyboard keys to control the machine. E-Stop is always active regardless of these settings.</div>
+              <MachineToggle gate="inputConfig" v-model="kbConfig.jogEnabled" @update:modelValue="saveKb()" label="Enable keyboard jogging" />
+              <MachineToggle gate="inputConfig" v-model="kbConfig.buttonsEnabled" @update:modelValue="saveKb()" label="Enable keyboard shortcuts" />
             </div>
 
-            <template v-if="kbConfig.enabled">
-              <div class="sep"></div>
-
-              <div class="section">
-                <div class="sub">Keyboard Jogging</div>
-                <div class="settingDesc">Allow jog keys to move axes.</div>
-                <MachineToggle gate="inputConfig" v-model="kbConfig.jogEnabled" @update:modelValue="saveKb()" label="Enable keyboard jogging" />
-              </div>
-
+            <template v-if="kbConfig.jogEnabled || kbConfig.buttonsEnabled">
               <div class="sep"></div>
 
               <div class="section">
@@ -999,7 +994,7 @@ const halStats = computed(() => ({
                     </tr>
                     </template>
                     <tr class="kbSep"><td colspan="3"></td></tr>
-                    <tr v-for="action in COMMAND_ACTIONS" :key="action">
+                    <tr v-for="action in COMMAND_ACTIONS" :key="action" :class="{ inactive: !kbConfig.buttonsEnabled }">
                       <td class="kbMapAction">{{ KEYBOARD_ACTION_LABELS[action] }}</td>
                       <td class="kbKeyCell"
                           :class="{ listening: listeningAction === action }"

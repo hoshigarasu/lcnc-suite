@@ -135,21 +135,80 @@ watch(lcncError, (newVal, oldVal) => {
   if (oldVal && !newVal) needsRefresh.value = true;
 });
 
-type BannerLevel = "none" | "error" | "refresh";
-const bannerLevel = computed<BannerLevel>(() => {
-  if (!connected.value) return "error";
-  if (lcncError.value) return "error";
-  if (needsRefresh.value) return "refresh";
-  return "none";
-});
-const bannerText = computed(() => {
-  if (!connected.value) return "Gateway disconnected — reconnecting…";
-  if (lcncError.value) return `LinuxCNC: ${lcncError.value}`;
-  if (needsRefresh.value) return "LinuxCNC reconnected — data may be stale";
-  return "";
+function reloadPage() { location.reload(); }
+
+/** ---------- permanent status banner ---------- */
+type MachineStateKey = 'disconnected' | 'estop' | 'off' | 'unhomed' | 'toolchange' | 'running' | 'paused' | 'idle';
+
+const machineState = computed<MachineStateKey>(() => {
+  if (!connected.value || lcncError.value) return 'disconnected';
+  if (isEstop.value) return 'estop';
+  if (!isEnabled.value) return 'off';
+  if (!isHomed.value) return 'unhomed';
+  if (toolChangeRequested.value) return 'toolchange';
+  if (isRunning.value) return 'running';
+  if (isPaused.value) return 'paused';
+  return 'idle';
 });
 
-function reloadPage() { location.reload(); }
+const STATE_COLORS: Record<MachineStateKey, string> = {
+  disconnected: '--danger',
+  estop: '--danger',
+  off: '--warn',
+  unhomed: '--active-tool',
+  toolchange: '--active-tool',
+  running: '--ok',
+  paused: '--warn',
+  idle: '--info',
+};
+const machineStateColor = computed(() => STATE_COLORS[machineState.value]);
+
+const STATE_LABELS: Record<MachineStateKey, string> = {
+  disconnected: 'DISCONNECTED',
+  estop: 'E-STOP',
+  off: 'MACHINE OFF',
+  unhomed: 'NOT HOMED',
+  toolchange: 'TOOL CHANGE',
+  running: 'RUNNING',
+  paused: 'PAUSED',
+  idle: 'IDLE',
+};
+
+const machineStateLabel = computed(() => {
+  const label = STATE_LABELS[machineState.value];
+  const state = machineState.value;
+  if (state === 'disconnected') {
+    return lcncError.value ? `${label} — ${lcncError.value}` : `${label} — reconnecting…`;
+  }
+  if (state === 'running' || state === 'paused') {
+    const file = activeFile.value;
+    const name = file ? file.split('/').pop() : null;
+    const parts = [label];
+    if (name) parts.push(name);
+    if (elapsedDisplay.value) parts.push(elapsedDisplay.value);
+    return parts.join('  ·  ');
+  }
+  if (state === 'toolchange' && toolChangeTool.value != null) {
+    return `${label}  ·  T${toolChangeTool.value}`;
+  }
+  return label;
+});
+
+const bannerShowAbort = computed(() => isRunning.value || isPaused.value);
+
+const bannerMessage = ref<string | null>(null);
+const bannerMessageKind = ref(0);
+let _bannerMsgTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(() => messages.value.length, (newLen, oldLen) => {
+  if (newLen > oldLen) {
+    const msg = messages.value[newLen - 1]!;
+    bannerMessage.value = msg.text;
+    bannerMessageKind.value = msg.kind;
+    if (_bannerMsgTimer) clearTimeout(_bannerMsgTimer);
+    _bannerMsgTimer = setTimeout(() => { bannerMessage.value = null; }, 5000);
+  }
+});
 
 /** ---------- content tab definitions ---------- */
 const contentTabs = [
@@ -1209,10 +1268,24 @@ watch(viewerGcode, (newGcode) => {
       </div>
     </header>
 
-    <div v-if="bannerLevel !== 'none'">
-      <div class="statusBanner" :class="bannerLevel">
-        {{ bannerText }}
-        <MachineBtn v-if="bannerLevel === 'refresh'" type="bannerAction" @click="reloadPage">Refresh</MachineBtn>
+    <div class="statusBanner" :style="{ '--state-color': `var(${machineStateColor})` }">
+      <div class="bannerContent" @click="messagesDialogOpen = true; markMessagesRead()">
+        <Transition name="banner-fade" mode="out-in">
+          <span v-if="bannerMessage && !bannerShowAbort" :key="'msg'" :class="{ bannerError: bannerMessageKind <= 2 }">
+            {{ bannerMessage }}
+          </span>
+          <span v-else :key="machineState">
+            {{ machineStateLabel }}
+          </span>
+        </Transition>
+      </div>
+      <div class="bannerActions row-controls">
+        <MachineBtn v-if="bannerShowAbort" type="bannerAbort" @click="send({ cmd: 'abort' })">ABORT</MachineBtn>
+        <MachineBtn v-if="machineState === 'unhomed'" type="bannerHome" @click="homeAll">Home All</MachineBtn>
+        <MachineBtn v-if="unreadCount > 0" type="bannerAction" @click="messagesDialogOpen = true; markMessagesRead()">
+          {{ unreadCount }} message{{ unreadCount === 1 ? '' : 's' }}
+        </MachineBtn>
+        <MachineBtn v-if="needsRefresh" type="bannerAction" @click="reloadPage">Refresh</MachineBtn>
       </div>
     </div>
 
@@ -1808,22 +1881,48 @@ watch(viewerGcode, (newGcode) => {
 .statusBanner {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: var(--gap-section);
   padding: 8px 14px;
-  min-height: 40px;
+  min-height: 56px;
   color: var(--fg);
-  font-size: var(--fs-md);
-  font-weight: var(--fw-medium);
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  background: color-mix(in oklab, var(--state-color, var(--info)) 25%, var(--panel));
+  transition: background 0.4s ease;
+}
+
+.bannerContent {
+  flex: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.bannerContent span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bannerError {
+  color: var(--danger);
+}
+
+.bannerActions {
   flex-shrink: 0;
 }
 
-.statusBanner.error {
-  background: color-mix(in oklab, var(--danger) 25%, var(--panel));
+.banner-fade-enter-active,
+.banner-fade-leave-active {
+  transition: opacity 0.3s ease;
 }
-
-.statusBanner.refresh {
-  background: color-mix(in oklab, var(--active-tool) 20%, var(--panel));
+.banner-fade-enter-from,
+.banner-fade-leave-to {
+  opacity: 0;
 }
 
 @keyframes flash-warn {

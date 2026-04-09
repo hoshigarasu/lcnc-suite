@@ -98,6 +98,8 @@ export const BUTTON_TYPES = {
   inline:         { gate: 'always',  variant: 'default', size: 'sm' },
   inlineXs:       { gate: 'always',  variant: 'default', size: 'xs' },
   bannerAction:   { gate: 'always',  variant: 'default', size: 'sm' },
+  bannerAbort:    { gate: 'abort',   variant: 'danger',  size: 'md' },
+  bannerHome:     { gate: 'idle',    variant: 'default', size: 'sm' },
   headerIcon:     { gate: 'always',  variant: 'default', size: 'md',  icon: true },
 } as const satisfies Record<string, ButtonDef>;
 

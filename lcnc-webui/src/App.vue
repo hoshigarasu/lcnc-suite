@@ -1591,7 +1591,7 @@ watch(viewerGcode, (newGcode) => {
       </div>
     </Gate><!-- /content (outer gate) -->
 
-    <!-- ══ Bottom Action Strip — default-deny Gate, SafetyStrip exempt ══ -->
+    <!-- ══ Bottom Action Strip — default-deny Gate, SafetyStrip exempt + sticky ══ -->
     <Gate gate="safety" class="strip bordered-panel scroll-thin">
       <template #exempt>
       <SafetyStrip
@@ -1745,6 +1745,12 @@ watch(viewerGcode, (newGcode) => {
   gap: var(--gap-controls);
   overflow-x: auto;
   overflow-y: hidden;
+}
+/* Center all sections when space allows; collapse to 0 on overflow */
+.strip::before,
+.strip::after {
+  content: '';
+  flex: 1;
 }
 .strip > * + * {
   border-left: 1px solid var(--border-subtle);

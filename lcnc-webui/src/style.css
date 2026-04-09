@@ -749,6 +749,14 @@ label:has(input:disabled, select:disabled) {
 }
 .stripSection > :last-child { flex: 1; min-height: 0; }
 
+/* SafetyStrip stays visible when strip scrolls */
+.safetyStrip {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--panel);
+}
+
 .bordered-panel {
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);

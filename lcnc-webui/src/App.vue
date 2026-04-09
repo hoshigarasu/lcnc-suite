@@ -1584,7 +1584,7 @@ watch(viewerGcode, (newGcode) => {
 
       <!-- Messages dialog -->
       <div v-if="messagesDialogOpen" class="dialogOverlay" @click.self="messagesDialogOpen = false">
-        <div class="dialog lg">
+        <div class="dialog lg dialog-full">
           <div class="dialogHeader">
             <span class="dialogTitle">Messages ({{ messages.length }})</span>
             <div class="row-tight">

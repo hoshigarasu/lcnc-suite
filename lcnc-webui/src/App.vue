@@ -721,6 +721,16 @@ function macroPreview(): string {
   if (!macroParamDialog.value) return "";
   return substituteMacro(macroParamDialog.value.macro.command, macroParamDialog.value.values);
 }
+
+function runMacro(macro: MacroDef) {
+  if (macro.params.length > 0) {
+    const values: Record<string, string> = {};
+    for (const p of macro.params) values[p.name] = p.default;
+    macroParamDialog.value = { macro, values };
+  } else {
+    fire({ cmd: "mdi", text: macro.command });
+  }
+}
 // @ts-ignore TS6133 — kept for future use
 const toolTableRef = ref<InstanceType<typeof ToolTablePanel> | null>(null);
 function measureAuto() {
@@ -1683,6 +1693,11 @@ watch(viewerGcode, (newGcode) => {
       </div>
     </Gate><!-- /content (outer gate) -->
 
+    <!-- ══ Macro Bar — thin row of user macro buttons ══ -->
+    <Gate v-if="userMacros.length" gate="safety" class="macroBar bordered-panel row-controls scroll-thin">
+      <MachineBtn v-for="m in userMacros" :key="m.id" type="macro" @click="runMacro(m)">{{ m.name }}</MachineBtn>
+    </Gate>
+
     <!-- ══ Bottom Action Strip — default-deny Gate, SafetyStrip exempt + sticky ══ -->
     <Gate gate="safety" class="strip bordered-panel scroll-thin">
       <template #exempt>
@@ -1829,6 +1844,14 @@ watch(viewerGcode, (newGcode) => {
   border-radius: var(--radius-container);
 }
 
+
+.macroBar {
+  flex-shrink: 0;
+  padding: var(--gap-tight) var(--gap-controls);
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: var(--radius-container);
+}
 
 .strip {
   display: flex;

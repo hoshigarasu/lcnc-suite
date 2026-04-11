@@ -166,21 +166,24 @@ BY USING THIS SOFTWARE, YOU EXPRESSLY ACKNOWLEDGE AND ASSUME ALL RISKS ASSOCIATE
 - UI shutdown with confirmation dialog and clean gateway exit
 - **Machine Controls Catalog** — central catalog (`machineControls.ts`) defines every button type and input gate with permission class, variant, and size. Catalog-aware components (`MachineBtn`, `MachineInput`, etc.) look up their permissions automatically — developers never specify permissions inline.
 - **Default-deny gating** — outer `<Gate>` fieldset wraps the entire main area; sidebar safety controls (Arm, E-Stop, Machine On) are DOM siblings, always accessible. Browser `<fieldset disabled>` cascade enforces permissions at the DOM level.
-- **Permission classes** (11 total, defined in `permissions.ts`):
+- **Permission classes** (14 total, defined in `permissions.ts`):
 
 | Class | Rule | Usage |
 |-------|------|-------|
 | `always` | unconditional | Arm, E-Stop |
+| `armed` | armed | Outer content gate |
 | `safety` | armed, not estopped | Machine On/Off |
-| `idle` | base, idle, not busy | Home, Unhome, file ops, settings |
+| `setup` | armed, not estopped, idle, not busy | File ops, tool edits, settings reset |
+| `idle` | base, idle, not busy | File ops, settings |
 | `jog` | base, idle, homed | Jog, speed slider, keyboard jog |
 | `override` | base, not busy | Feed/Spindle/Rapid overrides |
 | `ready` | base, idle, not busy, homed | MDI, Cycle Start, Spindle, Coolant, Tool ops, WCS select |
 | `pause` | base, running, not paused | Pause |
 | `resume` | base, paused | Resume |
+| `step` | base, (idle+homed OR paused) | Single-step |
 | `abort` | base | Abort, Shutdown |
-| `probe` | ready, no eoffset | Probe operations |
-| `zero` | idle, no eoffset | Touch-off / zeroing |
+| `probe` | ready, no eoffset | Probe operations, WCS edit |
+| `zero` | idle, no eoffset | Touch-off, Home, Unhome |
 
 `base` = armed, not estopped, enabled
 
@@ -853,7 +856,7 @@ The `[RS274NGC] SUBROUTINE_PATH` must include paths to the subroutine directorie
 
 | Directory | Contents | Required |
 |-----------|----------|----------|
-| `subroutines/probe_basic/` | 44 probing macros + `on_abort.ngc` | yes (for probing) |
+| `subroutines/probe_basic/` | 62 probing .ngc files + `on_abort.ngc` | yes (for probing) |
 | `subroutines/tool_length_probe/` | Tool length measurement (`m600.ngc`, `m601.ngc`, `tool_touch_off.ngc`) | for toolsetter |
 | `subroutines/surfacemap/` | Surface scanning + `compensation.py` | for surface compensation |
 
@@ -1014,8 +1017,8 @@ lcnc-suite/
 ├── lcnc-webui/                # Reference Vue 3 UI
 │   ├── src/
 │   │   ├── App.vue            # Root component, state, layout, action strip
-│   │   ├── permissions.ts     # Centralized permission system (11 classes)
-│   │   ├── machineControls.ts # Machine controls catalog (BUTTON_TYPES + INPUT_GATES)
+│   │   ├── permissions.ts     # Centralized permission system (14 classes)
+│   │   ├── machineControls.ts # Machine controls catalog (BUTTON_TYPES + INPUT_DEFS)
 │   │   ├── defaults.ts        # Persistent settings (section registry, server sync)
 │   │   ├── lcnc.ts            # LinuxCNC constants and WsCommand types
 │   │   ├── lcncWs.ts          # WebSocket client with heartbeat
@@ -1030,13 +1033,15 @@ lcnc-suite/
 │   │   ├── Gate.vue           # Permission gate (<fieldset :disabled>)
 │   │   ├── MachineBtn.vue     # Catalog-aware button (wraps Btn.vue)
 │   │   ├── MachineInput.vue   # Catalog-aware input (+ Toggle/Slider/Select/Radio/Color)
-│   │   ├── SafetyStrip.vue    # Sidebar safety + status display
-│   │   ├── ModeStrip.vue      # Action strip: jog, speed, touch-off, homing, WCS
-│   │   ├── ControlsStrip.vue  # Action strip: overrides, spindle, coolant, tool
+│   │   ├── SafetyStrip.vue    # Sidebar safety: Arm/Disarm, E-Stop, Machine On/Off
+│   │   ├── JogStrip.vue       # Sidebar jog: wheel, speed slider, step increments
+│   │   ├── SetupStrip.vue     # Sidebar setup: DRO, touchoff, homing, WCS selector
+│   │   ├── OverridesStrip.vue # Sidebar overrides: Feed/Spindle/Rapid sliders
+│   │   ├── SpindleStrip.vue   # Sidebar spindle: FWD/REV/STOP, RPM, coolant
+│   │   ├── ToolStrip.vue      # Sidebar tool: load/unload/measure, metadata
 │   │   ├── TabPanel.vue       # Tab selector for content panels
 │   │   ├── Toolbar.vue        # 3D viewer toolbar (view presets, layer toggles)
 │   │   ├── ThreeViewer.vue    # 3D machine visualization (Three.js)
-│   │   ├── ManualPanel.vue    # DRO + jogging + MDI (consolidated)
 │   │   ├── DroPanel.vue       # Digital readout with G5x, zero, home
 │   │   ├── JogPanel.vue       # Jog wheel + speed/increment controls
 │   │   ├── GcodePanel.vue     # G-code viewer + editor + program controls
@@ -1045,7 +1050,7 @@ lcnc-suite/
 │   │   ├── ToolTablePanel.vue # Tool table editor with library metadata
 │   │   ├── ToolPreview.vue    # 2D tool side-view preview (Three.js)
 │   │   ├── OffsetPanel.vue    # WCS offset table editor (G54–G59.3)
-│   │   ├── CameraViewer.vue   # Camera feed with SVG overlay (MJPEG)
+│   │   ├── CameraPip.vue      # Camera PiP overlay with SVG crosshair (MJPEG)
 │   │   ├── SettingsPanel.vue  # Application settings (sub-tabbed)
 │   │   └── DebugTab.vue       # Debug/diagnostics tab
 │   └── package.json

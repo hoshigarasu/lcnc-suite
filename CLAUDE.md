@@ -22,8 +22,8 @@ Gateway connects to LinuxCNC via Python bindings (`linuxcnc.stat`, `linuxcnc.com
 - `DroPanel.vue` — Position/DRO display with work/machine coordinate toggle
 - `JogPanel.vue` — Jog grid + speed slider
 - `JogButton.vue` — Press-and-hold jog button with pointer capture
-- `MdiPanel.vue` — MDI input + send button
-- `ManualPanel.vue` — DRO + jogging + MDI (consolidated)
+- `GcodePanel.vue` — G-code viewer with syntax highlighting, inline editor, program controls, run-from-line
+- `GcodeReferenceDialog.vue` — Searchable G/M-code reference dialog
 - `ProbePanel.vue` — Probe operations grid, calls `O<probe_*> CALL` via MDI
 - `ToolTablePanel.vue` — Tool table with load/delete dialogs, STL upload, 2D preview
 - `ToolPreview.vue` — Small orthographic Three.js canvas for tool side-view preview
@@ -32,34 +32,51 @@ Gateway connects to LinuxCNC via Python bindings (`linuxcnc.stat`, `linuxcnc.com
 - `format.ts` — Shared formatters (fmtCoord, fmtNum, fmtCell, fmtOffset, fmtRpm, fmtElapsed, fmtDuration, fmtDist, fmtSize)
 - `gcodeHighlight.ts` — G-code syntax tokenizer + highlighter (shared by GcodePanel + MDI history)
 - `OffsetPanel.vue` — WCS offset table editor (G54–G59.3), inline cell editing, auxiliary rows (G92, Tool, Comp)
-- `CameraViewer.vue` — Camera tab with MJPEG feed, SVG crosshair/circle/grid overlay, floating toolbar
-- `SettingsPanel.vue` — Sub-tabbed settings (3D Viewer | Machine | Toolsetter | Display | Camera | Macros | Gamepad | Keyboard | HAL | Debug)
+- `CameraPip.vue` — Picture-in-picture camera overlay with MJPEG feed, SVG crosshair/circle/grid overlay
+- `SettingsPanel.vue` — Sub-tabbed settings (3D Viewer | Machine | Display | Macros | Gamepad | Keyboard | HAL | Debug)
 - `Gate.vue` — Permission gate wrapper: `<fieldset :disabled="!allow">` with `#exempt` slot
 - `permissions.ts` — Permission evaluation (evaluatePermissions + provide/inject)
-- `machineControls.ts` — Machine controls catalog: BUTTON_TYPES + INPUT_GATES (single source of truth for permissions + styling)
+- `machineControls.ts` — Machine controls catalog: BUTTON_TYPES + INPUT_DEFS (single source of truth for permissions + styling)
 - `MachineBtn.vue` — Catalog-aware button (wraps Btn.vue, looks up gate/variant/size from BUTTON_TYPES)
-- `MachineInput.vue`, `MachineToggle.vue`, `MachineSlider.vue`, `MachineSelect.vue`, `MachineRadio.vue`, `MachineColor.vue` — Catalog-aware form controls (look up permission from INPUT_GATES)
+- `MachineInput.vue`, `MachineToggle.vue`, `MachineSlider.vue`, `MachineSelect.vue`, `MachineRadio.vue`, `MachineColor.vue` — Catalog-aware form controls (look up permission from INPUT_DEFS)
 - `Btn.vue` — Internal button component (never used directly in templates — wrapped by MachineBtn)
 - `lcncWs.ts` — WebSocket client, heartbeat, server-authoritative armed state
 - `lcncApi.ts` — REST helpers for file listing and upload
+- `lcnc.ts` — LinuxCNC constants (TASK_MODE_*, INTERP_*, SPINDLE_*) and WsCommand union type
 - `defaults.ts` — Server-synced settings with section registry pattern (no localStorage)
+- `main.ts` — Vue app entry point with settings migration
 - `style.css` — Global styles, theme vars, design tokens
+- `SafetyStrip.vue` — Sidebar safety controls: Arm/Disarm, E-Stop, Machine On/Off, status display
+- `JogStrip.vue` — Sidebar jog controls: jog wheel, speed slider, step increments
+- `SetupStrip.vue` — Sidebar setup: DRO display, axis touchoff, homing grid, WCS selector
+- `OverridesStrip.vue` — Sidebar overrides: Feed/Spindle/Rapid override sliders
+- `SpindleStrip.vue` — Sidebar spindle: FWD/REV/STOP, RPM input, actual speed, coolant toggles
+- `ToolStrip.vue` — Sidebar tool management: Tool # input, Measure/Manual/Load/Abort, probe status
+- `ToolsetterSettings.vue` — Toolsetter configuration panel (used in SettingsPanel Machine sub-tab)
+- `GamepadLiveInput.vue` — Gamepad input visualization (SettingsPanel Gamepad sub-tab)
+- `DebugTab.vue` — Debug/diagnostics tab (SettingsPanel Debug sub-tab)
+- `gcodeReference.ts` — G/M-code reference data + lookup map
+- `interpolation.ts` — IDW interpolation for probe surface maps
+- `toolsetterVars.ts` — Toolsetter variable mapping utilities
+- `dragScroll.ts` — Drag-to-scroll handler for touch/mouse on `.scroll-thin` containers
+- `edgeWorker.ts` — Web Worker for Three.js edge geometry computation
+- `useGamepad.ts` — Gamepad polling composable (analog sticks + buttons)
+- `useJogPointers.ts` — Jogging pointer event management composable
 
 ### Main Tabs
 
-`3D Viewer | Manual Control | Program | Tool Table | Probing | Camera | Settings`
+`Program | MDI | Probing | Offsets | Tools`
 
 ### Sidebar
 
-Left column (150px) with three sections:
+Left column with six strip components (scrollable):
 
-1. **Machine Safety** — Arm/Disarm, E-Stop, Machine On/Off
-2. **Machine Status** — Click-to-toggle popovers for Machine, Program, Overrides
-3. **Controls** — Spindle, Coolant, Tool, Macros button+popover groups
-   - Spindle: FWD/REV/STOP, RPM input, actual speed, override slider
-   - Coolant: Flood/Mist toggles
-   - Tool: Tool # input, Measure/Manual/Load/Abort buttons, probe status, tool context (T# D# Z#)
-   - Macros: User-configurable MDI command buttons with `{param}` prompt support (configured in Settings > Macros)
+1. **SafetyStrip** — Arm/Disarm, E-Stop, Machine On/Off, status display
+2. **JogStrip** — Jog wheel, speed slider, step increments
+3. **SetupStrip** — DRO display, axis touchoff, homing grid, WCS selector
+4. **OverridesStrip** — Feed/Spindle/Rapid override sliders
+5. **SpindleStrip** — FWD/REV/STOP, RPM input, actual speed, coolant toggles
+6. **ToolStrip** — Tool # input, Measure/Manual/Load/Abort buttons, probe status, tool context (T# D# Z#)
 
 ## Safety System — Three Layers
 
@@ -79,7 +96,7 @@ Full layer behavior tables, pin semantics, and failure mode coverage in `safety-
 
 - **Config**: `_HAL_MONITOR_PINS` list in `gateway.py` — add new pins here as `(source_pin, local_name, hal_type)` tuples
 - **Init**: `_init_hal_monitor()` called once from `try_connect_lcnc()` — creates component, connects pins via `halcmd net`
-- **Read**: `_hal_read(local_pin, default)` — falls back to default if component unavailable
+- **Read**: `_hal_fast(local_pin, default)` — falls back to default if component unavailable
 - **Fallback**: if component creation fails, `poll_status()` falls back to `hal_get()` (original slow path)
 
 ## Permission System & Machine Controls Catalog
@@ -111,9 +128,9 @@ TIER 3 — Machine enabled (base = armed + !estop + enabled)
   step ───────────────── base + ((isIdle+!busy+isHomed) OR isPaused)  Single-step
 
 TIER 4 — Machine idle (requires base + isIdle)
-  idle ───────────────── base + isIdle + !busy                        Home, Unhome, WCS clear
+  idle ───────────────── base + isIdle + !busy                        File ops, settings reset
   jog ────────────────── base + isIdle + isHomed                      Jog buttons, speed slider
-  zero ───────────────── base + isIdle + !busy + !eoffset             Touch-off (G10 L20)
+  zero ───────────────── base + isIdle + !busy + !eoffset             Touch-off (G10 L20), Home, Unhome
 
 TIER 5 — Full ready (requires everything)
   ready ──────────────── base + isIdle + !busy + isHomed              MDI, Cycle Start, Spindle, Coolant
@@ -137,8 +154,8 @@ Paused            → abort, override, resume, step remain; pause closes
 
 Central catalog of every interactive element type — inspired by QtPyVCP's predefined widget types. Each entry defines its permission gate, variant, and size. Components look up their type from the catalog; developers never specify permissions or styling inline.
 
-- **`BUTTON_TYPES`** — 36+ button types (start, abort, probe, close, tab, dialogConfirm, etc.)
-- **`INPUT_GATES`** — 25+ input types (jogSpeed, mdiText, touchoff, feedOverride, etc.)
+- **`BUTTON_TYPES`** — 55+ button types (start, abort, probe, close, tab, dialogConfirm, etc.)
+- **`INPUT_DEFS`** — 34+ input types (jogSpeed, mdiText, touchoff, feedOverride, etc.)
 
 Machine action types use permission gates (`ready`, `idle`, `probe`, etc.). UI-only types use `gate: 'always'` — they don't gate themselves but are still covered by the outer Gate fieldset.
 
@@ -149,12 +166,12 @@ All interactive elements use catalog-aware wrapper components. **Never use `<Btn
 | Component | Wraps | Catalog |
 |-----------|-------|---------|
 | `MachineBtn.vue` | `Btn.vue` | `BUTTON_TYPES` — looks up gate, variant, size, icon, muted, inline |
-| `MachineInput.vue` | `<input>` | `INPUT_GATES` — looks up permission from gate prop |
-| `MachineToggle.vue` | toggle input | `INPUT_GATES` |
-| `MachineSlider.vue` | range input | `INPUT_GATES` |
-| `MachineSelect.vue` | `<select>` | `INPUT_GATES` |
-| `MachineRadio.vue` | radio input | `INPUT_GATES` |
-| `MachineColor.vue` | color input | `INPUT_GATES` |
+| `MachineInput.vue` | `<input>` | `INPUT_DEFS` — looks up permission from gate prop |
+| `MachineToggle.vue` | toggle input | `INPUT_DEFS` |
+| `MachineSlider.vue` | range input | `INPUT_DEFS` |
+| `MachineSelect.vue` | `<select>` | `INPUT_DEFS` |
+| `MachineRadio.vue` | radio input | `INPUT_DEFS` |
+| `MachineColor.vue` | color input | `INPUT_DEFS` |
 
 ### Gating Architecture — Default-Deny (IEC 62443 / ARINC 661)
 
@@ -205,10 +222,10 @@ Four layers enforce permissions:
 ## Key Patterns
 
 - **No hardcoded visual styles** — never invent custom font-size, padding, border-radius, colors, opacity, or font-family for new elements. Always inherit from the nearest parent class or global base styles in `style.css`. New CSS should only override layout properties (flex, width, text-align). If a visual style doesn't exist, extend the existing class hierarchy or global base — never create one-off overrides. For color semantics: machine active states use `--ok` (green), form controls (toggles, radios, checkboxes) use `--info` (blue), danger/abort uses `--danger`, warnings use `--warn`.
-- **Spacing tokens** — use `--gap-tight` (4px, grouped toggles), `--gap-controls` (8px, button rows/form fields), `--gap-section` (12px, between sections), `--gap-panel` (20px, major divisions) for all layout gaps. Never hardcode gap/margin values for spacing between elements. Padding inside buttons/inputs is visual and stays hardcoded. Minimum gap between any clickable elements: `--gap-tight` (4px).
+- **Spacing tokens** — use `--gap-micro` (2px, ultra-tight), `--gap-tight` (4px, grouped toggles), `--gap-controls` (8px, button rows/form fields), `--gap-section` (12px, between sections), `--gap-panel` (20px, major divisions) for all layout gaps. Never hardcode gap/margin values for spacing between elements. Padding inside buttons/inputs is visual and stays hardcoded. Minimum gap between any clickable elements: `--gap-tight` (4px).
 - **Opacity tokens** — `--opacity-subtle` (0.3, separators), `--opacity-disabled` (0.4), `--opacity-muted` (0.6, secondary text), `--opacity-secondary` (0.8, dialog body, syntax comments). Never hardcode opacity values (exception: animation keyframes).
 - **Syntax highlight tokens** — `--syntax-mcode`, `--syntax-coord`, `--syntax-param`, `--syntax-comment` in `:root`. Token classes (`.token-gcode`/`.tok-gcode`, etc.) use these. `.token-gcode` uses `var(--info)`, `.token-text` uses `var(--fg)`.
-- **Shared modules** — `format.ts` (9 formatters: fmtCoord, fmtNum, fmtCell, fmtOffset, fmtRpm, fmtElapsed, fmtDuration, fmtDist, fmtSize), `toolTypes.ts` (TOOL_TYPE_LABELS + toolTypeLabel()), `gcodeHighlight.ts` (tokenizeCode + highlightGcode). Never duplicate formatters or tool type labels in components.
+- **Shared modules** — `format.ts` (9 formatters: fmtCoord, fmtNum, fmtCell, fmtOffset, fmtRpm, fmtElapsed, fmtDuration, fmtDist, fmtSize), `toolTypes.ts` (TOOL_TYPE_LABELS + toolTypeLabel()), `gcodeHighlight.ts` (highlightGcode). Never duplicate formatters or tool type labels in components.
 - **Global utility classes** — `.mono` (font-mono), `.emptyState` (centered muted text), `.statusDot` (8px indicator with `.probing`/`.tripped` states), `.sub` (section heading — no margin, parent flex gap handles spacing), `.sep` (horizontal divider). Always use these instead of scoped equivalents. For horizontal dividers, always use `<div class="sep">` — never manual `border-bottom` as section separators.
 - `defaults.ts` section registry: `registerSection<T>(name, fallback, migrateFn)` + `loadSection`/`saveSection`. All sections are server-synced (no localStorage). Server is the single source of truth. Gateway sends `settings_init` on every WS connect. `sendBeacon` flushes pending saves on page exit. New sections must be added to `_VALID_SETTINGS_SECTIONS` in `gateway.py` and `SERVER_SECTIONS` in `main.ts`.
 - ViewPreset type is duplicated in ThreeViewer.vue and Toolbar.vue — update both when adding presets
@@ -222,16 +239,16 @@ Four layers enforce permissions:
   - All tiers inherit `font-size: var(--fs-base)` from `.dialog` base — never set font-size on dialog body content
   - Safety dialogs add `.safetyDialog` (z-index 1010) and omit `@click.self` on overlay
 - Gateway `tool_change` handler is fire-and-forget (no `CMD.wait_complete()` — blocks heartbeat loop)
-- Toolsetter settings live in SettingsPanel (Toolsetter sub-tab), tool actions in sidebar Tool popover
+- Toolsetter settings live in SettingsPanel (Machine sub-tab), tool actions in sidebar ToolStrip
 - **Tool geometry**: Per-tool STL files in `machine/tools/`, loaded via `STLLoader`. Fallback: simple cylinder from diameter + length. Vertex colors split cutter (gold) / shaft (silver) by `flute_length` / `shoulder_length` Z thresholds. STL origin convention: tool tip at (0,0,0), extends in +Z.
 - **No `:deep()` visual overrides** — scoped CSS may use `:deep()` for layout properties (flex, width, height, padding) but NEVER for visual properties (background, color, border, box-shadow). Visual overrides bypass Btn.vue's state system. If a button state looks wrong, fix it in Btn.vue.
-- **Gate.vue** — renders `<fieldset :disabled="!allow">` with `.fs-reset` styling (chrome-only: no border/padding/margin). Browser-enforced default-deny: disabled propagates to all descendants. The outer Gate (`permissions.safety`) wraps the entire main area. `#exempt` slot reserved for safety section only (Arm, E-Stop). All buttons use MachineBtn catalog types; `<Btn>` is never used directly in templates.
+- **Gate.vue** — renders `<fieldset :disabled="!allow">` with `.fs-reset` styling (chrome-only: no border/padding/margin). Browser-enforced default-deny: disabled propagates to all descendants. The outer Gate (`gate="armed"`) wraps the entire main area. `#exempt` slot reserved for safety section only (Arm, E-Stop). All buttons use MachineBtn catalog types; `<Btn>` is never used directly in templates.
 
 ## Pre-Flight Checklist — MANDATORY for every CSS/UI edit
 
 Before writing or modifying ANY CSS or interactive element, verify ALL items:
 
-**Spacing** — `gap`/`row-gap`/`column-gap`/`margin` between siblings MUST use tokens: `--gap-tight` (4px), `--gap-controls` (8px), `--gap-section` (12px), `--gap-panel` (20px). Never hardcode. No double-layer spacing (parent flex gap + child margin-bottom on `.sub` headings, etc.). Grid cell gaps use `--gap-controls` or `--gap-tight` — never `--gap-section` for internal grid spacing.
+**Spacing** — `gap`/`row-gap`/`column-gap`/`margin` between siblings MUST use tokens: `--gap-micro` (2px), `--gap-tight` (4px), `--gap-controls` (8px), `--gap-section` (12px), `--gap-panel` (20px). Never hardcode. No double-layer spacing (parent flex gap + child margin-bottom on `.sub` headings, etc.). Grid cell gaps use `--gap-controls` or `--gap-tight` — never `--gap-section` for internal grid spacing.
 
 **Layout** — Use `stack-*` / `row-*` utility classes from `style.css` for flex layout. Never write `display: flex; flex-direction: column; gap: var(--gap-*)` directly in component CSS. Component-scoped CSS should only add non-layout properties (height, overflow, position, flex, min-height). Classes: `stack-panel` (20px), `stack-sections` (12px), `stack-controls` (8px), `stack-tight` (4px), `stack-micro` (2px), `row-controls` (8px), `row-tight` (4px).
 
@@ -243,7 +260,7 @@ Before writing or modifying ANY CSS or interactive element, verify ALL items:
 
 **Permission gates** — Use `MachineBtn`/`MachineInput`/etc. catalog components for all interactive elements — they self-gate from the catalog. Wrap sections in `<Gate :allow="can.X">` for fieldset-level gating. Never use `<Btn>` directly in templates. Individual `:disabled="!can.X"` is only correct for: JogButton props (internal JS guard) and elements with tighter permissions than the parent Gate. Never use `:class="{ inactive: !can.X }"` for permission gating.
 
-**Global patterns** — Form elements inherit from `style.css` base (component CSS only adds layout). Tables → `.dataTable`. Dialogs → `.dialogOverlay` + `.dialog` + `.dialog-full`. Close buttons → `.btn-icon`. Empty states → `.emptyState`. Status dots → `.statusDot`. Section headings → `.sub`. Horizontal dividers → `<div class="sep">`. Monospace → `.mono`. Scrollable containers → add `.scroll-thin`. Check existing components before creating new CSS.
+**Global patterns** — Form elements inherit from `style.css` base (component CSS only adds layout). Tables → `.dataTable`. Dialogs → `.dialogOverlay` + `.dialog` + `.dialog-full`. Close buttons → `<MachineBtn type="close">`. Empty states → `.emptyState`. Status dots → `.statusDot`. Section headings → `.sub`. Horizontal dividers → `<div class="sep">`. Monospace → `.mono`. Scrollable containers → add `.scroll-thin`. Check existing components before creating new CSS.
 
 **New patterns** — If the needed style doesn't exist globally, STOP and tell the user: "This pattern doesn't exist in our global styles. We should add it to style.css first." Never create one-off scoped styles for reusable patterns.
 

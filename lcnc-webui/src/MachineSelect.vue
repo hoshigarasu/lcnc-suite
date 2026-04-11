@@ -22,7 +22,7 @@ const catalogStyle = computed(() => {
 </script>
 
 <template>
-  <select v-model="model" :style="catalogStyle" :disabled="isDisabled">
+  <select v-bind="$attrs" v-model="model" :style="catalogStyle" :disabled="isDisabled">
     <slot />
   </select>
 </template>

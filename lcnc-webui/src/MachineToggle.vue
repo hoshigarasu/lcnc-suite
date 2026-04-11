@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import { usePermissions } from './permissions';
 import { INPUT_DEFS, type InputType } from './machineControls';
 
+defineOptions({ inheritAttrs: false });
+
 const props = defineProps<{
   gate: InputType;
   disabled?: boolean;
@@ -17,7 +19,7 @@ const isDisabled = computed(() => !can.value[def.value.gate] || props.disabled);
 
 <template>
   <label class="toggleRow">
-    <input type="checkbox" class="toggle" v-model="model" :disabled="isDisabled">
+    <input v-bind="$attrs" type="checkbox" class="toggle" v-model="model" :disabled="isDisabled">
     {{ label }}
   </label>
 </template>

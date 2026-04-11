@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import { usePermissions } from './permissions';
 import { INPUT_DEFS, type InputType } from './machineControls';
 
+defineOptions({ inheritAttrs: false });
+
 const props = defineProps<{
   gate: InputType;
   disabled?: boolean;
@@ -15,5 +17,5 @@ const isDisabled = computed(() => !can.value[def.value.gate] || props.disabled);
 </script>
 
 <template>
-  <input type="color" v-model="model" :disabled="isDisabled">
+  <input v-bind="$attrs" type="color" v-model="model" :disabled="isDisabled">
 </template>

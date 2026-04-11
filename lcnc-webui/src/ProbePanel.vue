@@ -48,11 +48,13 @@ const isDev = import.meta.env.DEV;
 // ─── Sub-view navigation ──────────────────────────────────────────
 const probeView = ref<"outside" | "inside" | "boss" | "ridge" | "angle" | "cal" | "surface" | "toolsetter">("outside");
 
-// ─── Toolsetter reset ────────────────────────────────────────────
+// ─── Reset confirmation ──────────────────────────────────────────
 const resetTarget = ref<string | null>(null);
 function confirmReset() {
+  const target = resetTarget.value;
   resetTarget.value = null;
-  saveToolsetterDefaults({ ...TOOLSETTER_FALLBACK });
+  if (target === "toolsetter") saveToolsetterDefaults({ ...TOOLSETTER_FALLBACK });
+  else if (target === "cal") emit("mdi", `O<probe_cal_reset> CALL`);
 }
 
 // ─── Grid probe operations ────────────────────────────────────────
@@ -297,7 +299,7 @@ function runCalProbe(macro: string) {
 
 function resetCal() {
   if (!can.value.ready || props.probing) return;
-  emit("mdi", `O<probe_cal_reset> CALL`);
+  resetTarget.value = "cal";
 }
 
 // ─── Surface map ──────────────────────────────────────────────────
@@ -1132,6 +1134,7 @@ function fmtR(key: string): string {
             <label><MachineRadio gate="probeParam" name="calAxis" :value="2" v-model.number="calAxis" /> Y Error</label>
           </div>
         </div>
+        <MachineBtn type="reset" :disabled="probing" @click="resetCal">Reset Calibration</MachineBtn>
       </div>
       </div>
     </template>
@@ -1294,7 +1297,7 @@ function fmtR(key: string): string {
         <MachineInput gate="probeParam" type="number" v-model.number="params.stepOffWidth" min="0.1" :step="STEP_DEFAULT" @change="saveParams" />
 
         <label title="Probe tip radius calibration offset. Compensates for the difference between electrical trigger point and true tip center. Set via calibration routines — do not guess. (#3032)">Cal Offset</label>
-        <span class="calOffsetReadonly">{{ fmtNum(params.calOffset) }} <MachineBtn type="probe" :disabled="probing" @click="resetCal">Reset</MachineBtn></span>
+        <span class="calOffsetReadonly mono">{{ fmtNum(params.calOffset) }}</span>
       </div>
     </template>
 
@@ -1347,7 +1350,7 @@ function fmtR(key: string): string {
         <MachineInput gate="probeParam" type="number" v-model.number="params.stepOffWidth" min="0.1" :step="STEP_DEFAULT" @change="saveParams" />
 
         <label title="Probe tip radius calibration offset. Compensates for the difference between electrical trigger point and true tip center. Set via calibration routines — do not guess. (#3032)">Cal Offset</label>
-        <span class="calOffsetReadonly">{{ fmtNum(params.calOffset) }} <MachineBtn type="probe" :disabled="probing" @click="resetCal">Reset</MachineBtn></span>
+        <span class="calOffsetReadonly mono">{{ fmtNum(params.calOffset) }}</span>
       </div>
     </div>
     </template>
@@ -1380,12 +1383,14 @@ function fmtR(key: string): string {
 
   </div>
 
-  <!-- Toolsetter reset confirmation dialog -->
+  <!-- Reset confirmation dialog -->
   <div v-if="resetTarget" class="dialogOverlay" @click.self="resetTarget = null">
     <div class="dialog">
-      <div class="dialogTitle danger">Reset Toolsetter</div>
-      <div class="dialogBody">Restore toolsetter settings to defaults? This cannot be undone.</div>
-      <Gate gate="idle" class="dialogActions">
+      <div class="dialogTitle danger">{{ resetTarget === 'cal' ? 'Reset Calibration' : 'Reset Toolsetter' }}</div>
+      <div class="dialogBody">{{ resetTarget === 'cal'
+        ? 'Zero the probe tip calibration offset? This affects all future probe measurements.'
+        : 'Restore toolsetter settings to defaults? This cannot be undone.' }}</div>
+      <Gate :gate="resetTarget === 'cal' ? 'ready' : 'safety'" class="dialogActions">
         <MachineBtn type="dialogCancel" @click="resetTarget = null">Cancel</MachineBtn>
         <MachineBtn type="dialogDanger" @click="confirmReset">Reset</MachineBtn>
       </Gate>

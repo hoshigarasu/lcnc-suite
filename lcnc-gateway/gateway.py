@@ -116,6 +116,7 @@ _HAL_MONITOR_PINS = [
     ("axis.z.eoffset",               "z-eoffset",        hal.HAL_FLOAT),
     ("axis.z.eoffset-enable",        "z-eoffset-enable", hal.HAL_BIT),
     ("compensation.method",          "comp-method",       hal.HAL_U32),
+    ("compensation.grid-version",    "comp-grid-ver",     hal.HAL_U32),
     ("motion.probe-input",           "probe-input",       hal.HAL_BIT),
 ]
 
@@ -1078,6 +1079,7 @@ class StatusPayload:
     eoffset_z: Optional[float]
     eoffset_enabled: Optional[bool]
     comp_method: Optional[int]  # 0=nearest, 1=linear, 2=cubic
+    comp_grid_version: Optional[int]
 
     # coolant
     flood: Optional[bool]
@@ -1660,6 +1662,7 @@ def poll_status() -> StatusPayload:
         eoffset_z=_hal_fast("z-eoffset", None),
         eoffset_enabled=bool(_hal_fast("z-eoffset-enable", False)),
         comp_method=_hal_fast("comp-method", None),
+        comp_grid_version=_hal_fast("comp-grid-ver", None),
         linear_units=ini_cfg.get("linear_units"),
         default_jog_velocity=ini_cfg.get("default_jog_velocity"),
         min_jog_velocity=ini_cfg.get("min_jog_velocity"),

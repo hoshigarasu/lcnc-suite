@@ -21,6 +21,7 @@ const props = defineProps<{
   eoffsetZ: number | null;
   eoffsetEnabled: boolean;
   compMethod: number | null;  // 0=nearest, 1=linear, 2=cubic
+  compGridVersion: number;
   surfacePoints: [number, number, number][] | null;
   surfaceInViewer: boolean;
   compGrid: { x: number[]; y: number[]; zi: number[][]; method: number } | null;
@@ -617,13 +618,9 @@ watch(themeMode, () => {
   }
 });
 
-// Re-fetch grid when compensation method changes
-// (compensation.py rewrites JSON on method change in both IDLE and RUNNING states,
-// delay to let it finish the 50ms poll cycle + loadMap + file write)
-let _methodFetchTimer = 0;
-watch(() => props.compMethod, () => {
-  clearTimeout(_methodFetchTimer);
-  _methodFetchTimer = window.setTimeout(() => emit("getCompGrid"), 300);
+// Fetch grid when compensation.py increments the version counter (loadMap done)
+watch(() => props.compGridVersion, (ver, prev) => {
+  if (ver !== prev) emit("getCompGrid");
 });
 
 onUnmounted(() => {

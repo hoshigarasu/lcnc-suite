@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 update = 0.05	# this is how often the z external offset value is updated based on current x & y position 
 
 import sys
-import os.path, time, json
+import os.path, time, json, tempfile
 import numpy as np
 from scipy.interpolate import griddata
 from enum import Enum, unique
@@ -87,18 +87,25 @@ class Compensation :
 		self.zi = griddata((self.x_data,self.y_data),self.z_data,(self.xi,self.yi),method=method)
 		self.zi = np.transpose(self.zi)
 
-		# Write interpolated grid for UI visualization
+		# Write interpolated grid for UI visualization (atomic: temp + rename)
 		grid_path = os.path.splitext(self.filename)[0] + "-grid.json"
 		try:
-			with open(grid_path, "w") as f:
+			grid_dir = os.path.dirname(grid_path) or "."
+			fd, tmp_path = tempfile.mkstemp(suffix=".json", dir=grid_dir)
+			with os.fdopen(fd, "w") as f:
 				json.dump({
 					"x": self.x.tolist(),
 					"y": self.y.tolist(),
 					"zi": self.zi.tolist(),
 					"method": int(self.h['method']),
 				}, f)
+			os.rename(tmp_path, grid_path)
 		except Exception as e:
 			print(f" Grid write failed: {e}")
+			try:
+				os.unlink(tmp_path)
+			except OSError:
+				pass
 
 
 	def compensate(self) :
@@ -141,7 +148,9 @@ class Compensation :
 		self.h.newpin("eoffset", hal.HAL_FLOAT, hal.HAL_IN)
 		self.h.newpin("eoffset-limited", hal.HAL_BIT, hal.HAL_IN)
 		self.h.newpin("method", hal.HAL_U32, hal.HAL_IN)
+		self.h.newpin("grid-version", hal.HAL_U32, hal.HAL_OUT)
 		self.h.ready()
+		print(" grid-version pin created (U32 OUT)", flush=True)
 
 		s = linuxcnc.stat()
 
@@ -184,7 +193,8 @@ class Compensation :
 					currentMethod = self.h["method"]
 					if currentMethod != prevMethod and os.path.isfile(self.filename):
 						self.loadMap()
-						print("	Grid recomputed for preview (method changed while idle)")
+						self.h["grid-version"] = (self.h["grid-version"] + 1) % 2**32
+						print("	Grid recomputed for preview (method changed while idle), grid-version=%d" % self.h["grid-version"], flush=True)
 						prevMethod = currentMethod
 
 					# stay in IDLE state until compensation is enabled
@@ -202,7 +212,8 @@ class Compensation :
 					#if mapTime != prevMapTime:
 					if (mapTime != prevMapTime) or (self.h['resolution'] != PrevResolution) or (currentMethod != prevMethod):
 						self.loadMap()
-						print("	Compensation map loaded")
+						self.h["grid-version"] = (self.h["grid-version"] + 1) % 2**32
+						print("	Compensation map loaded, grid-version=%d" % self.h["grid-version"], flush=True)
 						prevMapTime = mapTime
 						PrevResolution = self.h['resolution']
 						prevMethod = currentMethod

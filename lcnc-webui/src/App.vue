@@ -1394,6 +1394,7 @@ watch(viewerGcode, (newGcode) => {
               :eoffsetZ="st.eoffset_z ?? null"
               :eoffsetEnabled="!!st.eoffset_enabled"
               :compMethod="st.comp_method ?? null"
+              :compGridVersion="st.comp_grid_version ?? 0"
               :surfacePoints="surfacePoints"
               :surfaceInViewer="surfaceLoadedToViewer"
               :compGrid="compGrid"

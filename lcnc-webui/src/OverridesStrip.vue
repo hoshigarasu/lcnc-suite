@@ -78,9 +78,17 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
 }
 
 @media (orientation: portrait) {
-  /* ovrCol height: 100% collapses when stripSection is height: auto */
-  .ovrCol  { height: auto; justify-content: flex-start; }
-  /* Sliders: horizontal in portrait */
-  .vSlider { writing-mode: horizontal-tb; direction: ltr; flex: none; width: 100%; height: 6px; min-height: unset; }
+  /* Stack the three override rows vertically */
+  .ovrSection { flex-direction: column; gap: var(--gap-controls); }
+  /* Each row: label + value + slider + reset in a horizontal line */
+  .ovrCol {
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--gap-controls);
+  }
+  /* Slider fills remaining width */
+  .vSlider { writing-mode: horizontal-tb; direction: ltr; flex: 1; min-width: 0; height: 6px; min-height: unset; }
 }
 </style>

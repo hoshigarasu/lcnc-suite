@@ -1762,6 +1762,7 @@ watch(viewerGcode, (newGcode) => {
         @update:angularJogVel="angularJogVel = $event"
         @update:jogIncrement="jogIncrement = $event"
         @resetJogVel="jogVel = defaultJogVel"
+        @resetAngularJogVel="angularJogVel = defaultAngularJogVel"
         @modeChange="send({ cmd: 'set_mode', mode: $event })"
       />
 

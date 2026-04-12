@@ -38,6 +38,7 @@ const emit = defineEmits<{
   (e: "update:angularJogVel", v: number): void;
   (e: "update:jogIncrement", v: number): void;
   (e: "resetJogVel"): void;
+  (e: "resetAngularJogVel"): void;
   (e: "modeChange", mode: number): void;
 }>();
 
@@ -326,6 +327,7 @@ function stopAxisJog(axisIndex: number, dir: 1 | -1, e: PointerEvent) {
           <span class="label-muted">Rotary</span>
           <span class="val-mono">{{ (angularJogVel * 60).toFixed(0) }}°</span>
           <MachineSlider gate="jogSpeed" :disabled="isDisabled" :min="minAngularJogVel" :max="maxAngularJogVel" :step="0.1" :modelValue="angularJogVel" @update:modelValue="(v: number | undefined) => { if (v != null) emit('update:angularJogVel', v) }" class="vSlider" />
+          <MachineBtn type="overrideReset" @click="emit('resetAngularJogVel')">Reset</MachineBtn>
         </div>
       </template>
 

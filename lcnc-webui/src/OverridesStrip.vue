@@ -76,4 +76,11 @@ function onRapidSlider(v: number) { emit('update:rapidSlider', v); }
   flex: 1;
   min-height: 0;
 }
+
+@media (orientation: portrait) {
+  /* ovrCol height: 100% collapses when stripSection is height: auto */
+  .ovrCol  { height: auto; justify-content: flex-start; }
+  /* Sliders: horizontal in portrait */
+  .vSlider { writing-mode: horizontal-tb; direction: ltr; flex: none; width: 100%; height: 6px; min-height: unset; }
+}
 </style>

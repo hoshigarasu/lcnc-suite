@@ -68,6 +68,10 @@ const currentToolData = computed(() =>
   flex-shrink: 0;
 }
 
+@media (orientation: portrait) {
+  .toolStrip { width: 100%; }
+}
+
 .statusRow {
   display: flex;
   justify-content: space-between;

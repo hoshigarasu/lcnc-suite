@@ -113,4 +113,12 @@ function updateTouchoff(axis: number, val: number) {
   gap: var(--gap-tight);
   justify-content: flex-start;
 }
+
+@media (orientation: portrait) {
+  .setupContent { flex-direction: column; }
+  /* Narrow input column to fit 280px strip width */
+  .setupGrid    { grid-template-columns: 70px 1fr 1fr; }
+  /* WCS options wrap into compact rows instead of a tall column */
+  .wcsCol       { flex-direction: row; flex-wrap: wrap; }
+}
 </style>

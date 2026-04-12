@@ -770,6 +770,13 @@ label:has(input:disabled, select:disabled) {
 }
 .stripSection > :last-child { flex: 1; min-height: 0; }
 
+@media (orientation: portrait) {
+  /* In portrait each section is auto-height (strip scrolls vertically) */
+  .stripSection { height: auto; }
+  /* SafetyStrip: sticky at top of vertical scroll instead of left */
+  .safetyStrip  { top: 0; left: auto; }
+}
+
 /* SafetyStrip stays visible when strip scrolls */
 .safetyStrip {
   position: sticky;

@@ -141,6 +141,10 @@ const overridesActive = computed(() =>
   flex-shrink: 0;
 }
 
+@media (orientation: portrait) {
+  .safetyStrip { width: 100%; }
+}
+
 .safetyBtns {
   flex-shrink: 0;
 }

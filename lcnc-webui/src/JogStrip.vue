@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, type Component } from "vue";
+import { computed, inject, ref, watch, onMounted, onUnmounted, type Ref, type Component } from "vue";
 import { send } from "./lcncWs";
 import { usePermissions } from "./permissions";
 import { INPUT_DEFS } from "./machineControls";
@@ -44,6 +44,8 @@ const emit = defineEmits<{
 const can = usePermissions();
 const isDisabled = computed(() => !can.value[INPUT_DEFS.jogWheel.gate] || props.jogDisabled);
 
+const isPortrait = inject<Ref<boolean>>("isPortrait", ref(false));
+
 // ─── Extra axes (beyond XYZ) ────────────────────────────────
 const extraAxes = computed(() =>
   props.axes.map((letter, i) => ({ letter, index: i })).filter(a => EXTRA.has(a.letter))
@@ -81,10 +83,14 @@ const xyWrapRef = ref<HTMLElement>();
 const xySize = ref(0);
 
 const ro = new ResizeObserver(entries => {
+  if (isPortrait.value) return; // CSS aspect-ratio handles square sizing in portrait
   for (const e of entries) xySize.value = e.contentRect.height;
 });
 onMounted(() => { if (xyWrapRef.value) ro.observe(xyWrapRef.value); });
 onUnmounted(() => ro.disconnect());
+
+// Reset inline size when switching to portrait so CSS aspect-ratio takes over
+watch(isPortrait, (p) => { if (p) xySize.value = 0; });
 
 // ─── Jog logic (press-and-hold) ─────────────────────────────
 interface JogDef {
@@ -449,5 +455,27 @@ function stopAxisJog(axisIndex: number, dir: 1 | -1, e: PointerEvent) {
   flex-direction: column;
   gap: var(--gap-tight);
   justify-content: flex-start;
+}
+
+/* ── Portrait layout ── */
+@media (orientation: portrait) {
+  .jogContent { flex-direction: column; gap: var(--gap-controls); }
+
+  /* XY grid: full width, square via aspect-ratio */
+  .jogBtns  { flex-wrap: wrap; align-self: auto; gap: var(--gap-controls); }
+  .xyWrap   { flex: 0 0 100%; width: 100% !important; aspect-ratio: 1; height: auto; }
+
+  /* Z/extra axis cols appear in a row below the XY grid */
+  .axisCol  { height: auto; grid-template-rows: 48px 48px; }
+
+  /* Speed slider: horizontal */
+  .speedCol { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .vSlider  { writing-mode: horizontal-tb; direction: ltr; flex: 1; min-width: 60px; height: 6px; min-height: unset; }
+
+  /* Step + Mode: horizontal rows */
+  .stepCol, .modeCol { flex-direction: row; flex-wrap: wrap; align-items: center; }
+
+  /* Hide the vertical divider between step/mode sections */
+  .modeColSep { display: none; }
 }
 </style>

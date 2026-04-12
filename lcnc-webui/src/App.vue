@@ -116,6 +116,12 @@ function armStartFullscreen() {
 provide("isFullscreen", isFullscreen);
 provide("toggleFullscreen", toggleFullscreen);
 
+// ─── Portrait orientation detection ──────────────────────────
+const portraitMql = window.matchMedia("(orientation: portrait)");
+const isPortrait = ref(portraitMql.matches);
+function onOrientationChange() { isPortrait.value = portraitMql.matches; }
+provide("isPortrait", isPortrait);
+
 // Select-all on focus for number inputs — typing replaces value
 function onNumFocus(e: FocusEvent) {
   const t = e.target;
@@ -125,6 +131,7 @@ function onNumFocus(e: FocusEvent) {
 onMounted(() => {
   connectWs();
   themeMql.addEventListener("change", onOsThemeChange);
+  portraitMql.addEventListener("change", onOrientationChange);
   document.addEventListener("focusin", onNumFocus);
   document.addEventListener("fullscreenchange", onFullscreenChange);
   if (loadDisplayDefaults().startFullscreen) armStartFullscreen();
@@ -504,6 +511,7 @@ function _updateClock() {
 _updateClock();
 _clockHandle = setInterval(_updateClock, 1000);
 onUnmounted(() => { if (_clockHandle) clearInterval(_clockHandle); });
+onUnmounted(() => portraitMql.removeEventListener("change", onOrientationChange));
 
 /** ---------- display helpers for machine states ---------- */
 // G5x work coordinate system (G54, G55, etc.)
@@ -2208,5 +2216,72 @@ watch(viewerGcode, (newGcode) => {
   margin-left: auto;
 }
 
+/* ── Portrait layout ─────────────────────────────────────────── */
+@media (orientation: portrait) {
+  .wrap {
+    display: grid;
+    grid-template-columns: 280px auto 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+
+  /* Header + status banner span all 3 columns */
+  .wrap > header.hdr {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    margin-bottom: 0;
+  }
+  .statusBanner {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  /* Action strip: left column, vertical */
+  .wrap > .strip {
+    grid-column: 1;
+    grid-row: 3;
+    height: auto;
+    width: 280px;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .wrap > .strip > * + * {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--gap-controls);
+  }
+  .wrap > .strip::before,
+  .wrap > .strip::after {
+    display: none;
+  }
+
+  /* Macro bar: thin middle column, vertical (collapses when no macros) */
+  .wrap > .macroBar {
+    grid-column: 2;
+    grid-row: 3;
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    height: auto;
+    width: auto;
+  }
+
+  /* Content: right column, viewer on top / side panel below */
+  .wrap > .content {
+    grid-column: 3;
+    grid-row: 3;
+    flex-direction: column;
+  }
+  .viewerPane {
+    flex: 0 0 var(--viewer-min-h-portrait);
+    min-width: 0;
+  }
+  .sidePane {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+}
 
 </style>

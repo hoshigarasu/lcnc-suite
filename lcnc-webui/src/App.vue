@@ -1296,22 +1296,24 @@ watch(viewerGcode, (newGcode) => {
         <div v-if="gamepad.gamepadConnected.value" class="pill ok" :title="gamepad.gamepadName.value"><Gamepad2 :size="14" /></div>
         <div v-if="keyboardConfig.jogEnabled || keyboardConfig.buttonsEnabled" class="pill ok" title="Keyboard shortcuts active"><Keyboard :size="14" /></div>
 
-        <MachineBtn type="headerIcon" :warning="unreadCount > 0" :title="'Messages (' + unreadCount + ')'" @click="openDialog('messages')">
-          <MessageSquare :size="22" />
-        </MachineBtn>
-        <MachineBtn type="headerIcon" title="G-code Reference" @click="openGcodeRef()">
-          <BookOpen :size="22" />
-        </MachineBtn>
-        <MachineBtn type="headerIcon" title="Settings" @click="openDialog('settings')">
-          <Settings :size="22" />
-        </MachineBtn>
-        <MachineBtn type="headerIcon" :title="isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'" @click="toggleFullscreen">
-          <Shrink v-if="isFullscreen" :size="22" />
-          <Expand v-else :size="22" />
-        </MachineBtn>
-        <MachineBtn type="headerIcon" class="hdrShutdown" title="Shut Down LinuxCNC" @click="showShutdownConfirm = true">
-          <PowerOff :size="22" />
-        </MachineBtn>
+        <div class="hdrBtns row-tight">
+          <MachineBtn type="headerIcon" :warning="unreadCount > 0" :title="'Messages (' + unreadCount + ')'" @click="openDialog('messages')">
+            <MessageSquare :size="22" />
+          </MachineBtn>
+          <MachineBtn type="headerIcon" title="G-code Reference" @click="openGcodeRef()">
+            <BookOpen :size="22" />
+          </MachineBtn>
+          <MachineBtn type="headerIcon" title="Settings" @click="openDialog('settings')">
+            <Settings :size="22" />
+          </MachineBtn>
+          <MachineBtn type="headerIcon" :title="isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'" @click="toggleFullscreen">
+            <Shrink v-if="isFullscreen" :size="22" />
+            <Expand v-else :size="22" />
+          </MachineBtn>
+          <MachineBtn type="headerIcon" class="hdrShutdown" title="Shut Down LinuxCNC" @click="showShutdownConfirm = true">
+            <PowerOff :size="22" />
+          </MachineBtn>
+        </div>
       </div>
     </header>
 
@@ -1914,6 +1916,7 @@ watch(viewerGcode, (newGcode) => {
   align-items: center;
   justify-content: flex-end;
 }
+.hdrBtns { flex-shrink: 0; }
 
 .title {
   font-size: var(--fs-2xl);

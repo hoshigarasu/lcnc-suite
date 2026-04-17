@@ -274,7 +274,7 @@ The message panel shows a persistent log of all LinuxCNC errors and operator mes
 - Virtual environment with system-site-packages enabled
 
 ### Reference UI
-- Node.js 18+ and npm
+- Node.js 18+ and npm (22.x LTS recommended; installed automatically by `install.sh`)
 
 ## Installation
 
@@ -289,7 +289,7 @@ cd lcnc-webui && npm run build && cd ..   # build frontend for production
 
 ### Option B: Manual
 
-**Prerequisites:** LinuxCNC 2.8+ with Python bindings, Python 3.9+, Node.js 20.19+ or 22+, npm, git-lfs
+**Prerequisites:** LinuxCNC 2.8+ with Python bindings, Python 3.9+, Node.js 18+ (22.x LTS recommended), npm, git-lfs
 
 ```bash
 # 1. Clone
@@ -902,7 +902,7 @@ net prog-paused halui.program.is-paused => time.0.pause
 net cycle-timer time.0.start <= not.0.out
 ```
 
-The HAL pins the gateway reads at runtime via `hal_get()`:
+The HAL pins the gateway reads at runtime:
 
 | Pin | Description |
 |-----|-------------|
@@ -912,6 +912,8 @@ The HAL pins the gateway reads at runtime via `hal_get()`:
 | `axis.z.eoffset` | Current Z external offset (surface compensation) |
 | `axis.z.eoffset-enable` | Whether compensation is active |
 | `compensation.method` | Active interpolation method (0=nearest, 1=linear, 2=cubic) |
+
+> **Note:** The gateway automatically creates an internal HAL component called `webui-monitor` that wires these pins for efficient direct reads. It is visible in `halcmd show comp` but requires no manual configuration — it is created and wired automatically at startup.
 
 #### Spindle Feedback
 

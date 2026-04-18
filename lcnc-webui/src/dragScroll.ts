@@ -82,12 +82,17 @@ function scanAndAttach(root: Element | Document = document) {
   }
 }
 
+let _observer: MutationObserver | null = null
+
 export function initDragScroll() {
+  // Idempotent — HMR may re-run this module during dev.
+  if (_observer) return
+
   // Attach to existing elements
   scanAndAttach()
 
   // Watch for dynamically added .scroll-thin elements
-  new MutationObserver((mutations) => {
+  _observer = new MutationObserver((mutations) => {
     for (const m of mutations) {
       for (const node of m.addedNodes) {
         if (!(node instanceof HTMLElement)) continue
@@ -95,5 +100,17 @@ export function initDragScroll() {
         scanAndAttach(node)
       }
     }
-  }).observe(document.body, { childList: true, subtree: true })
+  })
+  _observer.observe(document.body, { childList: true, subtree: true })
+}
+
+export function stopDragScroll() {
+  _observer?.disconnect()
+  _observer = null
+}
+
+// Vite HMR cleanup — prevents a growing pile of observers when the file is
+// replaced during development. No-op in production builds.
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => stopDragScroll())
 }

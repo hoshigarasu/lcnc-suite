@@ -51,7 +51,7 @@ const timingComponents: { key: keyof Omit<import("./lcncWs").TimingStats, "count
         </div>
       </div>
       <div v-else class="muted">Waiting for data…</div>
-      <div class="row" style="gap: var(--gap-controls); margin-top: var(--gap-section)">
+      <div class="row-controls debugActions">
           <MachineBtn type="inline" @click="toggleTimingLog">{{ timingLogActive ? 'Stop Log' : 'Start Log' }}</MachineBtn>
           <MachineBtn type="inline" @click="resetTimingStats">Reset</MachineBtn>
           <MachineBtn type="inline" @click="downloadTimingCsv" :disabled="!timingStats">Download CSV</MachineBtn>
@@ -112,6 +112,9 @@ const timingComponents: { key: keyof Omit<import("./lcncWs").TimingStats, "count
 
 .muted {
   opacity: var(--opacity-muted);
+}
+.debugActions {
+  margin-top: var(--gap-section);
 }
 .debugPre {
   font-size: var(--fs-sm);

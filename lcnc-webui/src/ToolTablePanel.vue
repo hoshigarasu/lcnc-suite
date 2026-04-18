@@ -206,14 +206,14 @@ function saveEdit() {
   const form = editForm.value;
 
   if (isNewTool.value) {
-    send({ cmd: "add_tool", ...buildToolMsg(form) } as any);
+    send({ cmd: "add_tool", ...buildToolMsg(form) });
   } else if (form.T !== orig.T) {
     send({ cmd: "delete_tool", tool_number: orig.T });
     setTimeout(() => {
-      send({ cmd: "add_tool", ...buildToolMsg(form) } as any);
+      send({ cmd: "add_tool", ...buildToolMsg(form) });
     }, TOOL_RENUMBER_DELAY_MS);
   } else {
-    send({ cmd: "save_tool", ...buildToolMsg(form) } as any);
+    send({ cmd: "save_tool", ...buildToolMsg(form) });
   }
 
   editTool.value = null;
@@ -589,7 +589,13 @@ defineExpose({ openAdd, fetchTools, triggerImport });
       </table>
     </div>
 
-    <!-- Hover tool preview -->
+    <!-- Hover tool preview.
+         NOTE: Teleported to <body> — escapes this panel's outer <fieldset>
+         disable cascade. Safe here because contents are display-only
+         (ToolPreview is a static canvas, no inputs). Do NOT add interactive
+         controls inside this Teleport without routing them through MachineBtn
+         with an explicit gate — they would bypass the panel's permission
+         gating. -->
     <Teleport to="body">
       <div v-if="hoverTool" class="toolHoverPreview"
            :style="{ left: hoverPos.x + 'px', top: hoverPos.y + 'px' }">

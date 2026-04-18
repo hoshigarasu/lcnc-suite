@@ -81,7 +81,7 @@ export function getCachedGeometry(id: string): THREE.BufferGeometry | undefined 
 </script>
 
 <script setup lang="ts">
-import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from "vue";
+import { computed, inject, onMounted, onUnmounted, reactive, ref, watch, type Ref } from "vue";
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Text } from "troika-three-text";
@@ -92,7 +92,9 @@ import { fmtCoord } from "./format";
 
 const themeMode = inject<Ref<string>>("themeMode", ref("auto"));
 
-const viewerDefaults = loadViewerDefaults();
+// Deep-reactive so template bindings (e.g. HUD opacity) update when the
+// settingsVersion watcher refreshes the values from the server.
+const viewerDefaults = reactive(loadViewerDefaults());
 
 type ViewerInit = {
   units?: "mm" | "inch" | string;
@@ -1462,12 +1464,42 @@ onMounted(() => {
   if (viewerGcode.value) applyGcode(viewerGcode.value as ViewerGcode);
 
   // Apply saved defaults (self-contained — no external wiring needed)
+  applyViewerDefaults({ initialMount: true });
+});
+
+// Idempotent re-apply of viewer defaults — called on mount and from the
+// settingsVersion watcher when server settings arrive or another tab edits them.
+function applyViewerDefaults(opts: { initialMount?: boolean } = {}) {
+  // Layer visibility, tracking, path-on-top, machine edges
   for (const layer of ALL_LAYERS) setLayerVisible(layer, viewerDefaults.layers[layer]);
   setTrackingMode(viewerDefaults.trackingMode);
   setPathAlwaysOnTop(viewerDefaults.pathOnTop);
-  machineEdges = viewerDefaults.machineEdges;  // set flag; lazy build triggers in buildFromInit
-  if (viewerDefaults.projection === "parallel") switchProjection();
-});
+  machineEdges = viewerDefaults.machineEdges;
+
+  // Projection: only toggle on initial mount (to honor persisted setting).
+  // On subsequent setting changes we leave the current projection alone — the
+  // user can still toggle manually and we avoid fighting their active view.
+  if (opts.initialMount && viewerDefaults.projection === "parallel") switchProjection();
+
+  // Live-updatable materials: colors on shared MAT instances propagate immediately.
+  MAT.tool.color.set(viewerDefaults.colors.tool ?? "#c0c0c0");
+  MAT.cutter.color.set(viewerDefaults.colors.cutter ?? "#ffdd00");
+
+  // Machine mesh opacity (already iterates the frame/axis materials)
+  applyMachineOpacity(viewerDefaults.opacities.machine ?? 1.0);
+
+  // Per-part color overrides — re-apply to any existing machine meshes.
+  // Meshes built after this point pick up the new values from viewerDefaults
+  // directly during buildFromInit (line 1007).
+  for (const mesh of machineMeshes) {
+    const partId = mesh.userData.partId as string | undefined;
+    if (!partId) continue;
+    const customColor = viewerDefaults.machineColors[partId];
+    if (!customColor) continue;
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    if (mat?.color) mat.color.set(customColor);
+  }
+}
 
 onUnmounted(() => {
   resizeObs?.disconnect();
@@ -1517,10 +1549,12 @@ watch(
   { immediate: true }
 );
 
-// Re-apply viewer defaults when server settings arrive or another client changes them
+// Re-apply viewer defaults when server settings arrive or another client changes them.
+// Refresh the reactive state in place (Object.assign triggers template updates),
+// then push colors/opacities/layers into live scene objects.
 watch(settingsVersion, () => {
-  const vd = loadViewerDefaults();
-  for (const layer of ALL_LAYERS) setLayerVisible(layer, vd.layers[layer]);
+  Object.assign(viewerDefaults, loadViewerDefaults());
+  applyViewerDefaults();
 });
 
 // Pause/resume RAF loop when active prop changes

@@ -65,8 +65,12 @@ const emit = defineEmits<{
   (e: "goToZero"): void;
 }>();
 
-// ---- MDI history (up-arrow recall + localStorage persistence) ----
-const history = ref<string[]>([]);
+// ---- MDI history (up-arrow recall + persistence) ----
+// In-memory entries carry a monotonic id so templates can use a stable :key
+// when the list is mutated (unshift/slice). Persisted form stays as string[].
+interface MdiEntry { id: number; text: string }
+let _nextId = 0;
+const history = ref<MdiEntry[]>([]);
 const historyIndex = ref(-1); // -1 = current input, 0 = most recent, etc.
 const savedInput = ref("");   // stash current input when browsing history
 const maxHistory = 50;
@@ -78,19 +82,23 @@ watch(() => can.value.ready, (ready, was) => {
 });
 
 onMounted(() => {
-  history.value = loadMdiHistory();
+  history.value = loadMdiHistory().map(text => ({ id: _nextId++, text }));
 });
+
+function persistHistory() {
+  saveMdiHistory(history.value.map(e => e.text));
+}
 
 function handleSend() {
   const cmd = props.mdiText.trim();
   if (cmd) {
-    if (history.value[0] !== cmd) {
-      history.value.unshift(cmd);
+    if (history.value[0]?.text !== cmd) {
+      history.value.unshift({ id: _nextId++, text: cmd });
       if (history.value.length > maxHistory) {
         history.value = history.value.slice(0, maxHistory);
       }
     }
-    saveMdiHistory(history.value);
+    persistHistory();
   }
   historyIndex.value = -1;
   savedInput.value = "";
@@ -99,7 +107,7 @@ function handleSend() {
 
 function clearHistory() {
   history.value = [];
-  saveMdiHistory([]);
+  persistHistory();
   historyIndex.value = -1;
   savedInput.value = "";
 }
@@ -114,7 +122,7 @@ function onMdiKeydown(e: KeyboardEvent) {
     }
     if (historyIndex.value < history.value.length - 1) {
       historyIndex.value++;
-      emit("update:mdiText", history.value[historyIndex.value] ?? "");
+      emit("update:mdiText", history.value[historyIndex.value]?.text ?? "");
     }
     return;
   }
@@ -126,7 +134,7 @@ function onMdiKeydown(e: KeyboardEvent) {
     if (historyIndex.value === -1) {
       emit("update:mdiText", savedInput.value);
     } else {
-      emit("update:mdiText", history.value[historyIndex.value] ?? "");
+      emit("update:mdiText", history.value[historyIndex.value]?.text ?? "");
     }
     return;
   }
@@ -228,9 +236,9 @@ function onMdiKeydown(e: KeyboardEvent) {
         <MachineBtn type="inline" @click="clearHistory" :disabled="history.length === 0">Clear</MachineBtn>
       </div>
       <div class="mdiHistoryList scroll-thin">
-        <button v-for="(cmd, i) in history" :key="i" class="mdiHistoryItem"
+        <button v-for="(entry, i) in history" :key="entry.id" class="mdiHistoryItem"
              :class="{ active: historyIndex === i }"
-             @click="emit('update:mdiText', cmd)">{{ cmd }}</button>
+             @click="emit('update:mdiText', entry.text)">{{ entry.text }}</button>
         <div v-if="history.length === 0" class="mdiHistoryEmpty">No history</div>
       </div>
     </div>

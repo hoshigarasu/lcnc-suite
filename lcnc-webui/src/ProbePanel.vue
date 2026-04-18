@@ -1486,14 +1486,14 @@ function fmtR(key: string): string {
   fill: color-mix(in oklab, var(--fg) 12%, var(--bg));
   stroke: var(--fg);
   stroke-width: 1.5;
-  stroke-opacity: 0.5;
+  stroke-opacity: var(--opacity-muted);
 }
 
 .probeTip {
   fill: var(--warn);
   stroke: var(--fg);
   stroke-width: 1;
-  stroke-opacity: 0.5;
+  stroke-opacity: var(--opacity-muted);
 }
 
 .arrowHead {

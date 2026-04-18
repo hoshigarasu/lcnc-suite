@@ -29,6 +29,7 @@ import { keypadState, keypadMode } from "./useNumberKeypad";
 import { loadViewerDefaults, saveViewerDefaults, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, loadMacrosDefaults, loadGamepadDefaults, saveGamepadDefaults, loadKeyboardDefaults, saveKeyboardDefaults, loadMdiHistory, saveMdiHistory, settingsVersion, type ThemeMode, type MacroDef, type GamepadDefaults, type KeyboardDefaults, type KeyboardAction, type Layer, type TrackMode, type Projection, type Vec3 } from "./defaults";
 import { buildToolsetterVarMap } from "./toolsetterVars";
 import { useGamepad } from "./useGamepad";
+import { useMediaMql } from "./useMediaMql";
 import { forceStopAllJogs, initJogPointerSafety, destroyJogPointerSafety } from "./useJogPointers";
 import {
   INTERP_IDLE, INTERP_READING, INTERP_PAUSED, INTERP_WAITING,
@@ -41,7 +42,9 @@ const needsRefresh = ref(false);
 
 // ─── Theme ──────────────────────────────────────────────────────
 const themeMode = ref<ThemeMode>(loadDisplayDefaults().theme);
-const themeMql = window.matchMedia("(prefers-color-scheme: dark)");
+// Reactive OS-level dark preference; isDark depends on it so auto mode
+// re-evaluates when the OS flips without any manual reassignment hack.
+const isSystemDark = useMediaMql("(prefers-color-scheme: dark)");
 
 function applyTheme(mode: ThemeMode) {
   if (mode === "auto") {
@@ -55,23 +58,13 @@ const isDark = computed(() => {
   const m = themeMode.value;
   if (m === "dark" || m === "hc-dark") return true;
   if (m === "light" || m === "hc-light") return false;
-  return themeMql.matches;
+  return isSystemDark.value;
 });
 
 function setTheme(mode: ThemeMode) {
   themeMode.value = mode;
   applyTheme(mode);
   saveDisplayDefaults({ ...loadDisplayDefaults(), theme: mode });
-}
-
-// Re-evaluate isDark when OS preference changes in auto mode
-function onOsThemeChange() {
-  // Trigger Vue reactivity by toggling a dummy ref isn't needed —
-  // isDark reads themeMql.matches which is live. But we need to
-  // notify watchers, so reassign themeMode to itself.
-  if (themeMode.value === "auto") {
-    themeMode.value = "auto"; // triggers computed re-eval
-  }
 }
 
 provide("isDark", isDark);
@@ -119,9 +112,7 @@ provide("isFullscreen", isFullscreen);
 provide("toggleFullscreen", toggleFullscreen);
 
 // ─── Portrait orientation detection ──────────────────────────
-const portraitMql = window.matchMedia("(orientation: portrait)");
-const isPortrait = ref(portraitMql.matches);
-function onOrientationChange() { isPortrait.value = portraitMql.matches; }
+const isPortrait = useMediaMql("(orientation: portrait)");
 provide("isPortrait", isPortrait);
 
 // Select-all on focus for number inputs — typing replaces value
@@ -132,12 +123,10 @@ function onNumFocus(e: FocusEvent) {
 
 onMounted(() => {
   connectWs();
-  themeMql.addEventListener("change", onOsThemeChange);
-  portraitMql.addEventListener("change", onOrientationChange);
   document.addEventListener("focusin", onNumFocus);
   document.addEventListener("fullscreenchange", onFullscreenChange);
   if (loadDisplayDefaults().startFullscreen) armStartFullscreen();
-  mdiHistory.value = loadMdiHistory();
+  mdiHistory.value = loadMdiHistory().map(text => ({ id: _mdiNextId++, text }));
 });
 
 watch(lcncError, (newVal, oldVal) => {
@@ -248,21 +237,29 @@ const mdiText = ref("");
 const busy = ref(false);
 
 // ─── MDI history ──────────────────────────────────────────────────
-const mdiHistory = ref<string[]>([]);
+// In-memory entries carry a monotonic id so templates can use a stable :key
+// when the list is mutated (unshift/slice). Persisted form stays as string[].
+interface MdiEntry { id: number; text: string }
+let _mdiNextId = 0;
+const mdiHistory = ref<MdiEntry[]>([]);
 const mdiHistoryIndex = ref(-1);
 const mdiSavedInput = ref("");
 const MDI_MAX_HISTORY = 50;
 
+function persistMdiHistory() {
+  saveMdiHistory(mdiHistory.value.map(e => e.text));
+}
+
 function handleMdiSend() {
   const cmd = mdiText.value.trim();
   if (!cmd) return;
-  if (mdiHistory.value[0] !== cmd) {
-    mdiHistory.value.unshift(cmd);
+  if (mdiHistory.value[0]?.text !== cmd) {
+    mdiHistory.value.unshift({ id: _mdiNextId++, text: cmd });
     if (mdiHistory.value.length > MDI_MAX_HISTORY) {
       mdiHistory.value = mdiHistory.value.slice(0, MDI_MAX_HISTORY);
     }
   }
-  saveMdiHistory(mdiHistory.value);
+  persistMdiHistory();
   mdiHistoryIndex.value = -1;
   mdiSavedInput.value = "";
   send({ cmd: "mdi", text: cmd });
@@ -271,7 +268,7 @@ function handleMdiSend() {
 
 function clearMdiHistory() {
   mdiHistory.value = [];
-  saveMdiHistory([]);
+  persistMdiHistory();
   mdiHistoryIndex.value = -1;
   mdiSavedInput.value = "";
 }
@@ -286,7 +283,7 @@ function onMdiKeydown(e: KeyboardEvent) {
     }
     if (mdiHistoryIndex.value < mdiHistory.value.length - 1) {
       mdiHistoryIndex.value++;
-      mdiText.value = mdiHistory.value[mdiHistoryIndex.value] ?? "";
+      mdiText.value = mdiHistory.value[mdiHistoryIndex.value]?.text ?? "";
     }
     return;
   }
@@ -298,7 +295,7 @@ function onMdiKeydown(e: KeyboardEvent) {
     if (mdiHistoryIndex.value === -1) {
       mdiText.value = mdiSavedInput.value;
     } else {
-      mdiText.value = mdiHistory.value[mdiHistoryIndex.value] ?? "";
+      mdiText.value = mdiHistory.value[mdiHistoryIndex.value]?.text ?? "";
     }
     return;
   }
@@ -393,18 +390,6 @@ const isEnabled = computed(() => !!st.value.enabled);
 const workPos = computed<number[]>(() => {
   const data = st.value ?? {};
   return Array.isArray(data.work_pos) ? data.work_pos : [];
-});
-
-// @ts-ignore TS6133 — kept for future use
-const machinePos = computed<number[]>(() => {
-  const data = st.value ?? {};
-  return Array.isArray(data.machine_pos) ? data.machine_pos : [];
-});
-
-// @ts-ignore TS6133 — kept for future use
-const dtg = computed<number[]>(() => {
-  const data = st.value ?? {};
-  return Array.isArray(data.dtg) ? data.dtg : [];
 });
 
 const activeFile = computed<string | null>(() => {
@@ -513,7 +498,6 @@ function _updateClock() {
 _updateClock();
 _clockHandle = setInterval(_updateClock, 1000);
 onUnmounted(() => { if (_clockHandle) clearInterval(_clockHandle); });
-onUnmounted(() => portraitMql.removeEventListener("change", onOrientationChange));
 
 /** ---------- display helpers for machine states ---------- */
 // G5x work coordinate system (G54, G55, etc.)
@@ -749,7 +733,6 @@ function runMacro(macro: MacroDef) {
     fire({ cmd: "mdi", text: macro.command }, 'ready');
   }
 }
-// @ts-ignore TS6133 — kept for future use
 const toolTableRef = ref<InstanceType<typeof ToolTablePanel> | null>(null);
 function measureAuto() {
   const t = st.value.tool_number;
@@ -971,12 +954,10 @@ const homedJoints = computed<boolean[]>(() => {
   return Array.isArray(hj) ? hj.map(Boolean) : [];
 });
 
-// @ts-ignore TS6133 — kept for future use
 function homeAxis(joint: number) {
   fire({ cmd: "home", joint }, 'idle');
 }
 
-// @ts-ignore TS6133 — kept for future use
 function unhomeAxis(joint: number) {
   fire({ cmd: "unhome", joint }, 'idle');
 }
@@ -1228,7 +1209,6 @@ onUnmounted(() => {
   window.removeEventListener("keyup", onKeyUp);
   document.removeEventListener("visibilitychange", visHandler);
   document.removeEventListener("focusin", onNumFocus);
-  themeMql.removeEventListener("change", onOsThemeChange);
   gamepad.stop();
 });
 
@@ -1421,7 +1401,7 @@ watch(viewerGcode, (newGcode) => {
               @mdi="fire({ cmd: 'mdi', text: $event }, 'ready')"
               @abort="fire({ cmd: 'abort' }, 'abort')"
               @simTrip="send({ cmd: 'simulate_probe_trip' })"
-              @setProbeVars="send({ cmd: 'set_probe_vars', vars: $event })"
+              @setProbeVars="fire({ cmd: 'set_probe_vars', vars: $event }, 'setup')"
               @getProbeResults="requestProbeResults"
               @getCompGrid="requestCompGrid"
               @setCompensation="requestCompToggle"
@@ -1450,12 +1430,12 @@ watch(viewerGcode, (newGcode) => {
                 <MachineBtn type="dialogCancel" @click="clearMdiHistory" :disabled="mdiHistory.length === 0">Clear</MachineBtn>
               </div>
               <div class="codeViewer mdiHistoryList scroll-thin">
-                <div v-for="(cmd, i) in mdiHistory" :key="i"
+                <div v-for="(entry, i) in mdiHistory" :key="entry.id"
                      class="codeLine"
                      :class="{ active: mdiHistoryIndex === i }"
-                     @click="mdiText = cmd">
+                     @click="mdiText = entry.text">
                   <span class="lineContent"><span
-                    v-for="(token, ti) in highlightGcode(cmd)" :key="ti"
+                    v-for="(token, ti) in highlightGcode(entry.text)" :key="ti"
                     :class="'token-' + token.type">{{ token.text }}</span></span>
                 </div>
                 <div v-if="mdiHistory.length === 0" class="mdiHistoryEmpty">No history</div>

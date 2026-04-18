@@ -808,6 +808,10 @@ export function saveToolsetterDefaults(data: ToolsetterDefaults): void {
 
 /** Clear all persisted settings so next load returns factory defaults. */
 export function resetAllDefaults(): void {
+  // Migration artifact: these localStorage keys existed in pre-server-sync
+  // versions. Clearing them here ensures old installs don't re-hydrate stale
+  // local state after a reset. Safe to remove after ~2027 when no stale
+  // browsers are likely to still have these keys.
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem("lcnc-toolsetter-params");
   localStorage.removeItem("lcnc-probe-params");

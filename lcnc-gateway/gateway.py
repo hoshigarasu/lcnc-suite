@@ -61,6 +61,13 @@ _disconnect_grace_task: Optional[asyncio.Task] = None
 _DISCONNECT_GRACE_SEC = 3.0  # covers 2s frontend reconnect delay
 _estop_hold = False  # hold connected=FALSE during UI e-stop
 
+# Bound for CMD.wait_complete() on short mode/teleop/abort transitions.
+# Prevents an unbounded block from tying up an executor thread or delaying
+# the next command on the same client's receive path. MDI/program_open keep
+# their own larger timeouts (5s) because the interpreter can legitimately
+# take longer to acknowledge a parsed block.
+_CMD_WAIT_TIMEOUT = 2.0
+
 def _hal_connect():
     """Connect to the HAL watchdog Unix socket. Non-fatal if unavailable."""
     global _hal_sock
@@ -87,11 +94,6 @@ def _hal_disconnect():
 def _shutdown_signal_handler(signum, frame):
     """Handle SIGTERM/SIGINT: disconnect from HAL watchdog before exit."""
     print(f"Gateway received signal {signum}", flush=True)
-    if _timing_log is not None:
-        try:
-            _timing_log.close()
-        except Exception:
-            pass
     _hal_disconnect()
     _camera_release()
     signal.signal(signum, signal.SIG_DFL)
@@ -301,26 +303,32 @@ _comp_grid_initialized: bool = False         # True after startup file-read atte
 _last_comp_hal_ver: int | None = None        # last seen compensation.grid-version HAL value
 _status_gen = 0  # incremented each poll; clients compare to skip redundant sends
 _status_poller_task: Optional[asyncio.Task] = None
+# Broadcast event replaced on every poll cycle. Per-client loops snapshot the
+# current event and `await event.wait()` instead of tight-polling _status_gen.
+# Lazily allocated on first use so module import doesn't require an event loop.
+_status_event: Optional[asyncio.Event] = None
 
 # Timing log (toggled via "timing_log" WS command from Debug tab)
-_timing_log: Optional[Any] = None
 _timing_log_enabled = False
 _timing_log_path: Optional[str] = None
 
 
 def _log_timing(timing: dict):
-    """Append one JSON line to the current timestamped log file."""
-    global _timing_log
+    """Append one JSON line to the current timestamped log file.
+
+    Dev-only path (Debug tab toggle). Open-per-write keeps the file handle
+    out of module state — simpler shutdown, no handle to leak if the toggle
+    is turned on/off repeatedly. If log volume becomes a concern, migrate to
+    a logging.FileHandler.
+    """
     if not _timing_log_enabled or not _timing_log_path:
         return
     try:
-        if _timing_log is None:
-            _timing_log = open(_timing_log_path, "a")
         timing["ts"] = time.time()
-        _timing_log.write(json.dumps(timing) + "\n")
-        _timing_log.flush()
-    except Exception:
-        pass
+        with open(_timing_log_path, "a") as f:
+            f.write(json.dumps(timing) + "\n")
+    except OSError as e:
+        print(f"[TIMING] log write failed: {e}", flush=True)
 
 
 _PID_CHECK_INTERVAL = 5.0  # seconds between pgrep PID checks
@@ -374,6 +382,7 @@ async def _status_poller():
     global _status_gen, lcnc_connected, STAT, CMD, ERR, _reconnect_fails, _shared_timing
     global _surface_points_pending, _surface_points_version, _surface_initialized
     global _comp_grid_pending, _comp_grid_version, _comp_grid_initialized, _last_comp_hal_ver
+    global _status_event
     loop = asyncio.get_event_loop()
     _poll_fails = 0
     _last_pid_check = 0.0
@@ -502,7 +511,15 @@ async def _status_poller():
                 "parse_ms": parse_ms,
                 "poller_ts": t3,
             }
+            # Broadcast: swap in a fresh unset event for future waiters, then
+            # set the old one to wake all current waiters. This avoids the
+            # clear/set race where a client checking _status_gen between set()
+            # and clear() could miss the wake-up.
             _status_gen += 1
+            old_evt = _status_event
+            _status_event = asyncio.Event()
+            if old_evt is not None:
+                old_evt.set()
 
         except Exception as e:
             _poll_fails += 1
@@ -1574,15 +1591,15 @@ def poll_status() -> StatusPayload:
                         break
                 if spindle_direction is None and isinstance(s0, dict):
                     spindle_direction = int(s0.get('direction', s0.get('Direction', 0)))
-        except Exception:
-            pass
+        except (AttributeError, ValueError, TypeError, IndexError, KeyError):
+            pass  # spindle[0] shape varies across linuxcnc versions — fall through to legacy paths
     # Fallback: direct stat attributes
     if spindle_speed is None:
         val = safe_get("spindle_speed", None)
         if val is not None:
             try:
                 spindle_speed = float(val)
-            except Exception:
+            except (ValueError, TypeError):
                 pass
     # Fallback: settings[2] holds the commanded S word
     if spindle_speed is None:
@@ -1590,14 +1607,14 @@ def poll_status() -> StatusPayload:
         if settings is not None:
             try:
                 spindle_speed = float(settings[2])
-            except Exception:
+            except (ValueError, TypeError, IndexError):
                 pass
     if spindle_direction is None:
         val = safe_get("spindle_direction", None)
         if val is not None:
             try:
                 spindle_direction = int(val)
-            except Exception:
+            except (ValueError, TypeError):
                 pass
 
 
@@ -1607,7 +1624,7 @@ def poll_status() -> StatusPayload:
     tool_number = safe_get("tool_in_spindle", None)
     try:
         tool_number = int(tool_number) if tool_number is not None else None
-    except Exception:
+    except (ValueError, TypeError):
         tool_number = None
 
     tool_diameter = None
@@ -1645,8 +1662,8 @@ def poll_status() -> StatusPayload:
                     tool_length = abs(float(z))
 
                 break
-        except Exception:
-            pass
+        except (AttributeError, ValueError, TypeError):
+            pass  # tool_table shape varies by linuxcnc version — leave tool_diameter/length as None
 
     # Fallback: STAT.tool_offset vector (if present)
     if tool_length is None:
@@ -1654,7 +1671,7 @@ def poll_status() -> StatusPayload:
         if tofs is not None:
             try:
                 tool_length = abs(float(tofs[2]))
-            except Exception:
+            except (ValueError, TypeError, IndexError):
                 pass
 
 
@@ -1679,8 +1696,8 @@ def poll_status() -> StatusPayload:
                 entry = next((t for t in _tc_info_cache[cache_key] if t["T"] == tool_change_tool), None)
                 if entry:
                     tool_change_info = {"D": entry["D"], "Z": entry["Z"], "description": entry.get("description", "")}
-            except Exception:
-                pass
+            except (OSError, KeyError, ValueError, TypeError) as e:
+                print(f"[TOOLCHANGE] info lookup failed for T{tool_change_tool}: {type(e).__name__}: {e}", flush=True)
 
     spindle_ovr = get_spindle_override()
     ini_cfg = get_ini_config()
@@ -1800,7 +1817,7 @@ def set_mode(mode: int):
     if safe_get("task_mode", None) == mode:
         return
     CMD.mode(mode)
-    CMD.wait_complete()
+    CMD.wait_complete(_CMD_WAIT_TIMEOUT)
 
 def reject_if_auto_running() -> Optional[Dict[str, Any]]:
     STAT.poll()
@@ -1862,8 +1879,8 @@ def handle_command(msg: Dict[str, Any], armed: bool):
                     STAT.poll()
                     raw = safe_get("tool_in_spindle", None)
                     current_tool = int(raw) if raw is not None else None
-            except Exception:
-                pass
+            except (AttributeError, ValueError, TypeError, linuxcnc.error) as e:
+                print(f"[TOOLS] current_tool poll failed: {type(e).__name__}: {e}", flush=True)
             return {"ok": True, "tools": merged, "current_tool": current_tool}
 
         if cmd == "get_probe_results":
@@ -1878,7 +1895,7 @@ def handle_command(msg: Dict[str, Any], armed: bool):
                     try:
                         grid = json.load(f)
                         return {"ok": True, "comp_grid": grid}
-                    except Exception:
+                    except (json.JSONDecodeError, ValueError):
                         return {"ok": False, "error": "Invalid grid file"}
             return {"ok": False, "error": "No grid file"}
     except Exception as e:
@@ -2040,7 +2057,7 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             current = safe_get("tool_in_spindle", None)
             try:
                 current = int(current) if current is not None else None
-            except Exception:
+            except (ValueError, TypeError):
                 current = None
             if current == tool_num:
                 return {"ok": False, "error": f"Cannot delete T{tool_num} — currently in spindle"}
@@ -2205,7 +2222,7 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             require_armed(armed)
             set_mode(linuxcnc.MODE_MANUAL)
             CMD.teleop_enable(0)  # unhome requires joint mode
-            CMD.wait_complete()
+            CMD.wait_complete(_CMD_WAIT_TIMEOUT)
             CMD.unhome(-1)  # -1 unhomes all axes
             return {"ok": True}
 
@@ -2221,7 +2238,7 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             joint = int(msg.get("joint", -1))
             set_mode(linuxcnc.MODE_MANUAL)
             CMD.teleop_enable(0)  # unhome requires joint mode
-            CMD.wait_complete()
+            CMD.wait_complete(_CMD_WAIT_TIMEOUT)
             CMD.unhome(joint)
             return {"ok": True}
 
@@ -2349,7 +2366,7 @@ def handle_command(msg: Dict[str, Any], armed: bool):
 
             set_mode(linuxcnc.MODE_AUTO)
             CMD.program_open(abs_path)
-            CMD.wait_complete()
+            CMD.wait_complete(5)  # program_open can legitimately take several seconds on large files
             return {"ok": True, "path": abs_path}
 
         if cmd == "unload_file":
@@ -2358,15 +2375,16 @@ def handle_command(msg: Dict[str, Any], armed: bool):
             if blocked:
                 return blocked
             CMD.abort()
-            CMD.wait_complete()
+            CMD.wait_complete(_CMD_WAIT_TIMEOUT)
             CMD.reset_interpreter()
-            CMD.wait_complete()
+            CMD.wait_complete(_CMD_WAIT_TIMEOUT)
             return {"ok": True}
 
         if cmd == "list_probe_macros":
             return {"ok": True, "macros": get_probe_macros()}
 
         if cmd == "set_probe_vars":
+            require_armed(armed)
             vars_to_set = msg.get("vars", {})
             if not vars_to_set or not isinstance(vars_to_set, dict):
                 return {"ok": False, "error": "Missing vars dict"}
@@ -2631,8 +2649,8 @@ def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
         try:
             STAT.poll()
             axis_mask = getattr(STAT, "axis_mask", 7)
-        except Exception:
-            pass
+        except (AttributeError, linuxcnc.error) as e:
+            print(f"[INIT] axis_mask poll failed — defaulting to XYZ: {type(e).__name__}: {e}", flush=True)
     axes = _axes_from_mask(axis_mask)
 
     # Build parts with cache-busted filenames
@@ -2880,8 +2898,8 @@ def parse_gcode_preview(filename: str, machine_units: str = "mm") -> Dict[str, A
                     v_scaled = float(v)  # INI is in machine units/sec already
                     if rapid_vel is None or v_scaled < rapid_vel:
                         rapid_vel = v_scaled
-        except Exception:
-            pass
+        except (ValueError, TypeError):
+            pass  # malformed MAX_VELOCITY in INI — leave rapid_vel as None, skip rapid time estimate
         total_rapid_time = (total_rapid_dist / rapid_vel) if rapid_vel else 0.0
 
         # Arc vs linear breakdown
@@ -2892,7 +2910,7 @@ def parse_gcode_preview(filename: str, machine_units: str = "mm") -> Dict[str, A
         # File size
         try:
             file_size = os.path.getsize(filename)
-        except Exception:
+        except OSError:
             file_size = 0
 
         stats = {
@@ -3480,8 +3498,8 @@ async def ws_endpoint(ws: WebSocket):
             try:
                 with open(initial_file, "r", encoding="utf-8", errors="replace") as f:
                     gcode_content = f.read()
-            except Exception:
-                pass
+            except OSError as e:
+                print(f"[INIT] could not read initial gcode {initial_file}: {e}", flush=True)
 
             await ws_send_json(
                 ws,
@@ -3514,6 +3532,7 @@ async def ws_endpoint(ws: WebSocket):
         loop = asyncio.get_event_loop()
         _last_settings_ver = _settings_version
         _last_gen = 0  # tracks which _status_gen we last processed
+        _consec_fails = 0  # consecutive status_loop exceptions — bail after 10
         # Spindle feedback scale: 60 if pin outputs RPS (default), 1 if RPM
         _ss_init = load_settings()
         _machine_s = _ss_init.get("machine", {})
@@ -3546,9 +3565,21 @@ async def ws_endpoint(ws: WebSocket):
                     await asyncio.sleep(2.0)
                     continue
 
-                # Wait for new data from shared poller (skip if same generation)
+                # Wait for new data from shared poller. Awaiting the broadcast
+                # event replaces a 500Hz tight-poll — wakeups now match the
+                # actual poll rate (~30Hz). The 1s timeout is a safety net:
+                # if the poller stalls, we re-check and fall through to the
+                # "poller not running" branch above on the next iteration.
                 if _status_gen == _last_gen:
-                    await asyncio.sleep(0.002)  # 2ms check — negligible CPU, low latency
+                    evt = _status_event
+                    if evt is None:
+                        # Poller hasn't emitted its first event yet.
+                        await asyncio.sleep(0.05)
+                        continue
+                    try:
+                        await asyncio.wait_for(evt.wait(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        pass  # re-check on next iteration
                     continue
                 _last_gen = _status_gen
                 pickup_ts = time.monotonic()
@@ -3610,8 +3641,8 @@ async def ws_endpoint(ws: WebSocket):
                                 ) if k in _meta}
                                 if _tm:
                                     status_msg["data"]["tool_meta"] = _tm
-                        except Exception:
-                            pass
+                        except (KeyError, TypeError, OSError) as e:
+                            print(f"[STATUS] tool_meta build failed for T{st.tool_number}: {type(e).__name__}: {e}", flush=True)
 
                 # Timing: only on first status after heartbeat so all
                 # components share the same ~1Hz sample rate.
@@ -3653,8 +3684,8 @@ async def ws_endpoint(ws: WebSocket):
                             "settings": _ss,
                             "armed": armed,
                         })
-                    except Exception:
-                        pass
+                    except (OSError, json.JSONDecodeError, ValueError) as e:
+                        print(f"[STATUS] settings_changed broadcast failed: {type(e).__name__}: {e}", flush=True)
 
                 # Tool change: auto-deassert when request clears
                 if _prev_tc_req and not st.tool_change_requested:
@@ -3751,8 +3782,18 @@ async def ws_endpoint(ws: WebSocket):
                                 pass
                             return  # exit status_loop; finally block handles cleanup
 
+                # Full iteration completed without exception — reset failure counter.
+                # (Healthy early-`continue` paths above are neutral: they don't
+                # reset but also don't increment, so the counter only grows when
+                # exceptions truly occur.)
+                _consec_fails = 0
+
             except Exception as e:
-                print(f"[STATUS] client#{client_id} status_loop exception: {type(e).__name__}: {e}", flush=True)
+                _consec_fails += 1
+                print(f"[STATUS] client#{client_id} status_loop exception ({_consec_fails}/10): {type(e).__name__}: {e}", flush=True)
+                if _consec_fails >= 10:
+                    print(f"[STATUS] client#{client_id} aborting status loop after 10 consecutive failures", flush=True)
+                    break
                 await asyncio.sleep(0.5)
 
     status_task = asyncio.create_task(status_loop())
@@ -3798,21 +3839,14 @@ async def ws_endpoint(ws: WebSocket):
                 continue
 
             if msg.get("cmd") == "timing_log":
-                global _timing_log_enabled, _timing_log, _timing_log_path
+                global _timing_log_enabled, _timing_log_path
                 _timing_log_enabled = bool(msg.get("enable", False))
                 if _timing_log_enabled:
                     from datetime import datetime
                     stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                     _timing_log_path = f"/tmp/lcnc-timing-{stamp}.jsonl"
-                    _timing_log = None  # opened on first write
                     print(f"[TIMING] Log started: {_timing_log_path}", flush=True)
                 else:
-                    if _timing_log:
-                        try:
-                            _timing_log.close()
-                        except Exception:
-                            pass
-                    _timing_log = None
                     if _timing_log_path:
                         print(f"[TIMING] Log stopped: {_timing_log_path}", flush=True)
                 await ws_send_json(ws, {"type": "reply", "ok": True, "enabled": _timing_log_enabled})

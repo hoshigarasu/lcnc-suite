@@ -23,6 +23,8 @@ interface Permissions {
   resume: boolean;
 }
 
+type GateKey = keyof Permissions;
+
 // D-pad button indices (standard gamepad mapping)
 const DPAD_UP = 12;
 const DPAD_DOWN = 13;
@@ -41,7 +43,7 @@ export function useGamepad(deps: {
   jogIncrement: Ref<number>;
   permissions: ComputedRef<Permissions>;
   send: (cmd: WsCommand) => void;
-  fire: (cmd: WsCommand) => void;
+  fire: (cmd: WsCommand, gate?: GateKey) => void;
   activeFile: ComputedRef<string | null>;
   config: Ref<GamepadDefaults>;
   axisCount: ComputedRef<number>;
@@ -126,38 +128,38 @@ export function useGamepad(deps: {
     const perms = deps.permissions.value;
     switch (action) {
       case "start":
-        if (perms.resume) deps.fire({ cmd: "cycle_resume" });
-        else if (perms.ready && deps.activeFile.value) deps.fire({ cmd: "cycle_start" });
+        if (perms.resume) deps.fire({ cmd: "cycle_resume" }, 'resume');
+        else if (perms.ready && deps.activeFile.value) deps.fire({ cmd: "cycle_start" }, 'ready');
         break;
       case "pause":
-        if (perms.pause) deps.fire({ cmd: "cycle_pause" });
+        if (perms.pause) deps.fire({ cmd: "cycle_pause" }, 'pause');
         break;
       case "resume":
-        if (perms.resume) deps.fire({ cmd: "cycle_resume" });
+        if (perms.resume) deps.fire({ cmd: "cycle_resume" }, 'resume');
         break;
       case "abort":
-        if (perms.abort) deps.fire({ cmd: "abort" });
+        if (perms.abort) deps.fire({ cmd: "abort" }, 'abort');
         break;
       case "estop":
         deps.send({ cmd: "estop" }); // no permission gate — E-Stop must always work
         break;
       case "spindle_stop":
-        if (perms.ready) deps.fire({ cmd: "spindle_stop" });
+        if (perms.ready) deps.fire({ cmd: "spindle_stop" }, 'ready');
         break;
       case "flood_toggle": {
         if (!perms.ready) break;
-        const st = status.value as any;
-        deps.fire({ cmd: st?.flood ? "flood_off" : "flood_on" });
+        const floodOn = !!status.value?.flood;
+        deps.fire({ cmd: floodOn ? "flood_off" : "flood_on" }, 'ready');
         break;
       }
       case "mist_toggle": {
         if (!perms.ready) break;
-        const st = status.value as any;
-        deps.fire({ cmd: st?.mist ? "mist_off" : "mist_on" });
+        const mistOn = !!status.value?.mist;
+        deps.fire({ cmd: mistOn ? "mist_off" : "mist_on" }, 'ready');
         break;
       }
       case "home_all":
-        if (perms.idle) deps.fire({ cmd: "home_all" });
+        if (perms.idle) deps.fire({ cmd: "home_all" }, 'idle');
         break;
       // z_mod, dead_man, none are not dispatchable actions
     }

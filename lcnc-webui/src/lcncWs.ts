@@ -14,6 +14,11 @@ export const status = shallowRef<any>(null);
 export const lastReply = ref<any>(null);
 export const lcncError = ref<string | null>(null);
 export const armed = ref(false);        // server-authoritative — driven by gateway messages
+// Message history is intentionally per-tab (localStorage, not server-synced).
+// Rationale: different tabs/browsers represent different user sessions;
+// federating error/status messages across sessions would cause confusing
+// cross-talk (notifications from one operator's arm-reject showing up for
+// another's read-only session). Keep this local.
 const MSG_STORAGE_KEY = "lcnc-messages";
 const MSG_MAX = 200;
 

@@ -23,6 +23,7 @@ import {
 } from "./defaults";
 import { fetchHal, type HalPin, type HalSignal, type HalParam } from "./lcncApi";
 import { status } from "./lcncWs";
+import { keypadMode } from "./useNumberKeypad";
 import { ChevronUp, ChevronDown, Pencil, Trash2 } from "lucide-vue-next";
 import GamepadLiveInput from "./GamepadLiveInput.vue";
 import DebugTab from "./DebugTab.vue";
@@ -31,6 +32,7 @@ import DebugTab from "./DebugTab.vue";
 const themeMode = inject<Ref<ThemeMode>>("themeMode", ref("auto") as Ref<ThemeMode>);
 const setTheme = inject<(mode: ThemeMode) => void>("setTheme", () => {});
 const startFullscreen = ref(loadDisplayDefaults().startFullscreen);
+const keypadModeEnabled = ref(loadDisplayDefaults().keypadMode);
 const machineParts = inject<ComputedRef<Array<{ id: string; group: string | null; direction: string | null }>>>("machineParts", computed(() => []));
 const setMachinePartColor = inject<(id: string, color: string | null) => void>("setMachinePartColor", () => {});
 const setMachineEdges = inject<(on: boolean) => void>("setMachineEdges", () => {});
@@ -168,10 +170,16 @@ function saveStartFullscreen() {
   saveDisplayDefaults({ ...loadDisplayDefaults(), startFullscreen: startFullscreen.value });
 }
 
+function saveKeypadMode() {
+  keypadMode.value = keypadModeEnabled.value;
+  saveDisplayDefaults({ ...loadDisplayDefaults(), keypadMode: keypadModeEnabled.value });
+}
+
 function resetDisplay() {
   setTheme("auto");
   startFullscreen.value = false;
-  saveDisplayDefaults({ theme: "auto", startFullscreen: false });
+  keypadModeEnabled.value = false;
+  saveDisplayDefaults({ theme: "auto", startFullscreen: false, keypadMode: false });
 }
 
 function resetGamepad() {
@@ -263,6 +271,9 @@ watch(settingsVersion, () => {
   pathOnTop.value = vd.pathOnTop;
   machineEdgesOn.value = vd.machineEdges;
   projection.value = vd.projection;
+  const dd = loadDisplayDefaults();
+  startFullscreen.value = dd.startFullscreen;
+  keypadModeEnabled.value = dd.keypadMode;
 });
 
 // ── Keyboard tab state ──
@@ -729,6 +740,11 @@ const halStats = computed(() => ({
           <div class="section">
             <div class="sub">Fullscreen</div>
             <MachineToggle gate="displaySetting" v-model="startFullscreen" @update:modelValue="saveStartFullscreen" label="Start in fullscreen mode" />
+          </div>
+          <div class="sep"></div>
+          <div class="section">
+            <div class="sub">Number Keypad</div>
+            <MachineToggle gate="displaySetting" v-model="keypadModeEnabled" @update:modelValue="saveKeypadMode" label="Show keypad button on all number inputs" />
           </div>
           <div class="resetRow">
             <MachineBtn type="reset" @click="resetTarget = 'display'">Reset Display</MachineBtn>

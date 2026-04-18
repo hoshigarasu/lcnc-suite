@@ -967,6 +967,7 @@ _settings_version = 0
 _settings_cache: Optional[dict] = None
 _fb_scale = 60  # spindle feedback scale: 60 (RPS→RPM) or 1 (already RPM)
 _spindle_load_pin = ""  # HAL pin for spindle load %, empty = disabled
+_tc_info_cache: dict = {}  # {(tool_num, tbl_mtime): merged_list} — one entry max
 _HAL_PIN_RE = re.compile(r'^[a-zA-Z0-9_][a-zA-Z0-9_.:-]*$')
 _VALID_SETTINGS_SECTIONS = {"macros", "machine", "viewer", "camera", "mdi", "gamepad", "probe", "toolsetter", "keyboard", "display", "panels"}
 
@@ -1668,10 +1669,14 @@ def poll_status() -> StatusPayload:
         if tool_change_tool is not None:
             try:
                 tbl_path = get_tool_tbl_path()
-                tbl_tools = parse_tool_table(tbl_path)
-                library = load_tool_library()
-                merged = _merge_tool_data(tbl_tools, library)
-                entry = next((t for t in merged if t["T"] == tool_change_tool), None)
+                tbl_mtime = os.path.getmtime(tbl_path) if tbl_path and os.path.exists(tbl_path) else 0
+                cache_key = (tool_change_tool, tbl_mtime)
+                if cache_key not in _tc_info_cache:
+                    tbl_tools = parse_tool_table(tbl_path)
+                    library = load_tool_library()
+                    _tc_info_cache.clear()
+                    _tc_info_cache[cache_key] = _merge_tool_data(tbl_tools, library)
+                entry = next((t for t in _tc_info_cache[cache_key] if t["T"] == tool_change_tool), None)
                 if entry:
                     tool_change_info = {"D": entry["D"], "Z": entry["Z"], "description": entry.get("description", "")}
             except Exception:
@@ -1766,7 +1771,7 @@ def read_errors_nonblocking() -> list:
         return []
     out = []
     try:
-        while True:
+        while len(out) < 50:  # cap: prevents executor stall on pathological error floods
             e = ERR.poll()
             if not e:
                 break

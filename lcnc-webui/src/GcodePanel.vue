@@ -124,8 +124,6 @@ const progressPercent = computed(() => {
 const LINE_HEIGHT = 23; // px — matches .codeLine (12px × 1.6 + 4px padding)
 const BUFFER = 10;
 
-const tokenizedLines = computed(() => lines.value.map(highlightGcode));
-
 const scrollTop = ref(0);
 
 const visibleRange = computed(() => {
@@ -136,11 +134,13 @@ const visibleRange = computed(() => {
   return { start, end };
 });
 
+// Tokenize only the visible window — never the full file — to avoid blocking the
+// main thread (and delaying heartbeat) when a large G-code file is opened.
 const visibleLines = computed(() => {
   const { start, end } = visibleRange.value;
-  return tokenizedLines.value.slice(start, end).map((tokens, i) => ({
+  return lines.value.slice(start, end).map((line, i) => ({
     lineNum: start + i + 1,
-    tokens,
+    tokens: highlightGcode(line),
   }));
 });
 

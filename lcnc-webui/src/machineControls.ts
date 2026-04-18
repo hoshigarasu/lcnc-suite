@@ -102,6 +102,13 @@ export const BUTTON_TYPES = {
   bannerAbort:    { gate: 'abort',   variant: 'danger',  size: 'md' },
   bannerHome:     { gate: 'idle',    variant: 'default', size: 'md' },
   headerIcon:     { gate: 'always',  variant: 'default', size: 'md',  icon: true },
+
+  // ── Number keypad ──
+  numKey:  { gate: 'always', variant: 'default', size: 'lg', mono: true },  // digits, decimal
+  numOp:   { gate: 'always', variant: 'default', size: 'lg', mono: true },  // operators, ±, ( )
+  numDel:  { gate: 'always', variant: 'default', size: 'lg' },              // ⌫ backspace
+  numClr:  { gate: 'always', variant: 'danger',  size: 'lg' },              // C clear
+  numEq:   { gate: 'always', variant: 'primary', size: 'lg', mono: true },  // ═ evaluate
 } as const satisfies Record<string, ButtonDef>;
 
 export type ButtonType = keyof typeof BUTTON_TYPES;

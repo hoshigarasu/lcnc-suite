@@ -96,7 +96,7 @@ export const BUTTON_TYPES = {
   listAction:     { gate: 'always',  variant: 'default', size: 'md',  icon: true },
   nav:            { gate: 'always',  variant: 'default', size: 'md' },
   inline:         { gate: 'always',  variant: 'default', size: 'sm' },
-  surfaceRefresh: { gate: 'always',  variant: 'default', size: 'sm' },
+  surfaceRefresh: { gate: 'always',  variant: 'default', size: 'lg' },
   inlineXs:       { gate: 'always',  variant: 'default', size: 'xs' },
   inlineMd:       { gate: 'always',  variant: 'default', size: 'md' },
   bannerAction:   { gate: 'always',  variant: 'default', size: 'md' },

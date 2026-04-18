@@ -702,7 +702,7 @@ loadrt watchdog num_inputs=1
 addf watchdog.set-timeouts servo-thread
 addf watchdog.process servo-thread
 setp watchdog.timeout-0 0.5
-setp watchdog.enable-in 1
+net webui-connected => watchdog.enable-in        # disable watchdog when no client connected; rising edge resets ok-out after a trip
 net webui-heartbeat webui-safety.heartbeat => watchdog.input-0
 
 # 3. Create two AND gates for the e-stop chain

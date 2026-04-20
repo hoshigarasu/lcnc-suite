@@ -91,6 +91,13 @@ fi
 # ── Activate Python venv ──
 source "$GATEWAY_DIR/.venv/bin/activate"
 
+# ── Log gateway stdout/stderr to /tmp so we can read it after the fact
+# without needing the launching terminal. `tee` runs in a process
+# substitution so normal terminal output is preserved.
+LCNC_LOG="/tmp/lcnc-gateway.log"
+: > "$LCNC_LOG"  # truncate on each start
+exec > >(tee -a "$LCNC_LOG") 2>&1
+
 # ── uvicorn loop selection (Experiment 3: uvloop opt-in) ──
 # Force --loop asyncio unless WEBUI_UVLOOP=1, so A/B comparisons aren't
 # muddied by uvicorn auto-detecting uvloop on hosts that happen to have it

@@ -129,6 +129,66 @@ export function getTimingCsv(): string {
 
 export const viewerInit = ref<any>(null);
 export const viewerGcode = ref<any>(null);
+// File text for the currently loaded program. Fetched over HTTP (not WS) from
+// GET /gcode when viewer_gcode arrives with a new file — keeps multi-MB bodies
+// off the WS writer so the gateway's heartbeat loop isn't delayed by N-way
+// broadcasts. Null when no program is loaded or the fetch failed.
+export const gcodeContent = ref<string | null>(null);
+let _gcodeContentFile: string | null = null;
+let _gcodeFetchAbort: AbortController | null = null;
+
+// Fetched preview state (polylines, stats, line numbers) for the currently
+// loaded file. Fetched over HTTP on viewer_gcode_ready.
+let _previewFetchAbort: AbortController | null = null;
+let _previewLastVersion = -1;
+
+function _applyGcodeFile(nextFile: string | null) {
+  if (nextFile === _gcodeContentFile) return;
+  _gcodeContentFile = nextFile;
+  if (_gcodeFetchAbort) { _gcodeFetchAbort.abort(); _gcodeFetchAbort = null; }
+  if (!nextFile) {
+    gcodeContent.value = null;
+    return;
+  }
+  const ac = new AbortController();
+  _gcodeFetchAbort = ac;
+  const target = nextFile;
+  fetch(`/gcode?path=${encodeURIComponent(target)}`, { signal: ac.signal })
+    .then(r => r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`)))
+    .then(text => {
+      if (_gcodeContentFile === target) gcodeContent.value = text;
+    })
+    .catch(err => {
+      if (err?.name !== "AbortError") {
+        console.error("GET /gcode failed", err);
+        if (_gcodeContentFile === target) gcodeContent.value = null;
+      }
+    });
+}
+
+function _fetchPreview(version: number, file: string | null) {
+  if (version === _previewLastVersion) return;
+  _previewLastVersion = version;
+  if (_previewFetchAbort) { _previewFetchAbort.abort(); _previewFetchAbort = null; }
+  const ac = new AbortController();
+  _previewFetchAbort = ac;
+  fetch(`/preview?v=${version}`, { signal: ac.signal })
+    .then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`)))
+    .then(buf => {
+      if (_previewLastVersion !== version) return;  // newer version already won
+      const data = msgpackDecode(new Uint8Array(buf)) as any;
+      viewerGcode.value = data;
+    })
+    .catch(err => {
+      if (err?.name !== "AbortError") {
+        console.error("GET /preview failed", err);
+        // Let next version_bump retry; clear sentinel so retry fires.
+        if (_previewLastVersion === version) _previewLastVersion = -1;
+      }
+    });
+  // file param kept for forward-compat / debugging; not used for path choice.
+  void file;
+}
 
 let _nextMsgId = _stored.length > 0 ? Math.max(..._stored.map(m => m.id)) + 1 : 1;
 
@@ -314,7 +374,22 @@ export function connectWs() {
     } else if (msg.type === "viewer_init") {
       viewerInit.value = msg.data;
     } else if (msg.type === "viewer_gcode") {
+      // Empty-state path (file unloaded): gateway sends a plain viewer_gcode
+      // with data.file = null. The "has data" case uses viewer_gcode_ready.
       viewerGcode.value = msg.data;
+      _applyGcodeFile(msg.data?.file ?? null);
+    } else if (msg.type === "viewer_gcode_ready") {
+      // Full preview lives on the server; fetch the cached msgpack bytes
+      // via HTTP so multi-MB polylines don't ride the single-threaded WS
+      // writer and stall the heartbeat loop. `version` is a cache-buster.
+      const version: number = msg.version ?? 0;
+      const file: string | null = msg.file ?? null;
+      _fetchPreview(version, file);
+      _applyGcodeFile(file);
+    } else if (msg.type === "surface_points") {
+      status.value = { ...(status.value ?? {}), surface_points: msg.data };
+    } else if (msg.type === "comp_grid") {
+      status.value = { ...(status.value ?? {}), comp_grid: msg.data };
     } else if (msg.type === "settings_changed" || msg.type === "settings_init") {
       updateServerCache(msg.settings);
     }

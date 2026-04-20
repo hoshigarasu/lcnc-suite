@@ -7,8 +7,6 @@ import subprocess
 import threading
 from pathlib import Path
 import linuxcnc
-import gcode
-from rs274.interpret import Translated, ArcsToSegmentsMixin, StatMixin
 import hal  # must import in main thread — _hal C extension registers signal handlers on init
 
 from dataclasses import asdict, dataclass
@@ -19,7 +17,7 @@ import shutil
 import tempfile
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import StreamingResponse, JSONResponse
+from starlette.responses import StreamingResponse, JSONResponse, FileResponse, Response
 
 
 # ---- Config ----
@@ -72,6 +70,17 @@ except Exception:
 if _WIRE_FORMAT == "msgpack" and _msgpack_encoder is None:
     print("[WIRE] msgspec not installed — WEBUI_WIRE_FORMAT=msgpack ignored, falling back to JSON", flush=True)
     _WIRE_FORMAT = "json"
+
+
+def _encode_ws_frame(obj):
+    """Encode a WS payload with the active wire format. Returns bytes for
+    msgpack (→ ws.send_bytes) or str for json (→ ws.send_text). Used for
+    shared payloads (viewer_gcode, surface_points, comp_grid) that are
+    encoded once and broadcast verbatim to every client."""
+    if _WIRE_FORMAT == "msgpack":
+        return _msgpack_encoder.encode(obj)
+    data = _json_encoder_encode(obj)
+    return data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else data
 
 # ---- LinuxCNC handles (nullable for auto-reconnect) ----
 STAT: Optional[linuxcnc.stat] = None
@@ -319,17 +328,52 @@ async def _heartbeat_loop():
     handle_command) so a stuck status_loop does not block safety controls.
     """
     global _hal_last_hb
+    _hb_expected = 1.0 / POLL_HZ
+    _hb_last = time.monotonic()
     while True:
         if _clients:
             _hal_last_hb = not _hal_last_hb
             _hal_send({"heartbeat": _hal_last_hb, "connected": not _estop_hold})
-        await asyncio.sleep(1.0 / POLL_HZ)
+        await asyncio.sleep(_hb_expected)
+        _hb_now = time.monotonic()
+        # Any gap >200ms between heartbeat ticks is within the 500ms watchdog
+        # budget but worth surfacing — lets us correlate stalls with parse /
+        # scan / encode events in the logs.
+        _hb_drift = _hb_now - _hb_last - _hb_expected
+        if _hb_drift > 0.2:
+            print(f"[HB-STALL] heartbeat gap {_hb_drift*1000:.0f}ms (expected {_hb_expected*1000:.0f}ms)", flush=True)
+        _hb_last = _hb_now
+
+
+async def _loop_lag_monitor():
+    """Fire-and-forget task that measures event-loop scheduling lag.
+
+    Prints whenever the loop takes >100ms longer than the requested sleep to
+    wake back up — a proxy for 'main thread blocked on something synchronous'.
+    Used to diagnose heartbeat-watchdog trips by correlating [LAG] lines with
+    parse / encode / file-IO log lines.
+    """
+    TICK = 0.05
+    THRESHOLD = 0.10
+    last = time.monotonic()
+    while True:
+        await asyncio.sleep(TICK)
+        now = time.monotonic()
+        drift = now - last - TICK
+        if drift > THRESHOLD:
+            print(f"[LAG] event loop stalled {drift*1000:.0f}ms", flush=True)
+        last = now
+
+
+_lag_monitor_task: Optional[asyncio.Task] = None
 
 
 def _start_heartbeat():
-    global _heartbeat_task
+    global _heartbeat_task, _lag_monitor_task
     if _heartbeat_task is None or _heartbeat_task.done():
         _heartbeat_task = asyncio.get_event_loop().create_task(_heartbeat_loop())
+    if _lag_monitor_task is None or _lag_monitor_task.done():
+        _lag_monitor_task = asyncio.get_event_loop().create_task(_loop_lag_monitor())
 
 
 # ---- Shared status poller ----
@@ -354,6 +398,30 @@ _comp_grid_pending: dict | None = None       # latest parsed probe-results-grid.
 _comp_grid_version: int = 0                  # bumped each time new grid is ready
 _comp_grid_initialized: bool = False         # True after startup file-read attempted
 _last_comp_hal_ver: int | None = None        # last seen compensation.grid-version HAL value
+
+# Shared gcode preview — parsed once in a subprocess (gcode_parse_worker.py)
+# on file/rotation change. The parsed result (multi-MB polylines) is NOT
+# broadcast over the WS — N × ws.send_bytes(2.7 MB) saturates the event-loop
+# writer and trips the heartbeat watchdog. Instead: pre-encode the bytes, serve
+# them via GET /preview (uvicorn streamed response runs off the WS writer),
+# and broadcast a tiny JSON ping per version so clients know to fetch.
+_gcode_preview_pending: Optional[dict] = None   # {"file","feed","feed_lines","rapid","stats"}
+_gcode_preview_version: int = 0                 # bumps on file OR rotation change
+_gcode_last_file: Optional[str] = None          # edge detection in poller
+_gcode_last_rotation: Optional[float] = None    # edge detection in poller
+_gcode_refresh_running: bool = False            # single-flight guard
+# Pre-encoded msgpack bytes of _gcode_preview_pending. Served over HTTP by
+# GET /preview so the 2.7 MB polyline payload never touches the WS writer.
+_gcode_preview_bytes: Optional[bytes] = None
+
+# Pre-encoded WS frames for surface_points / comp_grid (encode-once pattern).
+# Rebuilt in _status_poller on version bump so every client's status_loop ships
+# the cached bytes via ws.send_* — no N-way encode.
+_surface_points_frame: Optional[object] = None
+_comp_grid_frame: Optional[object] = None
+
+# Path to the subprocess parse worker (spawned via asyncio.create_subprocess_exec).
+_GCODE_WORKER_PATH = str(BASE_DIR / "gcode_parse_worker.py")
 
 # Safety-trip sticky notification: populated when _status_poller() detects a
 # TRUE→FALSE edge on oneshot.0.out (HAL heartbeat watchdog). Broadcast to all
@@ -470,6 +538,10 @@ async def _status_poller():
     global _surface_points_pending, _surface_points_version, _surface_initialized
     global _comp_grid_pending, _comp_grid_version, _comp_grid_initialized, _last_comp_hal_ver
     global _status_event, _shared_clients_list
+    global _gcode_preview_pending, _gcode_preview_version
+    global _gcode_last_file, _gcode_last_rotation, _gcode_refresh_running
+    global _gcode_preview_bytes
+    global _surface_points_frame, _comp_grid_frame
     loop = asyncio.get_event_loop()
     _poll_fails = 0
     _last_pid_check = 0.0
@@ -553,6 +625,9 @@ async def _status_poller():
                 pts = _read_probe_results_file()
                 if pts:
                     _surface_points_pending = pts
+                    _surface_points_frame = await asyncio.to_thread(
+                        _encode_ws_frame, {"type": "surface_points", "data": pts}
+                    )
                     _surface_points_version += 1
                 _surface_initialized = True
 
@@ -561,6 +636,9 @@ async def _status_poller():
                 pts = _read_probe_results_file()
                 if pts:
                     _surface_points_pending = pts
+                    _surface_points_frame = await asyncio.to_thread(
+                        _encode_ws_frame, {"type": "surface_points", "data": pts}
+                    )
                     _surface_points_version += 1
 
             # Comp grid startup init: push existing probe-results-grid.json on first connect
@@ -568,6 +646,9 @@ async def _status_poller():
                 grid = _read_comp_grid_file()
                 if grid:
                     _comp_grid_pending = grid
+                    _comp_grid_frame = await asyncio.to_thread(
+                        _encode_ws_frame, {"type": "comp_grid", "data": grid}
+                    )
                     _comp_grid_version += 1
                 _last_comp_hal_ver = st.comp_grid_version  # sync — prevents re-fire below
                 _comp_grid_initialized = True
@@ -578,8 +659,33 @@ async def _status_poller():
                 grid = _read_comp_grid_file()
                 if grid:
                     _comp_grid_pending = grid
+                    _comp_grid_frame = await asyncio.to_thread(
+                        _encode_ws_frame, {"type": "comp_grid", "data": grid}
+                    )
                     _comp_grid_version += 1
                 _last_comp_hal_ver = st.comp_grid_version
+
+            # Gcode preview: parse once (in subprocess) on file/rotation change,
+            # share to all clients via version counter. Single-flight via
+            # _gcode_refresh_running so rapid-fire loads don't stack subprocesses.
+            cur_rot = st.rotation_xy if st.rotation_xy is not None else 0.0
+            file_changed = bool(st.active_file) and st.active_file != _gcode_last_file
+            rot_changed = (
+                _gcode_last_file is not None
+                and bool(st.active_file)
+                and cur_rot != _gcode_last_rotation
+            )
+            if (file_changed or rot_changed) and not _gcode_refresh_running:
+                _gcode_refresh_running = True
+                asyncio.create_task(
+                    _refresh_gcode_preview(st.active_file, cur_rot)
+                )
+            elif not st.active_file and _gcode_last_file is not None:
+                _gcode_preview_pending = None
+                _gcode_preview_bytes = None
+                _gcode_preview_version += 1
+                _gcode_last_file = None
+                _gcode_last_rotation = None
 
             # Safety-trip detection via webui-safety.trip-count. The counter is
             # incremented by the independent hal_watchdog.py process on every
@@ -2902,263 +3008,121 @@ def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
     }
 
 
-class PreviewCanon(Translated, ArcsToSegmentsMixin, StatMixin):
-    """Lightweight canon that collects feed/rapid polylines for 3D preview."""
-
-    def __init__(self, s, random=0):
-        StatMixin.__init__(self, s, random)
-        self.feed = []          # [(lineno, start_9, end_9, feedrate, tlo_3)]
-        self.rapid = []         # [(lineno, start_9, end_9, tlo_3)]
-        self.lineno = -1
-        self.feedrate = 1.0
-        self.lo = (0,) * 9     # last output position (9-axis)
-        self.first_move = True
-        self.suppress = 0
-        self.arc_dist = 0.0     # accumulated arc distance (inches, pre-scale)
-        self.arc_moves = 0      # number of arc line segments
-        self.tools_used = set() # tool numbers seen via interpreter
-        self.tool_changes = 0   # number of tool changes
-        self.xo = self.yo = self.zo = 0.0
-        self.ao = self.bo = self.co = 0.0
-        self.uo = self.vo = self.wo = 0.0
-        self.g5x_index = 1
-        self.plane = 1
-        self.arcdivision = 64
-
-    def next_line(self, st):
-        self.state = st
-        self.lineno = st.sequence_number
-
-    def set_feed_rate(self, f): self.feedrate = f / 60.0
-    def set_spindle_rate(self, _): pass
-    def select_plane(self, _): pass
-    def comment(self, _): pass
-    def message(self, _): pass
-    def check_abort(self): pass
-    def user_defined_function(self, i, p, q): pass
-    def dwell(self, _): pass
-
-    def change_tool(self, idx):
-        StatMixin.change_tool(self, idx)
-        self.first_move = True
-        self.tool_changes += 1
-        if idx > 0:
-            self.tools_used.add(idx)
-
-    def tool_offset(self, xo, yo, zo, ao, bo, co, uo, vo, wo):
-        self.first_move = True
-        x, y, z, a, b, c, u, v, w = self.lo
-        self.lo = (x - xo + self.xo, y - yo + self.yo, z - zo + self.zo,
-                   a - ao + self.ao, b - bo + self.bo, c - co + self.co,
-                   u - uo + self.uo, v - vo + self.vo, w - wo + self.wo)
-        self.xo, self.yo, self.zo = xo, yo, zo
-        self.ao, self.bo, self.co = ao, bo, co
-        self.uo, self.vo, self.wo = uo, vo, wo
-
-    # Use rotate_and_translate so straight moves are in the same translated
-    # (machine) coordinate system as arc segments from gcode.arc_to_segments.
-    # WCS offsets are subtracted once at extraction time.
-    def straight_traverse(self, x, y, z, a, b, c, u, v, w):
-        if self.suppress > 0: return
-        l = self.rotate_and_translate(x, y, z, a, b, c, u, v, w)
-        if not self.first_move:
-            self.rapid.append((self.lineno, self.lo, l, (self.xo, self.yo, self.zo)))
-        self.lo = l
-
-    def straight_feed(self, x, y, z, a, b, c, u, v, w):
-        if self.suppress > 0: return
-        self.first_move = False
-        l = self.rotate_and_translate(x, y, z, a, b, c, u, v, w)
-        self.feed.append((self.lineno, self.lo, l, self.feedrate, (self.xo, self.yo, self.zo)))
-        self.lo = l
-
-    straight_probe = straight_feed
-
-    def rigid_tap(self, x, y, z):
-        if self.suppress > 0: return
-        self.first_move = False
-        l = self.rotate_and_translate(x, y, z, 0, 0, 0, 0, 0, 0)[:3]
-        l += (self.lo[3], self.lo[4], self.lo[5],
-              self.lo[6], self.lo[7], self.lo[8])
-        self.feed.append((self.lineno, self.lo, l, self.feedrate, (self.xo, self.yo, self.zo)))
-        self.feed.append((self.lineno, l, self.lo, self.feedrate, (self.xo, self.yo, self.zo)))
-
-    def straight_arcsegments(self, segs):
-        self.first_move = False
-        lo = self.lo
-        for l in segs:
-            self.feed.append((self.lineno, lo, l, self.feedrate, (self.xo, self.yo, self.zo)))
-            dx, dy, dz = l[0] - lo[0], l[1] - lo[1], l[2] - lo[2]
-            self.arc_dist += (dx*dx + dy*dy + dz*dz) ** 0.5
-            self.arc_moves += 1
-            lo = l
-        self.lo = lo
-
-
-def _patch_var_file_from_cache(path: str) -> None:
-    """Patch WCS rotation into temp var file before preview parse.
+def _build_wcs_rotation_patches() -> Dict[str, str]:
+    """Build {param_number: str(value)} rotation patches for the parse worker.
 
     LinuxCNC only writes the var file on shutdown, so after G10 L2 R changes
-    the disk copy has stale rotation.  Patch only rotation (base + 10) —
+    the disk copy has stale rotation. Only rotation (base + 10) is patched —
     axis offsets on disk are already correct in interpreter-internal units.
     (_wcs_cache mixes internal units from seed with machine units from STAT,
     so patching axis offsets would corrupt them.)
     """
-    if not _wcs_cache:
-        return
-    # Build param_number → value map — rotation only
     patches: Dict[str, str] = {}
+    if not _wcs_cache:
+        return patches
     for i, base in enumerate(_WCS_BASES):
         row = _wcs_cache[i]
-        if not row:
-            continue
-        if "r" in row:
+        if row and "r" in row:
             patches[str(base + 10)] = f"{row['r']:.6f}"
+    return patches
 
-    if not patches:
-        return
 
-    # Read, patch, write back
-    lines: List[str] = []
-    seen: set = set()
+async def _refresh_gcode_preview(filepath: str, rotation: float):
+    """Parse filepath in an isolated subprocess and publish the result.
+
+    Called from _status_poller on file/rotation change. Single-flight via
+    _gcode_refresh_running — the caller sets the flag before scheduling, this
+    coroutine clears it on exit. The subprocess has its own Python interpreter
+    and its own GIL, so _heartbeat_loop keeps ticking through the parse even
+    for multi-second programs.
+    """
+    global _gcode_preview_pending, _gcode_preview_version
+    global _gcode_last_file, _gcode_last_rotation, _gcode_refresh_running
+    global _gcode_preview_bytes
+    t_start = time.monotonic()
     try:
-        with open(path, "r") as f:
-            for line in f:
-                parts = line.split()
-                if len(parts) >= 2 and parts[0] in patches:
-                    lines.append(f"{parts[0]}\t{patches[parts[0]]}\n")
-                    seen.add(parts[0])
-                else:
-                    lines.append(line)
-        # Append any parameters not already in the file
-        for pnum, val in patches.items():
-            if pnum not in seen:
-                lines.append(f"{pnum}\t{val}\n")
-        with open(path, "w") as f:
-            f.writelines(lines)
-    except Exception as e:
-        print(f"[GCODE] var file patch failed: {e}")
-
-
-def parse_gcode_preview(filename: str, machine_units: str = "mm") -> Dict[str, Any]:
-    """Full RS274NGC preview via LinuxCNC's native interpreter."""
-    empty = {"feed": [], "feed_lines": [], "rapid": []}
-    if not filename or not os.path.isfile(filename):
-        return empty
-    if not STAT:
-        return empty
-
-    try:
-        STAT.poll()
-        ini_path = getattr(STAT, "ini_filename", None)
+        ini_path = getattr(STAT, "ini_filename", None) if STAT is not None else None
         if not ini_path:
-            return empty
-
-        ini = linuxcnc.ini(ini_path)
-        random_tc = int(ini.find("EMCIO", "RANDOM_TOOLCHANGER") or 0)
-
-        canon = PreviewCanon(STAT, random_tc)
-
-        # Copy parameter file to temp dir (gcode.parse writes to it)
-        parameter = ini.find("RS274NGC", "PARAMETER_FILE")
-        td = tempfile.mkdtemp()
-        try:
-            temp_param = os.path.join(td, os.path.basename(parameter or "linuxcnc.var"))
-            if parameter:
-                param_path = parameter if os.path.isabs(parameter) else os.path.join(os.path.dirname(ini_path), parameter)
-                if os.path.exists(param_path):
-                    shutil.copy(param_path, temp_param)
-            _patch_var_file_from_cache(temp_param)
-            canon.parameter_file = temp_param
-
-            unitcode = "G%d" % (20 + (STAT.linear_units == 1))
-            result, seq = gcode.parse(filename, canon, unitcode, "")
-            if result > gcode.MIN_ERROR:
-                print(f"[GCODE] parse error at line {seq}: {gcode.strerror(result)}")
-        finally:
-            shutil.rmtree(td, ignore_errors=True)
-
-        # Canon outputs in inches (LinuxCNC internal unit) in machine/translated
-        # coords.  Convert to work coords (subtract WCS offsets) then scale.
-        unit_scale = 25.4 if machine_units == "mm" else 1.0
-        ox = canon.g5x_offset_x + canon.g92_offset_x
-        oy = canon.g5x_offset_y + canon.g92_offset_y
-        oz = canon.g5x_offset_z + canon.g92_offset_z
-
-        feed: List[List[float]] = []
-        feed_lines: List[int] = []
-        total_feed_dist = 0.0
-        total_feed_time = 0.0
-        feed_rates: set = set()
-        for lineno, start, end, rate, _tlo in canon.feed:
-            feed.append([(end[0] - ox) * unit_scale, (end[1] - oy) * unit_scale, (end[2] - oz) * unit_scale])
-            feed_lines.append(lineno)
-            dx = (end[0] - start[0]) * unit_scale
-            dy = (end[1] - start[1]) * unit_scale
-            dz = (end[2] - start[2]) * unit_scale
-            dist = (dx*dx + dy*dy + dz*dz) ** 0.5
-            total_feed_dist += dist
-            if rate > 0:
-                total_feed_time += dist / (rate * unit_scale)
-                feed_rates.add(round(rate * unit_scale * 60.0, 1))
-
-        rapid: List[List[float]] = []
-        total_rapid_dist = 0.0
-        for _lineno, start, end, _tlo in canon.rapid:
-            rapid.append([(end[0] - ox) * unit_scale, (end[1] - oy) * unit_scale, (end[2] - oz) * unit_scale])
-            dx = (end[0] - start[0]) * unit_scale
-            dy = (end[1] - start[1]) * unit_scale
-            dz = (end[2] - start[2]) * unit_scale
-            total_rapid_dist += (dx*dx + dy*dy + dz*dz) ** 0.5
-
-        # Estimate rapid time from INI max velocities (units/sec)
-        rapid_vel = None
-        try:
-            for ax in range(3):
-                v = ini.find("AXIS_%d" % ax, "MAX_VELOCITY")
-                if v:
-                    v_scaled = float(v)  # INI is in machine units/sec already
-                    if rapid_vel is None or v_scaled < rapid_vel:
-                        rapid_vel = v_scaled
-        except (ValueError, TypeError):
-            pass  # malformed MAX_VELOCITY in INI — leave rapid_vel as None, skip rapid time estimate
-        total_rapid_time = (total_rapid_dist / rapid_vel) if rapid_vel else 0.0
-
-        # Arc vs linear breakdown
-        arc_dist_scaled = canon.arc_dist * unit_scale
-        linear_dist = total_feed_dist - arc_dist_scaled
-        linear_moves = len(canon.feed) - canon.arc_moves
-
-        # File size
-        try:
-            file_size = os.path.getsize(filename)
-        except OSError:
-            file_size = 0
-
-        stats = {
-            "feedMoves": len(canon.feed),
-            "rapidMoves": len(canon.rapid),
-            "linearMoves": linear_moves,
-            "arcMoves": canon.arc_moves,
-            "feedDist": round(total_feed_dist, 2),
-            "rapidDist": round(total_rapid_dist, 2),
-            "linearDist": round(linear_dist, 2),
-            "arcDist": round(arc_dist_scaled, 2),
-            "feedTime": round(total_feed_time, 1),
-            "rapidTime": round(total_rapid_time, 1),
-            "totalTime": round(total_feed_time + total_rapid_time, 1),
-            "feedRates": sorted(feed_rates),
-            "toolChanges": canon.tool_changes,
-            "toolsUsed": sorted(canon.tools_used),
-            "unit": machine_units,
-            "fileSize": file_size,
+            return
+        ctx = {
+            "file": filepath,
+            "ini_path": ini_path,
+            "units": get_machine_units(),
+            "var_patches": _build_wcs_rotation_patches(),
         }
+        ctx_bytes = _msgpack_encoder.encode(ctx) if _msgpack_encoder else json.dumps(ctx).encode()
+        print(f"[GCODE] spawn start file={os.path.basename(filepath)}", flush=True)
 
-        return {"feed": feed, "feed_lines": feed_lines, "rapid": rapid, "stats": stats}
+        t_spawn = time.monotonic()
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, _GCODE_WORKER_PATH,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        t_spawned = time.monotonic()
+        print(f"[GCODE] spawn ok pid={proc.pid} fork_ms={(t_spawned - t_spawn)*1000:.0f}", flush=True)
 
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=ctx_bytes),
+                timeout=60.0,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            print(f"[GCODE] parse timeout for {filepath}", flush=True)
+            return
+        t_communicated = time.monotonic()
+        if proc.returncode != 0:
+            err_tail = stderr.decode(errors="replace")[:500] if stderr else ""
+            print(f"[GCODE] parse worker exit {proc.returncode}: {err_tail}", flush=True)
+            return
+        # Surface worker-side timing (printed to stderr by the worker).
+        if stderr:
+            for ln in stderr.decode(errors="replace").splitlines():
+                if ln.strip():
+                    print(f"[WORKER] {ln}", flush=True)
+        print(f"[GCODE] worker done parse_ms={(t_communicated - t_spawned)*1000:.0f} stdout={len(stdout)}B", flush=True)
+
+        if not _msgpack_encoder:
+            print("[GCODE] msgspec not installed — cannot decode worker result", flush=True)
+            return
+        t_dec = time.monotonic()
+        preview = await asyncio.to_thread(_msgspec.msgpack.decode, stdout)
+        t_dec_done = time.monotonic()
+        pending = {
+            "file": filepath,
+            "feed": preview.get("feed", []),
+            "feed_lines": preview.get("feed_lines", []),
+            "rapid": preview.get("rapid", []),
+            "stats": preview.get("stats"),
+        }
+        # Encode once off-thread for the GET /preview endpoint. Clients fetch
+        # this over HTTP (uvicorn's streamed-response path — independent of
+        # the WS writer), so the event loop isn't stalled by N-way 2.7 MB
+        # send_bytes() on a single thread.
+        preview_bytes: bytes = await asyncio.to_thread(_msgspec.msgpack.encode, pending)
+        t_enc_done = time.monotonic()
+        # Publish pending + bytes together before bumping the version so
+        # GET /preview readers never see stale bytes under a new version.
+        _gcode_preview_pending = pending
+        _gcode_preview_bytes = preview_bytes
+        _gcode_preview_version += 1
+        _gcode_last_file = filepath
+        _gcode_last_rotation = rotation
+        print(
+            f"[GCODE] publish v={_gcode_preview_version} "
+            f"decode_ms={(t_dec_done - t_dec)*1000:.0f} "
+            f"encode_ms={(t_enc_done - t_dec_done)*1000:.0f} "
+            f"bytes={len(preview_bytes)}B "
+            f"total_ms={(t_enc_done - t_start)*1000:.0f}",
+            flush=True,
+        )
     except Exception as e:
-        print(f"[GCODE] preview failed: {e}")
-        return empty
+        print(f"[GCODE] preview refresh failed for {filepath}: {type(e).__name__}: {e}", flush=True)
+    finally:
+        _gcode_refresh_running = False
 
 
 app = FastAPI()
@@ -3528,6 +3492,47 @@ def list_files(subdir: str = ""):
     return {"ok": True, "nc_dir": nc_dir, "subdir": subdir, "entries": entries}
 
 
+@app.get("/gcode")
+def get_gcode(path: str):
+    """Stream a G-code file as plain text so the frontend doesn't need the
+    bytes inline in the viewer_gcode WS frame. Path is validated against the
+    NC dir allow-list (same as program_open). Uvicorn's file-sendfile path
+    runs separately from the WS writer, so bulk reads don't stall heartbeats.
+    """
+    nc_dir = get_nc_files_dir()
+    abs_path = os.path.abspath(path)
+    if not validate_path_within(abs_path, nc_dir):
+        raise HTTPException(status_code=403, detail="Path outside NC dir")
+    if not os.path.isfile(abs_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    _, ext = os.path.splitext(abs_path)
+    if ext.lower() not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Invalid extension")
+    return FileResponse(abs_path, media_type="text/plain")
+
+
+@app.get("/preview")
+def get_preview(v: Optional[int] = None):
+    """Return the cached msgpack-encoded parsed G-code preview.
+
+    The `v` query parameter is advisory — purely a cache-buster so the
+    browser treats each version as a distinct URL. The server always returns
+    the CURRENT cached preview (even if `v` is stale), because that's what
+    the client wants anyway. Returns 404 if no file is loaded.
+    """
+    if _gcode_preview_bytes is None:
+        raise HTTPException(status_code=404, detail="No preview cached")
+    headers = {
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "X-Preview-Version": str(_gcode_preview_version),
+    }
+    return Response(
+        content=_gcode_preview_bytes,
+        media_type="application/x-msgpack",
+        headers=headers,
+    )
+
+
 # ---------- HAL viewer ----------
 
 def _parse_hal_pins() -> list:
@@ -3662,6 +3667,9 @@ async def ws_endpoint(ws: WebSocket):
     armed = False  # connection-local arming
 
     global _next_client_id, _estop_hold, _unacked_trip
+    global _gcode_preview_pending, _gcode_preview_version
+    global _gcode_last_file, _gcode_last_rotation
+    global _gcode_preview_bytes, _gcode_refresh_running
     client_id = _next_client_id
     _next_client_id += 1
     client_ip = ws.client.host if ws.client else "unknown"
@@ -3708,40 +3716,37 @@ async def ws_endpoint(ws: WebSocket):
     except Exception as e:
         print(f"[SETTINGS] client#{client_id} settings_init FAILED: {e}", flush=True)
 
-    # Send initial G-code if a file is already loaded
+    # Send initial G-code ping if a file is already loaded. The full preview
+    # payload (feed/rapid polylines, stats) is served over HTTP via GET
+    # /preview — we only broadcast a tiny "ready" notification over the WS
+    # so each client can fetch the cached msgpack bytes out of band.
+    # Cold path (file loaded but not yet parsed): schedule a refresh; the
+    # client's status_loop picks up the ping on the next version bump.
+    # File *content* is fetched separately via GET /gcode.
+    _init_preview_ver = _gcode_preview_version
     try:
         if STAT is not None:
             STAT.poll()
         initial_file = safe_get("file", None)
         if initial_file:
-            preview = parse_gcode_preview(initial_file, get_machine_units())
-            # Read the raw G-code content
-            gcode_content = None
-            try:
-                with open(initial_file, "r", encoding="utf-8", errors="replace") as f:
-                    gcode_content = f.read()
-            except OSError as e:
-                print(f"[INIT] could not read initial gcode {initial_file}: {e}", flush=True)
-
-            await ws_send_json(
-                ws,
-                {
-                    "type": "viewer_gcode",
-                    "data": {
-                        "file": initial_file,
-                        "feed": preview["feed"],
-                        "feed_lines": preview["feed_lines"],
-                        "rapid": preview["rapid"],
-                        "stats": preview.get("stats"),
-                        "content": gcode_content,
-                    },
-                },
+            cache_hit = (
+                _gcode_preview_pending is not None
+                and _gcode_preview_pending.get("file") == initial_file
+                and _gcode_preview_bytes is not None
             )
+            if cache_hit:
+                await ws_send_json(ws, {
+                    "type": "viewer_gcode_ready",
+                    "version": _gcode_preview_version,
+                    "file": initial_file,
+                })
+            elif not _gcode_refresh_running:
+                _gcode_refresh_running = True
+                cur_rot = safe_get("rotation_xy", 0.0) or 0.0
+                asyncio.create_task(_refresh_gcode_preview(initial_file, cur_rot))
     except Exception as e:
         print(f"Error loading initial G-code: {e}")
 
-    last_file: Optional[str] = None
-    last_rotation: Optional[float] = None
     viewer_init_sent = False
     _probe_results: dict = {}  # populated from shared poller probe updates
     _prev_tc_req = False  # previous tool-change-requested state for edge detection
@@ -3749,7 +3754,7 @@ async def ws_endpoint(ws: WebSocket):
 
 
     async def status_loop():
-        nonlocal last_file, armed, viewer_init_sent, _probe_results, _prev_tc_req, _prev_tool_num
+        nonlocal armed, viewer_init_sent, _probe_results, _prev_tc_req, _prev_tool_num
         global _tool_meta_dirty, _fb_scale, _spindle_load_pin
         loop = asyncio.get_event_loop()
         _last_settings_ver = _settings_version
@@ -3765,6 +3770,7 @@ async def ws_endpoint(ws: WebSocket):
         _prev_encode_ms = 0.0  # encode_ms from previous cycle (wire-format serialise time)
         _last_surface_version = 0  # tracks which _surface_points_version was last sent to this client
         _last_comp_grid_version = 0  # tracks which _comp_grid_version was last sent to this client
+        _last_gcode_preview_version = _init_preview_ver  # initialized from connect-time snapshot
         # Experiment 2: status-delta per-client state
         _last_status_data: Optional[Dict[str, Any]] = None
         _cycles_since_full = 0
@@ -3774,7 +3780,6 @@ async def ws_endpoint(ws: WebSocket):
                 if not lcnc_connected:
                     if viewer_init_sent:
                         viewer_init_sent = False
-                        last_file = None
                     if armed:
                         armed = False
                         if client_id in _clients:
@@ -3843,14 +3848,6 @@ async def ws_endpoint(ws: WebSocket):
                     status_msg["safety_trip"] = _unacked_trip
                 if _probe_results:
                     status_msg["probe_results"] = _probe_results
-                if _surface_points_version != _last_surface_version:
-                    if _surface_points_pending:
-                        status_msg["surface_points"] = _surface_points_pending
-                    _last_surface_version = _surface_points_version
-                if _comp_grid_version != _last_comp_grid_version:
-                    if _comp_grid_pending:
-                        status_msg["comp_grid"] = _comp_grid_pending
-                    _last_comp_grid_version = _comp_grid_version
 
                 # Inject tool_meta on tool_number change or library edit (for 3D rendering)
                 if st.tool_number != _prev_tool_num or _tool_meta_dirty:
@@ -3942,58 +3939,55 @@ async def ws_endpoint(ws: WebSocket):
                     _hal_send({"tool_changed": False})
                 _prev_tc_req = st.tool_change_requested
 
-                # Viewer: gcode preview when file or WCS rotation changes
-                cur_rotation = st.rotation_xy if st.rotation_xy is not None else 0.0
-                file_changed = st.active_file and st.active_file != last_file
-                rot_changed = last_file and st.active_file and cur_rotation != last_rotation
+                # Viewer: gcode preview — send a tiny "ready" ping so each
+                # client fetches the cached msgpack bytes via GET /preview.
+                # Broadcasting the full (multi-MB) frame to every client on
+                # the single-threaded WS writer stalled the event loop past
+                # the HAL heartbeat window. File content is fetched via
+                # GET /gcode; preview data is fetched via GET /preview.
+                if _gcode_preview_version != _last_gcode_preview_version:
+                    _last_gcode_preview_version = _gcode_preview_version
+                    pending = _gcode_preview_pending
+                    if _gcode_preview_bytes is not None and pending is not None:
+                        try:
+                            await ws_send_json(ws, {
+                                "type": "viewer_gcode_ready",
+                                "version": _gcode_preview_version,
+                                "file": pending.get("file"),
+                            })
+                        except RuntimeError:
+                            pass
+                    else:
+                        await ws_send_json(ws, {
+                            "type": "viewer_gcode",
+                            "data": {"file": None, "feed": [], "feed_lines": [], "rapid": []},
+                        })
 
-                if file_changed or rot_changed:
-                    last_file = st.active_file
-                    last_rotation = cur_rotation
-                    try:
-                        include_content = file_changed  # only re-read file on file change
+                # Surface points: encoded once in _status_poller, raw-sent here.
+                if _surface_points_version != _last_surface_version:
+                    _last_surface_version = _surface_points_version
+                    sp_frame = _surface_points_frame
+                    if sp_frame is not None:
+                        try:
+                            if _WIRE_FORMAT == "msgpack":
+                                await ws.send_bytes(sp_frame)
+                            else:
+                                await ws.send_text(sp_frame)
+                        except RuntimeError:
+                            pass
 
-                        def _load_gcode(filepath, read_content):
-                            p = parse_gcode_preview(filepath, get_machine_units())
-                            c = None
-                            if read_content:
-                                try:
-                                    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-                                        c = f.read()
-                                except Exception:
-                                    pass
-                            return p, c
-
-                        preview, gcode_content = await loop.run_in_executor(None, _load_gcode, last_file, include_content)
-
-                        data: dict = {
-                            "file": last_file,
-                            "feed": preview["feed"],
-                            "feed_lines": preview["feed_lines"],
-                            "rapid": preview["rapid"],
-                            "stats": preview.get("stats"),
-                        }
-                        if include_content:
-                            data["content"] = gcode_content
-
-                        await ws_send_json(ws, {"type": "viewer_gcode", "data": data})
-                    except Exception as e:
-                        await ws_send_json(
-                            ws,
-                            {
-                                "type": "viewer_gcode",
-                                "ok": False,
-                                "error": f"{type(e).__name__}: {e}",
-                                "data": {"file": last_file},
-                            },
-                        )
-                elif not st.active_file and last_file:
-                    last_file = None
-                    last_rotation = None
-                    await ws_send_json(ws, {
-                        "type": "viewer_gcode",
-                        "data": {"file": None, "feed": [], "feed_lines": [], "rapid": [], "content": None},
-                    })
+                # Compensation grid: encoded once in _status_poller, raw-sent here.
+                if _comp_grid_version != _last_comp_grid_version:
+                    _last_comp_grid_version = _comp_grid_version
+                    cg_frame = _comp_grid_frame
+                    if cg_frame is not None:
+                        try:
+                            if _WIRE_FORMAT == "msgpack":
+                                await ws.send_bytes(cg_frame)
+                            else:
+                                await ws.send_text(cg_frame)
+                        except RuntimeError:
+                            pass
 
                 # Heartbeat timeout
                 if client_id in _clients:
@@ -4178,15 +4172,16 @@ async def ws_endpoint(ws: WebSocket):
                 continue
 
             reply = await handle_command(msg, armed)
-            if msg.get("cmd") == "load_file" and reply.get("ok"):
-                last_file = None  # force status_loop to re-read on next poll
-            elif msg.get("cmd") == "unload_file" and reply.get("ok"):
-                # Clear viewer immediately — reset_interpreter doesn't clear stat.file,
-                # so the status loop would otherwise re-read the same file.
-                await ws_send_json(ws, {
-                    "type": "viewer_gcode",
-                    "data": {"file": None, "feed": [], "feed_lines": [], "rapid": [], "content": None},
-                })
+            if msg.get("cmd") == "unload_file" and reply.get("ok"):
+                # reset_interpreter doesn't clear stat.file, so the shared
+                # poller's file-change edge won't fire. Clear the shared
+                # cache and bump the version so every client's status_loop
+                # sends an empty viewer_gcode on the next cycle.
+                _gcode_preview_pending = None
+                _gcode_preview_bytes = None
+                _gcode_preview_version += 1
+                _gcode_last_file = None
+                _gcode_last_rotation = None
             await ws_send_json(ws, {"type": "reply", **reply})
 
     except (WebSocketDisconnect, RuntimeError):

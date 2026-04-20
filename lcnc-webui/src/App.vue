@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, provide, reactive, ref, watch } from "vue";
 import { evaluatePermissions, PERMISSIONS_KEY, type Permissions } from "./permissions";
-import { connectWs, connected, status, send, armed, lastReply, viewerGcode, viewerInit, lcncError, latency, networkLatency, messages, unreadCount, dismissMessage, clearAllMessages, markMessagesRead, safetyTrip, acknowledgeSafetyTrip, type LcncMessage } from "./lcncWs";
+import { connectWs, connected, status, send, armed, lastReply, viewerGcode, viewerInit, gcodeContent, lcncError, latency, networkLatency, messages, unreadCount, dismissMessage, clearAllMessages, markMessagesRead, safetyTrip, acknowledgeSafetyTrip, type LcncMessage } from "./lcncWs";
 import ThreeViewer from "./ThreeViewer.vue";
 import Toolbar from "./Toolbar.vue";
 import TabPanel from "./TabPanel.vue";
@@ -325,8 +325,7 @@ function saveViewerState() {
   });
 }
 
-// G-code viewer
-const gcodeContent = ref<string | null>(null);
+// G-code viewer — gcodeContent is fetched via HTTP by lcncWs on viewer_gcode
 const gcodeStats = ref<GcodeStats | null>(null);
 const statsDialogOpen = ref(false);
 
@@ -1250,12 +1249,10 @@ watch(lastReply, (r: any) => {
   if (r?.ok && r.comp_grid) compGrid.value = r.comp_grid;
 }, { flush: "sync" });
 
-/** ---------- G-code content watcher ---------- */
+/** ---------- G-code stats watcher ---------- */
+// Content is fetched over HTTP by lcncWs (see gcodeContent ref). Here we only
+// track the stats payload that still rides inside the viewer_gcode frame.
 watch(viewerGcode, (newGcode) => {
-  // content is omitted on rotation-only re-parses (toolpath update without file change)
-  if ("content" in (newGcode ?? {})) {
-    gcodeContent.value = newGcode?.content ?? null;
-  }
   gcodeStats.value = newGcode?.stats ?? null;
 });
 

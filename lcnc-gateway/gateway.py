@@ -414,11 +414,13 @@ _gcode_refresh_running: bool = False            # single-flight guard
 # GET /preview so the 2.7 MB polyline payload never touches the WS writer.
 _gcode_preview_bytes: Optional[bytes] = None
 
-# Pre-encoded WS frames for surface_points / comp_grid (encode-once pattern).
-# Rebuilt in _status_poller on version bump so every client's status_loop ships
-# the cached bytes via ws.send_* — no N-way encode.
-_surface_points_frame: Optional[object] = None
-_comp_grid_frame: Optional[object] = None
+# Pre-encoded msgpack bytes of the surface_points / comp_grid data dicts.
+# Served over HTTP by GET /surface_points and GET /comp_grid so the 10-80 KB
+# per-client fan-out never touches the single-threaded WS writer. Clients
+# receive a tiny *_ready JSON ping on version bump and fetch the cached
+# bytes out of band.
+_surface_points_bytes: Optional[bytes] = None
+_comp_grid_bytes: Optional[bytes] = None
 
 # Path to the subprocess parse worker (spawned via asyncio.create_subprocess_exec).
 _GCODE_WORKER_PATH = str(BASE_DIR / "gcode_parse_worker.py")
@@ -541,7 +543,7 @@ async def _status_poller():
     global _gcode_preview_pending, _gcode_preview_version
     global _gcode_last_file, _gcode_last_rotation, _gcode_refresh_running
     global _gcode_preview_bytes
-    global _surface_points_frame, _comp_grid_frame
+    global _surface_points_bytes, _comp_grid_bytes
     loop = asyncio.get_event_loop()
     _poll_fails = 0
     _last_pid_check = 0.0
@@ -625,8 +627,8 @@ async def _status_poller():
                 pts = _read_probe_results_file()
                 if pts:
                     _surface_points_pending = pts
-                    _surface_points_frame = await asyncio.to_thread(
-                        _encode_ws_frame, {"type": "surface_points", "data": pts}
+                    _surface_points_bytes = await asyncio.to_thread(
+                        _msgspec.msgpack.encode, pts
                     )
                     _surface_points_version += 1
                 _surface_initialized = True
@@ -636,8 +638,8 @@ async def _status_poller():
                 pts = _read_probe_results_file()
                 if pts:
                     _surface_points_pending = pts
-                    _surface_points_frame = await asyncio.to_thread(
-                        _encode_ws_frame, {"type": "surface_points", "data": pts}
+                    _surface_points_bytes = await asyncio.to_thread(
+                        _msgspec.msgpack.encode, pts
                     )
                     _surface_points_version += 1
 
@@ -646,8 +648,8 @@ async def _status_poller():
                 grid = _read_comp_grid_file()
                 if grid:
                     _comp_grid_pending = grid
-                    _comp_grid_frame = await asyncio.to_thread(
-                        _encode_ws_frame, {"type": "comp_grid", "data": grid}
+                    _comp_grid_bytes = await asyncio.to_thread(
+                        _msgspec.msgpack.encode, grid
                     )
                     _comp_grid_version += 1
                 _last_comp_hal_ver = st.comp_grid_version  # sync — prevents re-fire below
@@ -659,8 +661,8 @@ async def _status_poller():
                 grid = _read_comp_grid_file()
                 if grid:
                     _comp_grid_pending = grid
-                    _comp_grid_frame = await asyncio.to_thread(
-                        _encode_ws_frame, {"type": "comp_grid", "data": grid}
+                    _comp_grid_bytes = await asyncio.to_thread(
+                        _msgspec.msgpack.encode, grid
                     )
                     _comp_grid_version += 1
                 _last_comp_hal_ver = st.comp_grid_version
@@ -3533,6 +3535,45 @@ def get_preview(v: Optional[int] = None):
     )
 
 
+@app.get("/surface_points")
+def get_surface_points(v: Optional[int] = None):
+    """Return the cached msgpack-encoded surface-scan points.
+
+    Served off the WS writer so the 10-80 KB payload × N clients doesn't
+    stall the event loop past the HAL heartbeat window. `v` is advisory —
+    a cache-buster so each version is a distinct URL.
+    """
+    if _surface_points_bytes is None:
+        raise HTTPException(status_code=404, detail="No surface data")
+    return Response(
+        content=_surface_points_bytes,
+        media_type="application/x-msgpack",
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "X-Surface-Version": str(_surface_points_version),
+        },
+    )
+
+
+@app.get("/comp_grid")
+def get_comp_grid(v: Optional[int] = None):
+    """Return the cached msgpack-encoded compensation grid.
+
+    Same pattern as /surface_points — keeps the up-to-~80 KB grid off the
+    single-threaded WS writer.
+    """
+    if _comp_grid_bytes is None:
+        raise HTTPException(status_code=404, detail="No comp grid")
+    return Response(
+        content=_comp_grid_bytes,
+        media_type="application/x-msgpack",
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "X-Comp-Grid-Version": str(_comp_grid_version),
+        },
+    )
+
+
 # ---------- HAL viewer ----------
 
 def _parse_hal_pins() -> list:
@@ -3963,29 +4004,29 @@ async def ws_endpoint(ws: WebSocket):
                             "data": {"file": None, "feed": [], "feed_lines": [], "rapid": []},
                         })
 
-                # Surface points: encoded once in _status_poller, raw-sent here.
+                # Surface points: cached msgpack lives on the server; send a
+                # tiny version ping so each client fetches via GET /surface_points
+                # off the WS writer.
                 if _surface_points_version != _last_surface_version:
                     _last_surface_version = _surface_points_version
-                    sp_frame = _surface_points_frame
-                    if sp_frame is not None:
+                    if _surface_points_bytes is not None:
                         try:
-                            if _WIRE_FORMAT == "msgpack":
-                                await ws.send_bytes(sp_frame)
-                            else:
-                                await ws.send_text(sp_frame)
+                            await ws_send_json(ws, {
+                                "type": "surface_points_ready",
+                                "version": _surface_points_version,
+                            })
                         except RuntimeError:
                             pass
 
-                # Compensation grid: encoded once in _status_poller, raw-sent here.
+                # Compensation grid: same pattern — fetch via GET /comp_grid.
                 if _comp_grid_version != _last_comp_grid_version:
                     _last_comp_grid_version = _comp_grid_version
-                    cg_frame = _comp_grid_frame
-                    if cg_frame is not None:
+                    if _comp_grid_bytes is not None:
                         try:
-                            if _WIRE_FORMAT == "msgpack":
-                                await ws.send_bytes(cg_frame)
-                            else:
-                                await ws.send_text(cg_frame)
+                            await ws_send_json(ws, {
+                                "type": "comp_grid_ready",
+                                "version": _comp_grid_version,
+                            })
                         except RuntimeError:
                             pass
 

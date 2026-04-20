@@ -16,6 +16,8 @@ export default defineConfig({
       '/files': 'http://127.0.0.1:8000',
       '/gcode': 'http://127.0.0.1:8000',
       '/preview': 'http://127.0.0.1:8000',
+      '/surface_points': 'http://127.0.0.1:8000',
+      '/comp_grid': 'http://127.0.0.1:8000',
       '/upload': 'http://127.0.0.1:8000',
       '/save': 'http://127.0.0.1:8000',
       '/hal': 'http://127.0.0.1:8000',

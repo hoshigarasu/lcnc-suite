@@ -142,6 +142,46 @@ let _gcodeFetchAbort: AbortController | null = null;
 let _previewFetchAbort: AbortController | null = null;
 let _previewLastVersion = -1;
 
+// Surface-scan / comp-grid fetch guards. Same pattern as preview: per-channel
+// AbortController so a newer version cancels an in-flight older fetch, and a
+// "last version" sentinel to skip duplicate pings.
+let _surfaceFetchAbort: AbortController | null = null;
+let _surfaceLastVersion = -1;
+let _compGridFetchAbort: AbortController | null = null;
+let _compGridLastVersion = -1;
+
+function _fetchBulk(
+  url: string,
+  version: number,
+  getLast: () => number,
+  setLast: (v: number) => void,
+  getAbort: () => AbortController | null,
+  setAbort: (ac: AbortController | null) => void,
+  apply: (data: any) => void,
+  label: string,
+) {
+  if (version === getLast()) return;
+  setLast(version);
+  const prev = getAbort();
+  if (prev) { prev.abort(); }
+  const ac = new AbortController();
+  setAbort(ac);
+  fetch(`${url}?v=${version}`, { signal: ac.signal })
+    .then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`)))
+    .then(buf => {
+      if (getLast() !== version) return;  // newer version already won
+      const data = msgpackDecode(new Uint8Array(buf));
+      apply(data);
+    })
+    .catch(err => {
+      if (err?.name !== "AbortError") {
+        console.error(`GET ${url} failed`, err);
+        if (getLast() === version) setLast(-1);  // let next bump retry
+      }
+    });
+  void label;
+}
+
 function _applyGcodeFile(nextFile: string | null) {
   if (nextFile === _gcodeContentFile) return;
   _gcodeContentFile = nextFile;
@@ -386,10 +426,22 @@ export function connectWs() {
       const file: string | null = msg.file ?? null;
       _fetchPreview(version, file);
       _applyGcodeFile(file);
-    } else if (msg.type === "surface_points") {
-      status.value = { ...(status.value ?? {}), surface_points: msg.data };
-    } else if (msg.type === "comp_grid") {
-      status.value = { ...(status.value ?? {}), comp_grid: msg.data };
+    } else if (msg.type === "surface_points_ready") {
+      _fetchBulk(
+        "/surface_points", msg.version ?? 0,
+        () => _surfaceLastVersion, v => { _surfaceLastVersion = v; },
+        () => _surfaceFetchAbort, ac => { _surfaceFetchAbort = ac; },
+        data => { status.value = { ...(status.value ?? {}), surface_points: data }; },
+        "surface_points",
+      );
+    } else if (msg.type === "comp_grid_ready") {
+      _fetchBulk(
+        "/comp_grid", msg.version ?? 0,
+        () => _compGridLastVersion, v => { _compGridLastVersion = v; },
+        () => _compGridFetchAbort, ac => { _compGridFetchAbort = ac; },
+        data => { status.value = { ...(status.value ?? {}), comp_grid: data }; },
+        "comp_grid",
+      );
     } else if (msg.type === "settings_changed" || msg.type === "settings_init") {
       updateServerCache(msg.settings);
     }

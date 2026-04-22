@@ -3293,13 +3293,32 @@ _FUSION_TYPE_MAP = {
 }
 
 
+def _fusion_unit_scale(src: Optional[str], machine_unit: str) -> float:
+    """Multiplier to convert a Fusion `unit` field value to machine native units.
+    Fusion writes "millimeters" or "inches"; default to mm if missing/unknown.
+    """
+    src_mm = not (src or "millimeters").lower().startswith("in")
+    machine_mm = machine_unit == "mm"
+    if src_mm == machine_mm:
+        return 1.0
+    return 25.4 if (not src_mm and machine_mm) else (1.0 / 25.4)
+
+
+def _opt_scale(v, scale: float):
+    return None if v is None else v * scale
+
+
 def _parse_fusion_library(data: dict) -> tuple[list, list]:
     """Parse a Fusion 360 Library.json → (tools, skipped_duplicates).
 
     Tools with duplicate numbers are excluded from the main list and returned
     separately so the caller can warn about them.  The *first* occurrence of
     each number is kept; later duplicates are skipped.
+
+    Linear dimensions are converted from each entry's `unit` (and each
+    holder's `unit`) into the machine's native linear unit.
     """
+    machine_unit = get_ini_config().get("linear_units", "mm")
     tools: list[dict] = []
     skipped: list[dict] = []
     seen_nums: dict[int, int] = {}          # tool_num → index in tools[]
@@ -3316,23 +3335,25 @@ def _parse_fusion_library(data: dict) -> tuple[list, list]:
         fusion_type = entry.get("type", "")
         our_type = _FUSION_TYPE_MAP.get(fusion_type, "other")
 
+        tool_scale = _fusion_unit_scale(entry.get("unit"), machine_unit)
+
         tool = {
             "T": int(tool_num),
-            "D": float(geom.get("DC", 0)),
+            "D": float(geom.get("DC", 0)) * tool_scale,
             "description": entry.get("description", "").strip(),
             "type": our_type,
             "flutes": geom.get("NOF"),
-            "oal": geom.get("OAL"),
-            "flute_length": geom.get("LCF"),
-            "corner_radius": geom.get("RE"),
-            "body_length": geom.get("LB"),
-            "shaft_diameter": geom.get("SFDM"),
+            "oal": _opt_scale(geom.get("OAL"), tool_scale),
+            "flute_length": _opt_scale(geom.get("LCF"), tool_scale),
+            "corner_radius": _opt_scale(geom.get("RE"), tool_scale),
+            "body_length": _opt_scale(geom.get("LB"), tool_scale),
+            "shaft_diameter": _opt_scale(geom.get("SFDM"), tool_scale),
             "taper_angle": geom.get("TA"),
             "point_angle": geom.get("SIG"),
-            "tip_diameter": geom.get("tip-diameter"),
-            "shoulder_length": geom.get("shoulder-length"),
-            "shoulder_diameter": geom.get("shoulder-diameter"),
-            "assembly_gauge_length": geom.get("assemblyGaugeLength"),
+            "tip_diameter": _opt_scale(geom.get("tip-diameter"), tool_scale),
+            "shoulder_length": _opt_scale(geom.get("shoulder-length"), tool_scale),
+            "shoulder_diameter": _opt_scale(geom.get("shoulder-diameter"), tool_scale),
+            "assembly_gauge_length": _opt_scale(geom.get("assemblyGaugeLength"), tool_scale),
             "material": entry.get("BMC"),
             "holder": holder.get("description") if holder else None,
             "fusion_type": fusion_type,
@@ -3349,19 +3370,31 @@ def _parse_fusion_library(data: dict) -> tuple[list, list]:
                 tool["point_angle"] *= 2
         # (drill/spot drill SIG is already the full included angle — no adjustment needed)
 
-        # Normalize holder segments (stacked frustums) for 3D rendering
+        # Holders carry their own `unit` independent of the tool body.
         holder_segs = holder.get("segments", []) if holder else []
         if holder_segs:
+            holder_scale = _fusion_unit_scale(holder.get("unit"), machine_unit)
             tool["holder_segments"] = [
-                {"height": s["height"], "lower_diameter": s["lower-diameter"],
-                 "upper_diameter": s["upper-diameter"]}
+                {"height": s["height"] * holder_scale,
+                 "lower_diameter": s["lower-diameter"] * holder_scale,
+                 "upper_diameter": s["upper-diameter"] * holder_scale}
                 for s in holder_segs if "height" in s
             ]
-        # Preserve form mill profile (2D outline segments) for 3D rendering
+        # Form-mill profile coords share the tool's unit; arcs add a `center` pair.
         if our_type == "formmill":
             raw_profile = geom.get("profile")
             if raw_profile and isinstance(raw_profile, list):
-                tool["profile"] = raw_profile
+                scaled_profile = []
+                for seg in raw_profile:
+                    new_seg = dict(seg)
+                    if "end" in seg:
+                        new_seg["end"] = [seg["end"][0] * tool_scale,
+                                          seg["end"][1] * tool_scale]
+                    if "center" in seg:
+                        new_seg["center"] = [seg["center"][0] * tool_scale,
+                                             seg["center"][1] * tool_scale]
+                    scaled_profile.append(new_seg)
+                tool["profile"] = scaled_profile
         # Preserve raw presets (speeds/feeds per material) for sidecar
         if presets:
             tool["presets"] = presets

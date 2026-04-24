@@ -919,6 +919,17 @@ async function fire(payload: any, gate?: keyof Permissions, cooldownMs = 200) {
   }
 }
 
+function onRunProbe({ vars, macro }: { vars: Record<string, number>; macro: string }) {
+  if (busy.value || !permissions.value.ready) return;
+  busy.value = true;
+  try {
+    send({ cmd: 'set_probe_vars', vars });
+    send({ cmd: 'mdi', text: `O<${macro}> CALL` });
+  } finally {
+    window.setTimeout(() => (busy.value = false), 200);
+  }
+}
+
 function setAxis(axis: number, value: number = 0) {
   const axisName = AXIS_LETTERS[axis];
   if (!axisName) return;
@@ -1407,6 +1418,7 @@ watch(viewerGcode, (newGcode) => {
               @abort="fire({ cmd: 'abort' }, 'abort')"
               @simTrip="send({ cmd: 'simulate_probe_trip' })"
               @setProbeVars="fire({ cmd: 'set_probe_vars', vars: $event }, 'setup')"
+              @runProbe="onRunProbe($event)"
               @getProbeResults="requestProbeResults"
               @getCompGrid="requestCompGrid"
               @setCompensation="requestCompToggle"

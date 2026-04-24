@@ -32,6 +32,7 @@ const emit = defineEmits<{
   (e: "simTrip"): void;
   (e: "listProbeMacros"): void;
   (e: "setProbeVars", vars: Record<string, number>): void;
+  (e: "runProbe", payload: { vars: Record<string, number>; macro: string }): void;
   (e: "getProbeResults"): void;
   (e: "getCompGrid"): void;
   (e: "setCompensation", enable: boolean): void;
@@ -255,8 +256,7 @@ function runGridProbe(op: GridOp) {
   activeGridOp.value = op.id;
   saveProbeDefaults({ ...params.value, autoZero: autoZero.value });
   const vars = buildVarMap(autoZero.value ? 0 : 1);
-  emit("setProbeVars", vars);
-  emit("mdi", `O<${op.macro}> CALL`);
+  emit("runProbe", { vars, macro: op.macro });
 }
 
 function runBossProbe(op: GridOp) {
@@ -264,8 +264,7 @@ function runBossProbe(op: GridOp) {
   activeGridOp.value = op.id;
   saveProbeDefaults({ ...params.value, autoZero: autoZero.value });
   const vars = buildVarMap(autoZero.value ? 0 : 1);
-  emit("setProbeVars", vars);
-  emit("mdi", `O<${op.macro}> CALL`);
+  emit("runProbe", { vars, macro: op.macro });
 }
 
 function runRidgeProbe(op: GridOp) {
@@ -273,8 +272,7 @@ function runRidgeProbe(op: GridOp) {
   activeGridOp.value = op.id;
   saveProbeDefaults({ ...params.value, autoZero: autoZero.value });
   const vars = buildVarMap(autoZero.value ? 0 : 1);
-  emit("setProbeVars", vars);
-  emit("mdi", `O<${op.macro}> CALL`);
+  emit("runProbe", { vars, macro: op.macro });
 }
 
 function runAngleProbe(op: GridOp) {
@@ -282,8 +280,7 @@ function runAngleProbe(op: GridOp) {
   activeGridOp.value = op.id;
   saveProbeDefaults({ ...params.value, autoZero: autoZero.value });
   const vars = buildVarMap(autoZero.value ? 0 : 1);
-  emit("setProbeVars", vars);
-  emit("mdi", `O<${op.macro}> CALL`);
+  emit("runProbe", { vars, macro: op.macro });
 }
 
 function runCalProbe(macro: string) {
@@ -291,8 +288,7 @@ function runCalProbe(macro: string) {
   saveProbeDefaults({ ...params.value, autoZero: autoZero.value });
   const vars = buildVarMap(autoZero.value ? 0 : 1);
   vars["3036"] = calAxis.value;
-  emit("setProbeVars", vars);
-  emit("mdi", `O<${macro}> CALL`);
+  emit("runProbe", { vars, macro });
 }
 
 function resetCal() {
@@ -305,8 +301,7 @@ function runSurfaceScan() {
   if (!can.value.ready || props.probing) return;
   saveProbeDefaults({ ...params.value, autoZero: autoZero.value });
   const vars = buildVarMap(autoZero.value ? 0 : 1);
-  emit("setProbeVars", vars);
-  emit("mdi", "O<surface_scan> CALL");
+  emit("runProbe", { vars, macro: "surface_scan" });
 }
 
 function refreshSurface() {

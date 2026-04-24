@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from "vue";
-import { lastReply, connected, send } from "./lcncWs";
+import { ref, computed, onMounted, nextTick } from "vue";
+import { send } from "./lcncWs";
 import { usePermissions } from "./permissions";
 import { fmtOffset } from "./format";
 import { openKeypad, keypadMode } from "./useNumberKeypad";
@@ -11,6 +11,8 @@ import Gate from "./Gate.vue";
 
 const can = usePermissions();
 
+type WcsRow = { name: string; [axis: string]: string | number };
+
 const props = defineProps<{
   axes: string[];
   g5xLabel: string;
@@ -19,35 +21,15 @@ const props = defineProps<{
   eoffsetZ: number | null;
   eoffsetEnabled: boolean;
   rotationXy: number | null;
+  wcsTable: WcsRow[];
 }>();
 
-// ─── WCS table data ──────────────────────────────────────────
-type WcsRow = { name: string; [axis: string]: string | number };
-const wcsTable = ref<WcsRow[]>([]);
 const selectedWcs = ref<string | null>(null);
-const loading = ref(false);
 
 const offsetColumns = computed(() => [...props.axes.map(l => l.toLowerCase()), "r"]);
 
-function fetchTable() {
-  loading.value = true;
-  send({ cmd: "get_wcs_table" });
-}
-
-watch(lastReply, (r) => {
-  if (r?.ok && r.table) {
-    wcsTable.value = r.table;
-    loading.value = false;
-  }
-}, { flush: "sync" });
-
 onMounted(() => {
   selectedWcs.value = props.g5xLabel;
-  fetchTable();
-});
-
-watch(connected, (val) => {
-  if (val) setTimeout(fetchTable, 300);
 });
 
 // Formatting imported from format.ts (fmtOffset)
@@ -60,7 +42,7 @@ const hasComp = computed(() => props.eoffsetZ != null && props.eoffsetZ !== 0);
 // @ts-expect-error TS6133 — hasRotation will be used for warning badge
 const hasRotation = computed(() => {
   if (props.rotationXy != null && props.rotationXy !== 0) return true;
-  const activeRow = wcsTable.value.find(r => r.name === props.g5xLabel);
+  const activeRow = props.wcsTable.find(r => r.name === props.g5xLabel);
   return activeRow != null && activeRow.r !== 0;
 });
 
@@ -71,8 +53,6 @@ const offsetInputRef = ref<HTMLInputElement | null>(null);
 
 function applyEdit(wcs: string, axis: string, v: number) {
   send({ cmd: "set_wcs", target: wcs, [axis]: v });
-  const row = wcsTable.value.find(r => r.name === wcs);
-  if (row) (row as Record<string, string | number>)[axis] = v;
 }
 
 function startEditCell(wcs: string, axis: string, current: number) {
@@ -110,16 +90,10 @@ function cancelEdit() { editingCell.value = null; }
 function clearSelected() {
   if (!selectedWcs.value) return;
   send({ cmd: "clear_wcs", target: selectedWcs.value });
-  const zeroed = Object.fromEntries(offsetColumns.value.map(k => [k, 0]));
-  wcsTable.value = wcsTable.value.map(row =>
-    row.name === selectedWcs.value ? { ...row, ...zeroed } : row
-  );
 }
 
 function clearAll() {
   send({ cmd: "clear_wcs", target: "all" });
-  const zeroed = Object.fromEntries(offsetColumns.value.map(k => [k, 0]));
-  wcsTable.value = wcsTable.value.map(row => ({ ...row, ...zeroed }));
 }
 </script>
 
@@ -151,7 +125,7 @@ function clearAll() {
         </thead>
         <tbody>
           <!-- WCS rows (G54–G59.3) -->
-          <tr v-for="row in wcsTable" :key="row.name"
+          <tr v-for="row in props.wcsTable" :key="row.name"
               :class="{ activeRow: row.name === g5xLabel, selectedRow: row.name === selectedWcs }"
               @click="selectedWcs = row.name as string">
             <td class="offLabel">{{ row.name }}</td>

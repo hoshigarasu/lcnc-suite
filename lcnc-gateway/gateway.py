@@ -116,7 +116,7 @@ _WCS_NAMES = ["G54", "G55", "G56", "G57", "G58", "G59", "G59.1", "G59.2", "G59.3
 _G5X_MAP = {"G54": 1, "G55": 2, "G56": 3, "G57": 4, "G58": 5, "G59": 6, "G59.1": 7, "G59.2": 8, "G59.3": 9}
 _WCS_AXIS_KEYS = ["x", "y", "z", "a", "b", "c", "u", "v", "w"]
 _wcs_cache = [{"name": n, "x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0, "b": 0.0, "c": 0.0, "u": 0.0, "v": 0.0, "w": 0.0, "r": 0.0} for n in _WCS_NAMES]
-_wcs_cache_seeded = False
+_wcs_var_file_mtime: Optional[float] = None  # None means "not yet seeded"
 
 # ---- Connected WebSocket clients ----
 _clients: Dict[int, Dict[str, Any]] = {}
@@ -892,12 +892,12 @@ def check_lcnc_instance() -> bool:
             return True
         return False
     # PID changed (appeared, disappeared, or different instance)
-    global _wcs_cache_seeded
+    global _wcs_var_file_mtime
     old_pid = _lcnc_pid
     _lcnc_pid = pid
     _tool_tbl_path = None  # config may have changed, re-resolve from INI
     _tool_tbl_ini = None
-    _wcs_cache_seeded = False  # re-seed WCS cache from var file on next poll
+    _wcs_var_file_mtime = None  # force re-seed of WCS cache from var file on next poll
     if pid is None:
         print(f"[VINIT] check_lcnc_instance: PID gone (was {old_pid}), disconnecting", flush=True)
         lcnc_connected = False
@@ -1405,6 +1405,7 @@ class StatusPayload:
     g5x_offset: Optional[List[float]]
     g92_offset: Optional[List[float]]
     rotation_xy: Optional[float]
+    wcs_table: Optional[List[Dict[str, Any]]]  # all 9 WCS slots (G54–G59.3) w/ per-axis + rotation
     joint_pos: Optional[List[float]]
     tool_offset: Optional[List[float]]
     machine_pos: Optional[List[float]]
@@ -1735,19 +1736,30 @@ def _read_var_file(path: str, wanted: set) -> Dict[str, float]:
     return result
 
 
-def _seed_wcs_cache():
-    """One-time seed of _wcs_cache from the var file (correct at startup)."""
-    global _wcs_cache_seeded
+def _resolve_var_file_path() -> Optional[str]:
+    """Resolve absolute path to the LinuxCNC var file from the active INI."""
+    ini_path = getattr(STAT, "ini_filename", None)
+    if not ini_path:
+        return None
     try:
-        ini_path = getattr(STAT, "ini_filename", None)
-        if not ini_path:
-            return
         ini = linuxcnc.ini(ini_path)
-        var_file = ini.find("RS274NGC", "PARAMETER_FILE")
+    except Exception:
+        return None
+    var_file = ini.find("RS274NGC", "PARAMETER_FILE")
+    if not var_file:
+        return None
+    if not os.path.isabs(var_file):
+        var_file = os.path.join(os.path.dirname(ini_path), var_file)
+    return var_file
+
+
+def _seed_wcs_cache():
+    """Re-read _wcs_cache from the var file. Safe to call repeatedly."""
+    global _wcs_var_file_mtime
+    try:
+        var_file = _resolve_var_file_path()
         if not var_file:
             return
-        if not os.path.isabs(var_file):
-            var_file = os.path.join(os.path.dirname(ini_path), var_file)
         var_map = {}
         for i, base in enumerate(_WCS_BASES):
             for j, key in enumerate(_WCS_AXIS_KEYS):
@@ -1757,8 +1769,10 @@ def _seed_wcs_cache():
         for var_key, value in raw.items():
             idx, field = var_map[var_key]
             _wcs_cache[idx][field] = value
-        _wcs_cache_seeded = True
-        print("[wcs] cache seeded from var file", flush=True)
+        try:
+            _wcs_var_file_mtime = os.path.getmtime(var_file)
+        except OSError:
+            _wcs_var_file_mtime = None
     except Exception as e:
         print(f"[wcs] seed cache failed: {e}", flush=True)
 
@@ -1790,9 +1804,19 @@ def poll_status() -> StatusPayload:
     g92 = to_float_list(safe_get("g92_offset", None))
     rotation_xy = safe_get("rotation_xy", None)
 
-    # Update WCS cache with live active-WCS data from STAT
-    if not _wcs_cache_seeded:
-        _seed_wcs_cache()
+    # Update WCS cache: re-seed from var file whenever its mtime changes.
+    # LinuxCNC rewrites the var file on interpreter sync (program end, MDI
+    # completion that wrote vars, probe macros). This catches writes to
+    # inactive slots. Active slot is overwritten from STAT below — mid-motion
+    # authoritative source.
+    try:
+        _vfp = _resolve_var_file_path()
+        if _vfp:
+            _vmt = os.path.getmtime(_vfp)
+            if _wcs_var_file_mtime is None or _vmt != _wcs_var_file_mtime:
+                _seed_wcs_cache()
+    except OSError:
+        pass  # var file may be momentarily absent during rename-atomic writes
     if g5x_index is not None and g5x is not None:
         ci = g5x_index - 1  # STAT.g5x_index is 1-based
         if 0 <= ci < 9:
@@ -2002,6 +2026,7 @@ def poll_status() -> StatusPayload:
         g5x_offset=g5x,
         g92_offset=g92,
         rotation_xy=rotation_xy,
+        wcs_table=[row.copy() for row in _wcs_cache],
         joint_pos=joint_pos,
         tool_offset=tool_offset,
         machine_pos=machine_pos,

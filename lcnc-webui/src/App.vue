@@ -1469,6 +1469,7 @@ watch(viewerGcode, (newGcode) => {
               :eoffsetZ="st.eoffset_z ?? null"
               :eoffsetEnabled="!!st.eoffset_enabled"
               :rotationXy="st.rotation_xy ?? null"
+              :wcsTable="st.wcs_table ?? []"
             />
           </template>
 

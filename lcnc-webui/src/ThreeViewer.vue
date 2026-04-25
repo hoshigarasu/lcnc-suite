@@ -381,6 +381,21 @@ function frameToBounds(box: THREE.Box3) {
   controls.update();
 }
 
+// Generic view-direction setter — places the camera along `dir` from the orbit
+// target at the current distance, with the given `up` vector. Used by both the
+// named-preset setView() wrapper and (later) the ViewCube overlay, which passes
+// arbitrary directions for edges and corners.
+function applyViewDirection(dir: THREE.Vector3, up: THREE.Vector3) {
+  if (!camera || !controls) return;
+  const target = controls.target;
+  const dist = camera.position.distanceTo(target);
+  const offset = dir.clone().normalize().multiplyScalar(dist);
+  camera.position.copy(target).add(offset);
+  camera.up.copy(up);
+  camera.updateProjectionMatrix();
+  controls.update();
+}
+
 function setView(p: ViewPreset) {
   if (!camera || !controls) return;
 
@@ -390,29 +405,21 @@ function setView(p: ViewPreset) {
     return;
   }
 
-  const target = controls.target;
-  const dist = camera.position.distanceTo(target);
-
   const dir = new THREE.Vector3();
-  let up: [number, number, number] = [0, 0, 1];
+  const up = new THREE.Vector3(0, 0, 1);
 
   switch (p) {
-    case "top":      dir.set(0, 0, 1);     up = [0, 1, 0]; break;
-    case "bottom":   dir.set(0, 0, -1);    up = [0, -1, 0]; break;
-    case "front":    dir.set(1, 0, 0);     break;
-    case "back":     dir.set(-1, 0, 0);    break;
-    case "left":     dir.set(0, -1, 0);    break;
-    case "right":    dir.set(0, 1, 0);     break;
-    case "iso":      dir.set(1, -1, 0.8);  break;
+    case "top":      dir.set(0, 0, 1);      up.set(0, 1, 0); break;
+    case "bottom":   dir.set(0, 0, -1);     up.set(0, -1, 0); break;
+    case "front":    dir.set(1, 0, 0);      break;
+    case "back":     dir.set(-1, 0, 0);     break;
+    case "left":     dir.set(0, -1, 0);     break;
+    case "right":    dir.set(0, 1, 0);      break;
+    case "iso":      dir.set(1, -1, 0.8);   break;
     case "dimetric": dir.set(0.7, -0.7, 1); break;
   }
 
-  dir.normalize().multiplyScalar(dist);
-  camera.position.copy(target).add(dir);
-  camera.up.set(...up);
-
-  camera.updateProjectionMatrix();
-  controls.update();
+  applyViewDirection(dir, up);
 }
 
 const PERSP_FOV = 45;
@@ -1959,6 +1966,7 @@ function setToolColors(toolColor: string | null, cutterColor: string | null) {
 defineExpose({
   resetBackplot,
   setView,
+  applyViewDirection,
   setLayerVisible,
   setPathAlwaysOnTop,
   setTrackingMode,

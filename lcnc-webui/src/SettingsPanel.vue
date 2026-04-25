@@ -1341,6 +1341,7 @@ const halStats = computed(() => ({
 .halGroupHeader {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--gap-tight);
   padding: var(--gap-tight) 0;
   background: none;
@@ -1396,14 +1397,12 @@ const halStats = computed(() => ({
 .halType {
   width: 36px;
   flex-shrink: 0;
-  text-align: center;
   opacity: var(--opacity-muted);
 }
 
 .halDir {
   width: 24px;
   flex-shrink: 0;
-  text-align: center;
   opacity: var(--opacity-muted);
 }
 

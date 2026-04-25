@@ -2096,7 +2096,7 @@ defineExpose({
   position: absolute;
   z-index: 1;
   top: 12px;
-  right: 12px;
+  left: 12px;
   display: flex;
   flex-direction: column;
   gap: var(--gap-controls);

@@ -784,11 +784,19 @@ async def _status_poller():
                 "poller_ts": t3,
             }
             # Snapshot prior tick's aggregate before rolling gen. Silent under
-            # normal load — only logs when a tick looks stall-adjacent.
+            # normal load. wall_ms naturally ≈ heartbeat period (~33 ms at
+            # 30 Hz active, ~200 ms at 5 Hz idle), so we only log on genuine
+            # outliers: an unfinished client (done<expected → real stall),
+            # a slow per-client send (send_max>20 ms), or wall_ms well above
+            # the idle floor (>400 ms but still under the 500 ms HAL trip).
             _s = _status_tick_stats
             if _s["expected"] > 0:
                 _wall_ms = (time.monotonic() - _s["tick_start"]) * 1000
-                if _wall_ms > 50 or _s["send_max"] > 20:
+                if (
+                    _s["done"] < _s["expected"]
+                    or _s["send_max"] > 20
+                    or _wall_ms > 400
+                ):
                     print(
                         f"[STATUS] tick gen={_s['gen']} "
                         f"clients={_s['done']}/{_s['expected']} "

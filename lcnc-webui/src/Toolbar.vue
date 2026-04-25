@@ -37,13 +37,15 @@
           <div class="popTitle">Layers</div>
           <MachineToggle gate="viewerSetting" v-model="local.backplot" label="Backplot" />
           <MachineToggle gate="viewerSetting" v-model="local.toolpath" label="Toolpath" />
-          <MachineToggle gate="viewerSetting" v-model="local.machine" label="Machine" />
-          <MachineToggle gate="viewerSetting" v-model="local.workpiece" label="Workpiece" />
-          <MachineToggle gate="viewerSetting" v-model="local.bounds" label="Bounds" />
-          <MachineToggle gate="viewerSetting" v-model="local.toolpathBounds" label="Toolpath Bounds" />
           <MachineToggle gate="viewerSetting" v-model="local.workzero" label="Work Zero" />
-          <MachineToggle gate="viewerSetting" v-model="local.hud" label="HUD" />
           <MachineToggle gate="viewerSetting" v-model="local.surface" label="Surface" />
+          <div class="sep"></div>
+          <MachineToggle gate="viewerSetting" v-model="local.toolpathBounds" label="Toolpath Bounds" />
+          <MachineToggle gate="viewerSetting" v-model="local.workpiece" label="Stock Bounds" />
+          <MachineToggle gate="viewerSetting" v-model="local.bounds" label="Machine Bounds" />
+          <div class="sep"></div>
+          <MachineToggle gate="viewerSetting" v-model="local.machine" label="Machine" />
+          <MachineToggle gate="viewerSetting" v-model="local.hud" label="HUD" />
         </div>
       </div>
 

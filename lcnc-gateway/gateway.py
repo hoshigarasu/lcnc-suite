@@ -675,6 +675,12 @@ async def _status_poller():
                         _msgspec.msgpack.encode, pts
                     )
                     _surface_points_version += 1
+                # Tell compensation.py the file is complete and ready to load.
+                # Wrapped: compensation.py may not be loaded in all configs.
+                try:
+                    hal.set_p("compensation.reload-req", str(int(time.time())))
+                except Exception as e:
+                    print(f"[COMP] reload-req set failed (compensation.py not loaded?): {e}", flush=True)
 
             # Comp grid startup init: push existing probe-results-grid.json on first connect
             if not _comp_grid_initialized and getattr(STAT, "ini_filename", None):

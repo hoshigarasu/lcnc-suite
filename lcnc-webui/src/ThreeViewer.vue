@@ -2,7 +2,6 @@
 import { ref as _ref } from "vue";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { idwInterp } from "./interpolation";
 import { buildToolProfile, splitProfileAt, buildToolGeometry, buildHolderGeometry, type ToolMeta } from "./toolGeometry";
 
 
@@ -1761,74 +1760,51 @@ function buildSurfaceLayer(pts: [number, number, number][]) {
     surfaceGroup = null;
   }
 
+  // Atomic render: both surface points AND scipy comp grid required, or nothing
+  const grid = props.compGrid;
   if (!pts || pts.length < 3) return;
+  if (!grid || grid.x.length < 2 || grid.y.length < 2) return;
 
   surfaceGroup = new THREE.Group();
 
-  // Compute bounds
-  let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity, zMin = Infinity, zMax = -Infinity;
+  // Z-bounds for color mapping (taken from raw points)
+  let zMin = Infinity, zMax = -Infinity;
   for (const p of pts) {
-    if (p[0] < xMin) xMin = p[0]; if (p[0] > xMax) xMax = p[0];
-    if (p[1] < yMin) yMin = p[1]; if (p[1] > yMax) yMax = p[1];
     if (p[2] < zMin) zMin = p[2]; if (p[2] > zMax) zMax = p[2];
   }
-  const xRange = xMax - xMin || 1, yRange = yMax - yMin || 1, zRange = zMax - zMin || 0.001;
+  const zRange = zMax - zMin || 0.001;
 
-  // Create interpolated grid at 1:1 WCS scale
-  const grid = props.compGrid;
-  let geom: THREE.PlaneGeometry;
+  // Build mesh from scipy-interpolated grid at 1:1 WCS scale
+  const nx = grid.x.length, ny = grid.y.length;
+  const gxRange = grid.x[nx - 1]! - grid.x[0]!;
+  const gyRange = grid.y[ny - 1]! - grid.y[0]!;
+  const geom = new THREE.PlaneGeometry(gxRange || 1, gyRange || 1, nx - 1, ny - 1);
+  const posArr = geom.attributes.position!;
+  const colors: number[] = [];
 
-  if (grid && grid.x.length >= 2 && grid.y.length >= 2) {
-    // Use exact grid from compensation.py (scipy interpolation)
-    const nx = grid.x.length, ny = grid.y.length;
-    const gxRange = grid.x[nx - 1]! - grid.x[0]!;
-    const gyRange = grid.y[ny - 1]! - grid.y[0]!;
-    geom = new THREE.PlaneGeometry(gxRange || 1, gyRange || 1, nx - 1, ny - 1);
-    const posArr = geom.attributes.position!;
-    const colors: number[] = [];
-
-    for (let iy = 0; iy < ny; iy++) {
-      for (let ix = 0; ix < nx; ix++) {
-        const vi = iy * nx + ix;
-        const gx = grid.x[ix]!, gy = grid.y[iy]!;
-        let z = grid.zi[ix]?.[iy];
-        if (z == null || !isFinite(z)) {
-          // Outside convex hull — nearest raw point as fallback
-          let bestD2 = Infinity, bestZ = 0;
-          for (const p of pts) {
-            const d2 = (gx - p[0]) ** 2 + (gy - p[1]) ** 2;
-            if (d2 < bestD2) { bestD2 = d2; bestZ = p[2]; }
-          }
-          z = bestZ;
+  for (let iy = 0; iy < ny; iy++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const vi = iy * nx + ix;
+      const gx = grid.x[ix]!, gy = grid.y[iy]!;
+      let z = grid.zi[ix]?.[iy];
+      if (z == null || !isFinite(z)) {
+        // Outside convex hull — nearest raw point
+        let bestD2 = Infinity, bestZ = 0;
+        for (const p of pts) {
+          const d2 = (gx - p[0]) ** 2 + (gy - p[1]) ** 2;
+          if (d2 < bestD2) { bestD2 = d2; bestZ = p[2]; }
         }
-        posArr.setX(vi, gx);
-        posArr.setY(vi, gy);
-        posArr.setZ(vi, z);
-        const t = (z - zMin) / zRange;
-        const [r, g, b] = viridis(t);
-        colors.push(r / 255, g / 255, b / 255);
+        z = bestZ;
       }
-    }
-    geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-  } else {
-    // Fallback: IDW interpolation from raw points
-    const res = 30;
-    geom = new THREE.PlaneGeometry(xRange, yRange, res - 1, res - 1);
-    const posArr = geom.attributes.position!;
-    const colors: number[] = [];
-    for (let i = 0; i < posArr.count; i++) {
-      const gx = posArr.getX(i) + xRange / 2 + xMin;
-      const gy = posArr.getY(i) + yRange / 2 + yMin;
-      const gz = idwInterp(gx, gy, pts);
-      posArr.setZ(i, gz);
-      posArr.setX(i, gx);
-      posArr.setY(i, gy);
-      const t = (gz - zMin) / zRange;
+      posArr.setX(vi, gx);
+      posArr.setY(vi, gy);
+      posArr.setZ(vi, z);
+      const t = (z - zMin) / zRange;
       const [r, g, b] = viridis(t);
       colors.push(r / 255, g / 255, b / 255);
     }
-    geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   }
+  geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geom.computeVertexNormals();
 
   const mat = new THREE.MeshLambertMaterial({
@@ -1840,7 +1816,7 @@ function buildSurfaceLayer(pts: [number, number, number][]) {
   surfaceGroup.add(new THREE.Mesh(geom, mat));
 
   // Add probe point dots
-  const dotR = Math.min(xRange, yRange) * 0.012;
+  const dotR = Math.min(gxRange || 1, gyRange || 1) * 0.012;
   const dotGeom = new THREE.SphereGeometry(dotR, 8, 8);
   const dotMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
   for (const p of pts) {
@@ -1849,9 +1825,7 @@ function buildSurfaceLayer(pts: [number, number, number][]) {
     surfaceGroup.add(dot);
   }
 
-  // Add to rotated sub-group (same parent as workpiece)
   workRotGroup!.add(surfaceGroup);
-
   surfaceGroup.visible = surfaceVisible;
 }
 

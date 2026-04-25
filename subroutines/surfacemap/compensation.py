@@ -160,6 +160,7 @@ class Compensation :
 		self.h.newpin("eoffset", hal.HAL_FLOAT, hal.HAL_IN)
 		self.h.newpin("eoffset-limited", hal.HAL_BIT, hal.HAL_IN)
 		self.h.newpin("method", hal.HAL_U32, hal.HAL_IN)
+		self.h.newpin("reload-req", hal.HAL_U32, hal.HAL_IN)
 		self.h.newpin("grid-version", hal.HAL_U32, hal.HAL_OUT)
 		self.h.ready()
 		print(" grid-version pin created (U32 OUT)", flush=True)
@@ -190,20 +191,9 @@ class Compensation :
 					else:
 						print(" %s not found -- waiting for probe data" % self.filename)
 					
-					# Preload prevMapTime so a synced grid doesn't trigger a spurious
-					# regen on the first IDLE tick after restart. If the on-disk grid
-					# is stale (or missing) we leave prevMapTime=0 so the IDLE watcher
-					# rebuilds it.
-					if os.path.isfile(self.filename):
-						grid_path = os.path.splitext(self.filename)[0] + "-grid.json"
-						pts_mtime = os.path.getmtime(self.filename)
-						if os.path.isfile(grid_path) and os.path.getmtime(grid_path) >= pts_mtime:
-							prevMapTime = pts_mtime
-						else:
-							prevMapTime = 0
-					else:
-						prevMapTime = 0
+					prevMapTime = 0
 					prevMethod = self.h['method']
+					prevReloadReq = self.h['reload-req']
 					
 					self.h["counts"] = 0
 					
@@ -215,21 +205,21 @@ class Compensation :
 						print("\nCompensation entering IDLE state")
 						prevState = currentState
 						
-					# Recompute grid preview when EITHER source data changed OR method changed.
-					# Safe: loadMap only updates self.zi and writes JSON, no HAL outputs.
+					# Recompute grid preview when method changes OR gateway requests
+					# a reload (set after surface_scan.ngc completes — file is then
+					# guaranteed closed/atomic). No mtime polling: writes are
+					# incremental during scans, polling would race with partial files.
 					currentMethod = self.h["method"]
-					fileExists = os.path.isfile(self.filename)
-					currentMapTime = os.path.getmtime(self.filename) if fileExists else 0
-					needsReload = fileExists and (
-						currentMapTime != prevMapTime or currentMethod != prevMethod
-					)
-					if needsReload:
+					currentReloadReq = self.h["reload-req"]
+					if os.path.isfile(self.filename) and (
+						currentMethod != prevMethod or currentReloadReq != prevReloadReq
+					):
 						self.loadMap()
 						self.h["grid-version"] = (self.h["grid-version"] + 1) % 2**32
-						reason = "data changed" if currentMapTime != prevMapTime else "method changed"
+						reason = "reload requested" if currentReloadReq != prevReloadReq else "method changed"
 						print("	Grid recomputed for preview (%s while idle), grid-version=%d" % (reason, self.h["grid-version"]), flush=True)
-						prevMapTime = currentMapTime
 						prevMethod = currentMethod
+						prevReloadReq = currentReloadReq
 
 					# stay in IDLE state until compensation is enabled
 					if self.h["enable-in"] :

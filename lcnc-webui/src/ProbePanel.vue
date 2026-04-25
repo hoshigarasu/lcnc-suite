@@ -9,7 +9,6 @@ import { usePermissions } from "./permissions";
 import { STEP_DEFAULT, STEP_FEED, loadProbeDefaults, saveProbeDefaults, settingsVersion, serverSettingsReady, saveToolsetterDefaults, TOOLSETTER_FALLBACK } from "./defaults";
 import ToolsetterSettings from "./ToolsetterSettings.vue";
 import Gate from "./Gate.vue";
-import { idwInterp } from "./interpolation";
 
 const props = defineProps<{
   probing: boolean;
@@ -372,6 +371,9 @@ function scheduleRender() {
 
 function render3DSurface(pts: [number, number, number][]) {
   if (!surfaceContainer.value || pts.length < 3) return;
+  // Atomic render: scipy comp grid required, no IDW fallback
+  const grid = props.compGrid;
+  if (!grid || grid.x.length < 2 || grid.y.length < 2) return;
 
   // Dynamic import Three.js (already bundled, cached after first load)
   Promise.all([
@@ -453,86 +455,56 @@ function render3DSurface(pts: [number, number, number][]) {
 
       _svScene.background = new THREE.Color(bgColor);
 
-      // Compute bounds from raw points (for dot placement + fallback)
-      let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity, zMin = Infinity, zMax = -Infinity;
-      for (const p of pts) {
-        if (p[0] < xMin) xMin = p[0]; if (p[0] > xMax) xMax = p[0];
-        if (p[1] < yMin) yMin = p[1]; if (p[1] > yMax) yMax = p[1];
-        if (p[2] < zMin) zMin = p[2]; if (p[2] > zMax) zMax = p[2];
-      }
-      let xRange = xMax - xMin || 1, yRange = yMax - yMin || 1, zRange = zMax - zMin || 0.001;
+      // Build mesh from scipy-interpolated comp grid (atomic — early return above
+      // ensures grid is valid here)
+      const nx = grid.x.length, ny = grid.y.length;
+      const gxRange = grid.x[nx - 1]! - grid.x[0]!;
+      const gyRange = grid.y[ny - 1]! - grid.y[0]!;
+      const geom = new THREE.PlaneGeometry(gxRange || 1, gyRange || 1, nx - 1, ny - 1);
+      const posArr = geom.attributes.position!;
 
-      // Build surface mesh from comp grid or fall back to IDW
-      const grid = props.compGrid;
-      let geom: InstanceType<typeof THREE.PlaneGeometry>;
-
-      if (grid && grid.x.length >= 2 && grid.y.length >= 2) {
-        // Use exact grid from compensation.py
-        const nx = grid.x.length, ny = grid.y.length;
-        const gxRange = grid.x[nx - 1]! - grid.x[0]!;
-        const gyRange = grid.y[ny - 1]! - grid.y[0]!;
-        geom = new THREE.PlaneGeometry(gxRange || 1, gyRange || 1, nx - 1, ny - 1);
-        const posArr = geom.attributes.position!;
-
-        // First pass: set XY positions and collect Z values (handle NaN/null from scipy)
-        let gridZMin = Infinity, gridZMax = -Infinity;
-        for (let iy = 0; iy < ny; iy++) {
-          for (let ix = 0; ix < nx; ix++) {
-            const vi = iy * nx + ix;
-            let z = grid.zi[ix]?.[iy];
-            if (z == null || !isFinite(z)) {
-              // Outside convex hull — nearest raw point as fallback
-              const gx = grid.x[ix]!, gy = grid.y[iy]!;
-              let bestD2 = Infinity, bestZ = 0;
-              for (const p of pts) {
-                const d2 = (gx - p[0]) ** 2 + (gy - p[1]) ** 2;
-                if (d2 < bestD2) { bestD2 = d2; bestZ = p[2]; }
-              }
-              z = bestZ;
+      // First pass: set XY positions and collect Z values (handle NaN/null from scipy)
+      let gridZMin = Infinity, gridZMax = -Infinity;
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const vi = iy * nx + ix;
+          let z = grid.zi[ix]?.[iy];
+          if (z == null || !isFinite(z)) {
+            // Outside convex hull — nearest raw point
+            const gx = grid.x[ix]!, gy = grid.y[iy]!;
+            let bestD2 = Infinity, bestZ = 0;
+            for (const p of pts) {
+              const d2 = (gx - p[0]) ** 2 + (gy - p[1]) ** 2;
+              if (d2 < bestD2) { bestD2 = d2; bestZ = p[2]; }
             }
-            if (z < gridZMin) gridZMin = z;
-            if (z > gridZMax) gridZMax = z;
-            posArr.setX(vi, grid.x[ix]! - grid.x[0]! - (gxRange / 2));
-            posArr.setY(vi, grid.y[iy]! - grid.y[0]! - (gyRange / 2));
-            posArr.setZ(vi, z); // raw Z, scaled below
+            z = bestZ;
           }
+          if (z < gridZMin) gridZMin = z;
+          if (z > gridZMax) gridZMax = z;
+          posArr.setX(vi, grid.x[ix]! - grid.x[0]! - (gxRange / 2));
+          posArr.setY(vi, grid.y[iy]! - grid.y[0]! - (gyRange / 2));
+          posArr.setZ(vi, z); // raw Z, scaled below
         }
-
-        // Second pass: scale Z for visualization and apply colors
-        const gzRange = gridZMax - gridZMin || 0.001;
-        const gzScale = Math.min(gxRange || 1, gyRange || 1) * 0.3;
-        const colors: number[] = [];
-        for (let i = 0; i < posArr.count; i++) {
-          const z = posArr.getZ(i);
-          const t = (z - gridZMin) / gzRange;
-          posArr.setZ(i, t * gzScale);
-          const [r, g, b] = viridis(t);
-          colors.push(r / 255, g / 255, b / 255);
-        }
-        geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-
-        // Update bounds for dot placement to match grid
-        xMin = grid.x[0]!; xMax = grid.x[nx - 1]!;
-        yMin = grid.y[0]!; yMax = grid.y[ny - 1]!;
-        xRange = gxRange || 1; yRange = gyRange || 1;
-        zMin = gridZMin; zMax = gridZMax; zRange = gzRange;
-      } else {
-        // Fallback: IDW interpolation from raw points (no comp grid available)
-        const res = 30;
-        geom = new THREE.PlaneGeometry(xRange, yRange, res - 1, res - 1);
-        const posArr = geom.attributes.position!;
-        const colors: number[] = [];
-        for (let i = 0; i < posArr.count; i++) {
-          const gx = posArr.getX(i) + xRange / 2 + xMin;
-          const gy = posArr.getY(i) + yRange / 2 + yMin;
-          const gz = idwInterp(gx, gy, pts);
-          posArr.setZ(i, (gz - zMin) / zRange * Math.min(xRange, yRange) * 0.3);
-          const t = (gz - zMin) / zRange;
-          const [r, g, b] = viridis(t);
-          colors.push(r / 255, g / 255, b / 255);
-        }
-        geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
       }
+
+      // Second pass: scale Z for visualization and apply colors
+      const gzRange = gridZMax - gridZMin || 0.001;
+      const gzScale = Math.min(gxRange || 1, gyRange || 1) * 0.3;
+      const colors: number[] = [];
+      for (let i = 0; i < posArr.count; i++) {
+        const z = posArr.getZ(i);
+        const t = (z - gridZMin) / gzRange;
+        posArr.setZ(i, t * gzScale);
+        const [r, g, b] = viridis(t);
+        colors.push(r / 255, g / 255, b / 255);
+      }
+      geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+
+      // Bounds for dot/label/arrow placement come from the grid
+      const xMin = grid.x[0]!;
+      const yMin = grid.y[0]!;
+      const xRange = gxRange || 1, yRange = gyRange || 1;
+      const zMin = gridZMin, zRange = gzRange;
 
       geom.computeVertexNormals();
       const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });

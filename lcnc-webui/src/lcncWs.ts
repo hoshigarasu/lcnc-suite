@@ -70,6 +70,42 @@ export interface TimingStats {
 
 export const timingStats = ref<TimingStats | null>(null);
 
+// ---------- Halshow live state ----------
+export interface HalPin {
+  comp: string;
+  type: string;
+  dir: string;
+  value: string;
+  name: string;
+  signal?: string;
+  arrow?: string;
+}
+
+export interface HalSignalPin {
+  arrow: string;
+  pin: string;
+}
+
+export interface HalSignal {
+  type: string;
+  value: string;
+  name: string;
+  pins: HalSignalPin[];
+}
+
+export interface HalParam {
+  comp: string;
+  type: string;
+  dir: string;
+  value: string;
+  name: string;
+}
+
+export const halPins = ref<HalPin[]>([]);
+export const halSignals = ref<HalSignal[]>([]);
+export const halParams = ref<HalParam[]>([]);
+export const halInitialized = ref(false);
+
 const TIMING_MAX_SAMPLES = 300;
 
 type TimingKey = "rt" | "network" | "server" | "cycle" | "poll" | "errors" | "parse" | "overhead" | "encode" | "sharedEncode" | "decode" | "ws_bytes";
@@ -446,6 +482,27 @@ export function connectWs() {
       );
     } else if (msg.type === "settings_changed" || msg.type === "settings_init") {
       updateServerCache(msg.settings);
+    } else if (msg.type === "halshow_snapshot") {
+      halPins.value = msg.pins ?? [];
+      halSignals.value = msg.signals ?? [];
+      halParams.value = msg.params ?? [];
+      halInitialized.value = true;
+    } else if (msg.type === "halshow_update") {
+      const pinDelta = msg.pins ?? {};
+      const sigDelta = msg.signals ?? {};
+      const paramDelta = msg.params ?? {};
+      for (const p of halPins.value) {
+        const v = pinDelta[p.name];
+        if (v !== undefined) p.value = v;
+      }
+      for (const s of halSignals.value) {
+        const v = sigDelta[s.name];
+        if (v !== undefined) s.value = v;
+      }
+      for (const p of halParams.value) {
+        const v = paramDelta[p.name];
+        if (v !== undefined) p.value = v;
+      }
     }
   };
 

@@ -104,5 +104,7 @@ export type WsCommand =
   | { cmd: "save_settings"; section: string; data: any }
   // Timing
   | { cmd: "timing_log"; enable: boolean }
+  // Halshow (Settings → Halshow tab) live updates
+  | { cmd: "halshow_live"; on: boolean }
   // Safety trip acknowledgment (clears sticky trip, re-allows arming)
   | { cmd: "safety_trip_ack" };

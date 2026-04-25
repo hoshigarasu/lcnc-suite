@@ -418,6 +418,13 @@ _comp_grid_version: int = int(time.time())   # bumped each time new grid is read
 _comp_grid_initialized: bool = False         # True after startup file-read attempted
 _last_comp_hal_ver: int | None = None        # last seen compensation.grid-version HAL value
 
+# Halshow live loop — pushes value deltas to clients viewing the Settings → Halshow tab.
+# Topology (pin/signal/param structure, links) is built once via halcmd subprocess on subscribe;
+# values are diffed every 200 ms via hal.get_info_*, which is ~1 ms for the full HAL.
+_halshow_loop_task: Optional[asyncio.Task] = None
+_halshow_last_values: dict = {}                # "section/name" → last broadcast value (delta source)
+_halshow_topology_sent: dict = {}              # client_id → True once topology has been delivered
+
 # Shared gcode preview — parsed once in a subprocess (gcode_parse_worker.py)
 # on file/rotation change. The parsed result (multi-MB polylines) is NOT
 # broadcast over the WS — N × ws.send_bytes(2.7 MB) saturates the event-loop
@@ -3817,9 +3824,9 @@ def _parse_hal_params() -> list:
     return params
 
 
-@app.get("/hal")
-async def get_hal():
-    """Return HAL pins, signals, and params as parsed JSON."""
+async def _halshow_topology() -> dict:
+    """Full HAL topology (pin/sig/param structure with links) via halcmd subprocess.
+    Run once per subscribe — cheap when amortized vs the live-update loop."""
     loop = asyncio.get_event_loop()
     pins, signals, params = await asyncio.gather(
         loop.run_in_executor(None, _parse_hal_pins),
@@ -3827,6 +3834,89 @@ async def get_hal():
         loop.run_in_executor(None, _parse_hal_params),
     )
     return {"pins": pins, "signals": signals, "params": params}
+
+
+def _format_hal_value(v) -> str:
+    """Format a HAL value as a string matching halcmd's output (TRUE/FALSE for bits, %g for floats)."""
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, float):
+        return f"{v:g}"
+    return str(v)
+
+
+def _halshow_value_snapshot() -> dict:
+    """Flat {'section/name': value-string} map via hal.get_info_*. ~1 ms for the full HAL.
+    Values are halcmd-formatted strings so they merge cleanly with the topology snapshot."""
+    out: Dict[str, str] = {}
+    try:
+        for entry in hal.get_info_pins():
+            out[f"pins/{entry['NAME']}"] = _format_hal_value(entry['VALUE'])
+        for entry in hal.get_info_signals():
+            out[f"signals/{entry['NAME']}"] = _format_hal_value(entry['VALUE'])
+        for entry in hal.get_info_params():
+            out[f"params/{entry['NAME']}"] = _format_hal_value(entry['VALUE'])
+    except Exception as e:
+        print(f"[HALSHOW] value snapshot failed: {type(e).__name__}: {e}", flush=True)
+    return out
+
+
+def _ensure_halshow_loop() -> None:
+    """Start the live-update task if it isn't already running."""
+    global _halshow_loop_task
+    if _halshow_loop_task is None or _halshow_loop_task.done():
+        _halshow_loop_task = asyncio.create_task(_halshow_loop())
+
+
+async def _halshow_loop() -> None:
+    """Push topology snapshot to new subscribers, then 5 Hz value deltas to all subscribers."""
+    global _halshow_last_values
+    try:
+        while any(c.get("halshow_live") for c in _clients.values()):
+            # New subscribers: send full topology once
+            for cid, c in list(_clients.items()):
+                if not c.get("halshow_live"):
+                    continue
+                if _halshow_topology_sent.get(cid):
+                    continue
+                ws = c.get("ws")
+                if ws is None:
+                    continue
+                topology = await _halshow_topology()
+                try:
+                    await ws_send_json(ws, {"type": "halshow_snapshot", **topology})
+                    _halshow_topology_sent[cid] = True
+                except Exception as e:
+                    print(f"[HALSHOW] snapshot send failed: {type(e).__name__}: {e}", flush=True)
+
+            # Value diff for everyone with topology already in hand
+            new_values = await asyncio.to_thread(_halshow_value_snapshot)
+            if _halshow_last_values:
+                delta = {k: v for k, v in new_values.items() if _halshow_last_values.get(k) != v}
+                if delta:
+                    msg: Dict[str, Any] = {"type": "halshow_update", "pins": {}, "signals": {}, "params": {}}
+                    for k, v in delta.items():
+                        section, name = k.split("/", 1)
+                        msg[section][name] = v
+                    for cid, c in list(_clients.items()):
+                        if not c.get("halshow_live"):
+                            continue
+                        if not _halshow_topology_sent.get(cid):
+                            continue
+                        ws = c.get("ws")
+                        if ws is None:
+                            continue
+                        try:
+                            await ws_send_json(ws, msg)
+                        except Exception:
+                            pass
+            _halshow_last_values = new_values
+
+            await asyncio.sleep(0.2)  # 5 Hz
+    finally:
+        # No subscribers (or task crashed) — drop baseline so the next subscribe starts clean
+        _halshow_last_values = {}
+        _halshow_topology_sent.clear()
 
 
 def _read_g30_vars():
@@ -3866,7 +3956,8 @@ async def ws_endpoint(ws: WebSocket):
     client_id = _next_client_id
     _next_client_id += 1
     client_ip = ws.client.host if ws.client else "unknown"
-    _clients[client_id] = {"ip": client_ip, "armed": False, "last_hb": time.time(), "hb_mono": 0.0}
+    _clients[client_id] = {"ip": client_ip, "armed": False, "last_hb": time.time(), "hb_mono": 0.0,
+                           "ws": ws, "halshow_live": False}
     _cancel_disconnect_grace()
     _start_heartbeat()
     _start_status_poller()
@@ -4338,6 +4429,19 @@ async def ws_endpoint(ws: WebSocket):
                 await ws_send_json(ws, {"type": "reply", "ok": True, "enabled": _timing_log_enabled})
                 continue
 
+            if msg.get("cmd") == "halshow_live":
+                on = bool(msg.get("on", False))
+                if client_id in _clients:
+                    _clients[client_id]["halshow_live"] = on
+                if not on:
+                    _halshow_topology_sent.pop(client_id, None)
+                else:
+                    # Drop any stale flag so subscriber gets a fresh snapshot
+                    _halshow_topology_sent.pop(client_id, None)
+                    _ensure_halshow_loop()
+                await ws_send_json(ws, {"type": "reply", "ok": True})
+                continue
+
             if msg.get("cmd") == "simulate_probe_trip":
                 if not armed:
                     await ws_send_json(ws, {"type": "reply", "ok": False, "error": "Not armed"})
@@ -4412,6 +4516,7 @@ async def ws_endpoint(ws: WebSocket):
         pass
     finally:
         _clients.pop(client_id, None)
+        _halshow_topology_sent.pop(client_id, None)
         # Safety: stop all motion if this armed client disconnects
         if armed and CMD is not None:
             try:

@@ -21,8 +21,7 @@ import {
   STEP_RPM,
   loadKeyboardDefaults, type KeyboardDefaults, type KeyboardAction, KEYBOARD_ACTION_LABELS, DEFAULT_KB_MAPPING, formatKeyName,
 } from "./defaults";
-import { fetchHal, type HalPin, type HalSignal, type HalParam } from "./lcncApi";
-import { viewerInit } from "./lcncWs";
+import { viewerInit, halPins, halSignals, halParams, halInitialized, send, type HalPin, type HalParam } from "./lcncWs";
 import { keypadMode } from "./useNumberKeypad";
 import { ChevronUp, ChevronDown, Pencil, Trash2 } from "lucide-vue-next";
 import GamepadLiveInput from "./GamepadLiveInput.vue";
@@ -393,7 +392,7 @@ const subTabs = [
   { id: "macros", label: "Macros" },
   { id: "gamepad", label: "Gamepad" },
   { id: "keyboard", label: "Keyboard" },
-  { id: "hal", label: "HAL" },
+  { id: "halshow", label: "Halshow" },
   { id: "debug", label: "Debug" },
 ];
 const activeTab = ref("viewer");
@@ -484,32 +483,29 @@ function onGpMappingChanged() {
   emit("setGamepadConfig", { ...props.gamepadConfig, mapping: { ...gpMapping } });
 }
 
-// ─── HAL viewer ─────────────────────────────
+// ─── Halshow viewer ─────────────────────────
+// Pin/signal/param topology + values are shared reactive state in lcncWs.ts;
+// the gateway pushes a snapshot on subscribe and 5 Hz value deltas while the
+// tab is visible. Subscribe/unsubscribe is wired to activeTab below.
 type HalSection = "pins" | "signals" | "params";
 
 const halSection = ref<HalSection>("pins");
-const halPins = ref<HalPin[]>([]);
-const halSignals = ref<HalSignal[]>([]);
-const halParams = ref<HalParam[]>([]);
-const halLoading = ref(false);
-const halError = ref<string | null>(null);
 const halSearch = ref("");
 const halExpanded = ref(new Set<string>());
 
-async function refreshHal() {
-  halLoading.value = true;
-  halError.value = null;
-  try {
-    const data = await fetchHal();
-    halPins.value = data.pins;
-    halSignals.value = data.signals;
-    halParams.value = data.params;
-  } catch (e: any) {
-    halError.value = e.message || "Failed to fetch HAL data";
-  } finally {
-    halLoading.value = false;
-  }
+let _halSubscribed = false;
+function _setHalshowLive(on: boolean) {
+  if (on === _halSubscribed) return;
+  _halSubscribed = on;
+  send({ cmd: "halshow_live", on });
 }
+
+watch(activeTab, (next, prev) => {
+  if (next === "halshow") _setHalshowLive(true);
+  else if (prev === "halshow") _setHalshowLive(false);
+}, { immediate: true });
+
+onUnmounted(() => { _setHalshowLive(false); });
 
 function toggleHalGroup(group: string) {
   const s = halExpanded.value;
@@ -962,9 +958,9 @@ const halStats = computed(() => ({
         </div>
       </template>
 
-      <template #hal>
+      <template #halshow>
         <div class="halPane">
-          <!-- Header: section toggles + search + refresh (pinned) -->
+          <!-- Header: section toggles + search (pinned) -->
           <div class="halHeader">
             <div class="btnGroup">
               <MachineBtn type="inline" :selected="halSection === 'pins'" class="optBtn"
@@ -982,9 +978,6 @@ const halStats = computed(() => ({
             </div>
             <div class="halActions">
               <MachineInput gate="search" type="text" class="halSearchInput" v-model="halSearch" placeholder="Search..." />
-              <MachineBtn type="inline" class="optBtn" @click="refreshHal" :disabled="halLoading">
-                {{ halLoading ? '...' : 'Refresh' }}
-              </MachineBtn>
             </div>
           </div>
 
@@ -998,12 +991,9 @@ const halStats = computed(() => ({
           </div>
 
           <div class="stack-panel scrollContent scroll-thin">
-          <!-- Error -->
-          <div v-if="halError" class="halError">{{ halError }}</div>
-
-          <!-- Empty state -->
-          <div v-if="!halLoading && halPins.length === 0 && !halError" class="halEmpty">
-            Click Refresh to load HAL data.
+          <!-- Empty state (waiting for first snapshot) -->
+          <div v-if="!halInitialized" class="halEmpty">
+            Connecting…
           </div>
 
           <!-- PINS -->

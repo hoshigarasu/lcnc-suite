@@ -1244,10 +1244,22 @@ function updateOverflowCheck() {
   // Machine bounds converted to work coordinates
   const bMin0 = mb.origin[0] - wo.x, bMin1 = mb.origin[1] - wo.y, bMin2 = mb.origin[2] - wo.z;
   const bMax0 = bMin0 + mb.size[0], bMax1 = bMin1 + mb.size[1], bMax2 = bMin2 + mb.size[2];
-  // Any part of toolpath bbox outside machine bounds?
+  // toolpathBBox is in pre-rotation work coords; rotate the 4 XY corners by
+  // workRotGroup.rotation.z to get the rendered AABB. Z is unaffected.
+  const theta = workRotGroup?.rotation.z ?? 0;
+  const ca = Math.cos(theta), sa = Math.sin(theta);
+  let mnX = Infinity, mxX = -Infinity, mnY = Infinity, mxY = -Infinity;
+  for (const x of [toolpathBBox.min[0], toolpathBBox.max[0]]) {
+    for (const y of [toolpathBBox.min[1], toolpathBBox.max[1]]) {
+      const rx = x * ca - y * sa;
+      const ry = x * sa + y * ca;
+      if (rx < mnX) mnX = rx; if (rx > mxX) mxX = rx;
+      if (ry < mnY) mnY = ry; if (ry > mxY) mxY = ry;
+    }
+  }
   toolpathOverflow.value =
-    toolpathBBox.min[0] < bMin0 || toolpathBBox.max[0] > bMax0 ||
-    toolpathBBox.min[1] < bMin1 || toolpathBBox.max[1] > bMax1 ||
+    mnX < bMin0 || mxX > bMax0 ||
+    mnY < bMin1 || mxY > bMax1 ||
     toolpathBBox.min[2] < bMin2 || toolpathBBox.max[2] > bMax2;
 }
 

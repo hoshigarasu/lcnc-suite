@@ -314,12 +314,14 @@ let machineBoundsMesh: THREE.Mesh | null = null;
 let boundsLabels: THREE.Group | null = null;
 let toolpathBoundsBox: THREE.LineSegments | null = null;
 let toolpathBoundsLabels: THREE.Group | null = null;
+let toolpathOverflowEdges: THREE.LineSegments | null = null;
 let toolpathBoundsVisible = false;
 const _billboardLabels: Text[] = [];
 const _bbQ = new THREE.Quaternion();  // reused for billboard parent compensation
 let workpieceMesh: THREE.Mesh | null = null;
 let overflowEdges: THREE.LineSegments | null = null;
 const boundsClipPlanes: THREE.Plane[] = [];
+const insideBoundsClipPlanes: THREE.Plane[] = [];
 const _localBoundsPlanes: THREE.Plane[] = [];
 let machineMeshes: THREE.Mesh[] = [];
 let _machineEdgeLines: THREE.LineSegments[] = [];
@@ -669,6 +671,7 @@ function setLayerVisible(layer: Layer, on: boolean) {
       toolpathBoundsVisible = on;
       if (toolpathBoundsBox) toolpathBoundsBox.visible = on;
       if (toolpathBoundsLabels) toolpathBoundsLabels.visible = on;
+      if (toolpathOverflowEdges) toolpathOverflowEdges.visible = on;
       break;
     case "tool":
       if (toolMarker) toolMarker.visible = on;
@@ -1053,12 +1056,18 @@ resetBackplot();
       transparent: true,
       opacity: wpOp,
       depthWrite: false,
+      clippingPlanes: insideBoundsClipPlanes,
     });
     workpieceMesh = new THREE.Mesh(geom, mat);
 
     const edges = new THREE.LineSegments(
       new THREE.EdgesGeometry(geom),
-      new THREE.LineBasicMaterial({ color: wpColor, transparent: true, opacity: Math.min(1, wpOp * 2.2) })
+      new THREE.LineBasicMaterial({
+        color: wpColor,
+        transparent: true,
+        opacity: Math.min(1, wpOp * 2.2),
+        clippingPlanes: insideBoundsClipPlanes,
+      })
     );
     workpieceMesh.add(edges);
 
@@ -1151,7 +1160,11 @@ async function buildFromInit(init: ViewerInit) {
           new THREE.Plane(new THREE.Vector3(0, 0,  1), -(bz + bsz)),
         );
         boundsClipPlanes.length = 0;
-        for (const p of _localBoundsPlanes) boundsClipPlanes.push(p.clone());
+        insideBoundsClipPlanes.length = 0;
+        for (const p of _localBoundsPlanes) {
+          boundsClipPlanes.push(p.clone());
+          insideBoundsClipPlanes.push(p.clone().negate());
+        }
 
         // Overflow outline (workpiece parts outside machine bounds)
         overflowEdges = rebuildOverflowEdges(props.workpieceSize, props.workpieceOffset);
@@ -1461,6 +1474,11 @@ function rebuildToolpathBounds() {
     workRotGroup?.remove(toolpathBoundsLabels);
     toolpathBoundsLabels = null;
   }
+  if (toolpathOverflowEdges) {
+    workRotGroup?.remove(toolpathOverflowEdges);
+    disposeObject(toolpathOverflowEdges);
+    toolpathOverflowEdges = null;
+  }
   if (!toolpathBBox || !workRotGroup) return;
 
   const sx = toolpathBBox.max[0] - toolpathBBox.min[0];
@@ -1478,11 +1496,25 @@ function rebuildToolpathBounds() {
   boxGeom.dispose();
   toolpathBoundsBox = new THREE.LineSegments(
     edgeGeom,
-    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 })
+    new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.9,
+      clippingPlanes: insideBoundsClipPlanes,
+    })
   );
   toolpathBoundsBox.position.set(cx, cy, cz);
   toolpathBoundsBox.visible = toolpathBoundsVisible;
   workRotGroup.add(toolpathBoundsBox);
+
+  toolpathOverflowEdges = rebuildOverflowEdges(
+    [sx, sy, sz],
+    [toolpathBBox.min[0], toolpathBBox.min[1], toolpathBBox.min[2]],
+  );
+  if (toolpathOverflowEdges) {
+    toolpathOverflowEdges.visible = toolpathBoundsVisible;
+    workRotGroup.add(toolpathOverflowEdges);
+  }
 
   toolpathBoundsLabels = new THREE.Group();
   const fs = Math.max(sx, sy, sz) * 0.05;
@@ -1649,6 +1681,7 @@ function animate() {
     for (let i = 0; i < _localBoundsPlanes.length; i++) {
       boundsClipPlanes[i]!.copy(_localBoundsPlanes[i]!);
       boundsClipPlanes[i]!.applyMatrix4(_workGrp.matrixWorld);
+      insideBoundsClipPlanes[i]!.copy(boundsClipPlanes[i]!).negate();
     }
   }
 

@@ -1871,7 +1871,6 @@ watch(viewerGcode, (newGcode) => {
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  margin-bottom: var(--gap-section);
   gap: var(--gap-section);
 }
 
@@ -1926,8 +1925,8 @@ watch(viewerGcode, (newGcode) => {
   align-items: center;
   justify-content: space-between;
   gap: var(--gap-section);
-  padding: 8px 14px;
-  min-height: 56px;
+  padding: 4px 14px;
+  min-height: 44px;
   color: var(--fg);
   font-size: var(--fs-xl);
   font-weight: var(--fw-bold);
@@ -2198,7 +2197,6 @@ watch(viewerGcode, (newGcode) => {
   .wrap > header.hdr {
     grid-column: 1 / -1;
     grid-row: 1;
-    margin-bottom: 0;
   }
   .statusBanner {
     grid-column: 1 / -1;

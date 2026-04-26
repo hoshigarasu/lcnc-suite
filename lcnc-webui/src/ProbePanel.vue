@@ -23,6 +23,7 @@ const props = defineProps<{
   compGridVersion: number;
   surfacePoints: [number, number, number][] | null;
   compGrid: { x: number[]; y: number[]; zi: number[][]; method: number } | null;
+  surfaceLayerVisible: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -36,6 +37,7 @@ const emit = defineEmits<{
   (e: "getCompGrid"): void;
   (e: "setCompensation", enable: boolean): void;
   (e: "setCompMethod", method: number): void;
+  (e: "toggleSurfaceLayer", on: boolean): void;
 }>();
 
 
@@ -1275,6 +1277,9 @@ function fmtR(key: string): string {
                 :modelValue="compMethod ?? 2" @update:modelValue="setMethod(Number(id))" /> {{ label }}
             </label>
           </div>
+          <div class="sep"></div>
+          <MachineToggle gate="viewerSetting" :modelValue="surfaceLayerVisible"
+            @update:modelValue="emit('toggleSurfaceLayer', $event!)" label="Show Surface" />
           <div class="sep"></div>
           <MachineToggle gate="compToggle" :modelValue="eoffsetEnabled" :disabled="probing"
             @update:modelValue="onCompToggle" label="Enable Comp" />

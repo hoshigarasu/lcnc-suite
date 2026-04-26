@@ -25,7 +25,7 @@ import { Settings, MessageSquare, PowerOff, Gamepad2, Keyboard, BookOpen, Clipbo
 import GcodeReferenceDialog from "./GcodeReferenceDialog.vue";
 import NumberKeypad from "./NumberKeypad.vue";
 import { keypadState } from "./useNumberKeypad";
-import { loadViewerDefaults, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, loadMacrosDefaults, loadGamepadDefaults, saveGamepadDefaults, loadKeyboardDefaults, saveKeyboardDefaults, loadMdiHistory, saveMdiHistory, settingsVersion, type ThemeMode, type MacroDef, type GamepadDefaults, type KeyboardDefaults, type KeyboardAction, type Layer, type TrackMode, type Projection } from "./defaults";
+import { loadViewerDefaults, saveViewerDefaults, loadMachineDefaults, loadDisplayDefaults, saveDisplayDefaults, loadMacrosDefaults, loadGamepadDefaults, saveGamepadDefaults, loadKeyboardDefaults, saveKeyboardDefaults, loadMdiHistory, saveMdiHistory, settingsVersion, type ThemeMode, type MacroDef, type GamepadDefaults, type KeyboardDefaults, type KeyboardAction, type Layer, type TrackMode, type Projection } from "./defaults";
 import { buildToolsetterVarMap } from "./toolsetterVars";
 import { useGamepad } from "./useGamepad";
 import { useMediaMql } from "./useMediaMql";
@@ -1372,6 +1372,8 @@ watch(viewerGcode, (newGcode) => {
               :compGridVersion="st.comp_grid_version ?? 0"
               :surfacePoints="surfacePoints"
               :compGrid="compGrid"
+              :surfaceLayerVisible="viewerLayers.surface"
+              @toggleSurfaceLayer="(on: boolean) => { viewerLayers.surface = on; viewerRef?.setLayerVisible?.('surface', on); saveViewerDefaults({ ...loadViewerDefaults(), layers: { ...loadViewerDefaults().layers, surface: on } }); }"
               @mdi="fire({ cmd: 'mdi', text: $event }, 'ready')"
               @abort="fire({ cmd: 'abort' }, 'abort')"
               @simTrip="send({ cmd: 'simulate_probe_trip' })"

@@ -1894,7 +1894,10 @@ watch(
       disposeObject(overflowEdges);
     }
     overflowEdges = rebuildOverflowEdges(props.workpieceSize, props.workpieceOffset);
-    if (overflowEdges && workRotGroup) workRotGroup.add(overflowEdges);
+    if (overflowEdges && workRotGroup) {
+      if (workpieceMesh) overflowEdges.visible = workpieceMesh.visible;
+      workRotGroup.add(overflowEdges);
+    }
   },
   { deep: true }
 );

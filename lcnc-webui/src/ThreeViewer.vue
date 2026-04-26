@@ -459,12 +459,102 @@ function _tweenStep() {
   }
 }
 
+// Frame-fit tween: lerps camera position, orbit target, up vector, and (for
+// ortho) frustum bounds + zoom over TWEEN_MS. Used by setView('reset') so the
+// viewer eases back to the auto-frame instead of snapping. Shares _tweenRaf
+// with the orientation tween so a new view request cancels any in-flight one.
+type FrameTween = {
+  posStart: THREE.Vector3; posEnd: THREE.Vector3;
+  tgtStart: THREE.Vector3; tgtEnd: THREE.Vector3;
+  upStart: THREE.Vector3;  upEnd: THREE.Vector3;
+  ortho: null | {
+    topStart: number;    topEnd: number;
+    bottomStart: number; bottomEnd: number;
+    leftStart: number;   leftEnd: number;
+    rightStart: number;  rightEnd: number;
+    zoomStart: number;   zoomEnd: number;
+  };
+};
+let _frameTween: FrameTween | null = null;
+
+function tweenFrameToBounds(box: THREE.Box3) {
+  if (!camera || !controls || box.isEmpty()) return;
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  const maxDim = Math.max(size.x, size.y, size.z);
+
+  // near/far don't need lerping — they only affect culling planes. Set immediately.
+  camera.near = Math.max(0.1, maxDim / 1000);
+  camera.far  = Math.max(200000, maxDim * 20);
+
+  const tgtEnd = center.clone();
+  const upEnd = new THREE.Vector3(0, 0, 1);
+  let posEnd: THREE.Vector3;
+  let ortho: FrameTween["ortho"] = null;
+
+  if (camera instanceof THREE.OrthographicCamera) {
+    const aspect = host.value ? (host.value.clientWidth / host.value.clientHeight) || 1 : 1;
+    const halfH = maxDim * 1.2;
+    ortho = {
+      topStart: camera.top, topEnd: halfH,
+      bottomStart: camera.bottom, bottomEnd: -halfH,
+      rightStart: camera.right, rightEnd: halfH * aspect,
+      leftStart: camera.left, leftEnd: -halfH * aspect,
+      zoomStart: camera.zoom, zoomEnd: 1,
+    };
+    posEnd = new THREE.Vector3(center.x + maxDim, center.y - maxDim, center.z + maxDim);
+  } else {
+    posEnd = new THREE.Vector3(center.x + maxDim * 1.5, center.y - maxDim * 1.5, center.z + maxDim);
+  }
+
+  _frameTween = {
+    posStart: camera.position.clone(), posEnd,
+    tgtStart: controls.target.clone(), tgtEnd,
+    upStart: camera.up.clone(), upEnd,
+    ortho,
+  };
+  _tweenStart = performance.now();
+  controls.enabled = false;
+  if (_tweenRaf) cancelAnimationFrame(_tweenRaf);
+  _tweenRaf = requestAnimationFrame(_frameTweenStep);
+}
+
+function _frameTweenStep() {
+  if (!camera || !controls || !_frameTween) {
+    _tweenRaf = 0;
+    return;
+  }
+  const f = _frameTween;
+  const t = Math.min(1, (performance.now() - _tweenStart) / TWEEN_MS);
+  const e = easeInOutCubic(t);
+  camera.position.lerpVectors(f.posStart, f.posEnd, e);
+  controls.target.lerpVectors(f.tgtStart, f.tgtEnd, e);
+  camera.up.lerpVectors(f.upStart, f.upEnd, e).normalize();
+  camera.lookAt(controls.target);
+  if (f.ortho && camera instanceof THREE.OrthographicCamera) {
+    camera.top    = f.ortho.topStart    + (f.ortho.topEnd    - f.ortho.topStart)    * e;
+    camera.bottom = f.ortho.bottomStart + (f.ortho.bottomEnd - f.ortho.bottomStart) * e;
+    camera.right  = f.ortho.rightStart  + (f.ortho.rightEnd  - f.ortho.rightStart)  * e;
+    camera.left   = f.ortho.leftStart   + (f.ortho.leftEnd   - f.ortho.leftStart)   * e;
+    camera.zoom   = f.ortho.zoomStart   + (f.ortho.zoomEnd   - f.ortho.zoomStart)   * e;
+  }
+  camera.updateProjectionMatrix();
+  if (t < 1) {
+    _tweenRaf = requestAnimationFrame(_frameTweenStep);
+  } else {
+    _tweenRaf = 0;
+    _frameTween = null;
+    controls.enabled = true;
+    controls.update();
+  }
+}
+
 function setView(p: ViewPreset) {
   if (!camera || !controls) return;
 
   if (p === "reset") {
     if (!_iniBox || !_workGrp) return;
-    frameToBounds(_iniBox.clone().translate(_workGrp.position));
+    tweenFrameToBounds(_iniBox.clone().translate(_workGrp.position));
     return;
   }
 

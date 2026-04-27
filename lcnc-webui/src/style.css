@@ -660,6 +660,7 @@ label:has(input:disabled, select:disabled) {
   border-radius: var(--radius-2xl);
   padding: var(--gap-panel);
   min-width: 280px;
+  max-width: min(380px, calc(100% - 2 * var(--gap-panel)));
   font-size: var(--fs-base);
   text-align: center;
   box-shadow: var(--shadow-md);
@@ -667,6 +668,7 @@ label:has(input:disabled, select:disabled) {
 
 .dialog.md {
   padding: 0;
+  max-width: min(440px, calc(100% - 2 * var(--gap-panel)));
   text-align: left;
   max-height: calc(100% - 2 * var(--gap-panel));
   display: flex;
@@ -683,7 +685,7 @@ label:has(input:disabled, select:disabled) {
   padding: 0;
   min-width: auto;
   text-align: left;
-  width: 70vw;
+  width: min(70vw, 480px);
   max-width: calc(100% - 2 * var(--gap-panel));
   max-height: calc(100% - 2 * var(--gap-panel));
   height: 70vh;

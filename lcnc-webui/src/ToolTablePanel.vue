@@ -668,8 +668,8 @@ defineExpose({ openAdd, fetchTools, triggerImport });
 
 /* ---- Edit dialog ---- */
 .editDialog {
-  min-width: 500px;
-  max-width: 620px;
+  min-width: 420px;
+  max-width: 480px;
   max-height: 90%;
 }
 
@@ -728,7 +728,7 @@ defineExpose({ openAdd, fetchTools, triggerImport });
 
 /* ---- Import dialog ---- */
 .importDialog {
-  max-width: 600px;
+  max-width: 440px;
 }
 
 .importStats {

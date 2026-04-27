@@ -311,7 +311,10 @@ input[type="range"]::-moz-range-thumb:hover {
   border-radius: var(--radius-md);
 }
 
-.inputField:focus {
+.inputField:focus,
+.inputField.keypad-active {
+  outline: 2px solid var(--info);
+  outline-offset: 1px;
   border-color: color-mix(in oklab, var(--fg) 40%, var(--border));
 }
 
@@ -459,6 +462,8 @@ textarea {
 }
 
 textarea:focus {
+  outline: 2px solid var(--info);
+  outline-offset: 1px;
   border-color: color-mix(in oklab, var(--fg) 40%, var(--border));
 }
 

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, useAttrs } from 'vue';
+import { computed, ref, useAttrs } from 'vue';
 import { usePermissions } from './permissions';
 import { INPUT_DEFS, INPUT_SIZE_STYLES, type InputType, type InputDef } from './machineControls';
-import { openKeypad } from './useNumberKeypad';
+import { openKeypad, keypadState } from './useNumberKeypad';
 
 defineOptions({ inheritAttrs: false });
 
@@ -34,11 +34,15 @@ const keypadDisplayValue = computed(() =>
   attrs.value !== undefined ? (attrs.value as string | number | undefined) : model.value
 );
 
-function openKeypadFromInput() {
+const inputEl = ref<HTMLInputElement | null>(null);
+const isKeypadActive = computed(() => keypadState.trigger === inputEl.value);
+
+function openKeypadFromInput(e: Event) {
   if (isDisabled.value) return;
   openKeypad({
     value: keypadDisplayValue.value ?? null,
     label: props.label,
+    trigger: e.currentTarget as HTMLElement,
     onConfirm: (v) => {
       model.value = v;
       // Native input/change events don't fire for keypad confirms — synthesize them
@@ -57,6 +61,7 @@ function openKeypadFromInput() {
   <!-- Number inputs: read-only display field that opens the keypad on click/Enter/Space. -->
   <input
     v-if="isNumber"
+    ref="inputEl"
     v-bind="attrs"
     type="text"
     :style="catalogStyle"
@@ -66,6 +71,7 @@ function openKeypadFromInput() {
     inputmode="none"
     lang="en"
     class="inputField"
+    :class="{ 'keypad-active': isKeypadActive }"
     @click="openKeypadFromInput"
     @keydown.enter.prevent="openKeypadFromInput"
     @keydown.space.prevent="openKeypadFromInput"

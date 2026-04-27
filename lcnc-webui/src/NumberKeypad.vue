@@ -16,15 +16,17 @@ const replacing = ref(false);
 // Auto-close if the machine becomes disarmed while the keypad is open.
 watch(armed, (isArmed) => { if (!isArmed) cancel(); });
 
-// Initialize expression and focus the dialog on mount.
-// onMounted is used instead of watch(keypadState.open) because the component is
-// only rendered via v-if when open=true, so the watched value never "changes" — the
-// watch callback would never fire. onMounted always runs on first render.
-onMounted(() => {
+// Re-init on mount AND on every subsequent openKeypad() call. Watching
+// keypadState.seq (a monotonic counter) lets the dialog refresh its expression
+// and steal focus even when it's already open and the new field has the same
+// value as the old one (e.g. zero-to-zero re-targeting).
+function loadFromState() {
   expr.value = keypadState.initial;
   replacing.value = !!keypadState.initial; // only replace when pre-populated
   nextTick(() => dialogEl.value?.focus());
-});
+}
+onMounted(loadFromState);
+watch(() => keypadState.seq, loadFromState);
 
 // Live result from the expression — null means invalid/incomplete.
 const result = computed(() => evaluate(expr.value));

@@ -873,6 +873,15 @@ watch(defaultAngularJogVel, (v) => { if (!_angJogVelInit && v !== 10) { angularJ
 let _rpmInit = false;
 watch(defaultSpindleSpeed, (v) => { if (!_rpmInit && v !== 1000) { rpmInput.value = v; _rpmInit = true; } });
 
+// While the spindle is running, mirror the live commanded RPM into rpmInput.
+// Keeps the displayed value in sync with SPINDLE_INCREASE/DECREASE and gives
+// the user the last commanded value as the staging value when they Stop.
+watch(spindleSpeed, (v) => {
+  if (isSpinning.value && v != null && v > 0 && v !== rpmInput.value) {
+    rpmInput.value = v;
+  }
+});
+
 /**
  * Anti-spam gate with inline permission check (defense-in-depth).
  * Gate param ensures the command is re-checked even if DOM state changed.
@@ -993,6 +1002,14 @@ function spindleReverse(speed: number) {
 
 function spindleStop() {
   fire({ cmd: "spindle_stop" }, 'ready');
+}
+
+function spindleIncrease() {
+  fire({ cmd: "spindle_increase" }, 'ready');
+}
+
+function spindleDecrease() {
+  fire({ cmd: "spindle_decrease" }, 'ready');
 }
 
 function loadFile(path: string) {
@@ -1766,6 +1783,7 @@ watch(viewerGcode, (newGcode) => {
         :isForward="isForward"
         :isReverse="isReverse"
         :isSpinning="isSpinning"
+        :isRunning="isRunning"
         :rpmInput="rpmInput"
         :minSpindleSpeed="minSpindleSpeed"
         :maxSpindleSpeed="maxSpindleSpeed"
@@ -1774,6 +1792,8 @@ watch(viewerGcode, (newGcode) => {
         @spindleFwd="spindleForward"
         @spindleRev="spindleReverse"
         @spindleStop="spindleStop"
+        @spindleIncrease="spindleIncrease"
+        @spindleDecrease="spindleDecrease"
         @update:rpmInput="rpmInput = $event"
         @toggleFlood="toggleFlood"
         @toggleMist="toggleMist"

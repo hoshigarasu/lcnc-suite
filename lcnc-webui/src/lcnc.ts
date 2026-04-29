@@ -62,6 +62,8 @@ export type WsCommand =
   | { cmd: "spindle_forward"; speed: number }
   | { cmd: "spindle_reverse"; speed: number }
   | { cmd: "spindle_stop" }
+  | { cmd: "spindle_increase" }
+  | { cmd: "spindle_decrease" }
   // Overrides
   | { cmd: "set_feed_override"; scale: number }
   | { cmd: "set_spindle_override"; scale: number }

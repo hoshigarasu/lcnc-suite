@@ -2577,6 +2577,18 @@ async def _handle_command_impl(msg: Dict[str, Any], armed: bool):
             CMD.spindle(linuxcnc.SPINDLE_OFF)
             return {"ok": True}
 
+        if cmd == "spindle_increase":
+            require_armed(armed)
+            await set_mode(linuxcnc.MODE_MANUAL)
+            CMD.spindle(linuxcnc.SPINDLE_INCREASE)
+            return {"ok": True}
+
+        if cmd == "spindle_decrease":
+            require_armed(armed)
+            await set_mode(linuxcnc.MODE_MANUAL)
+            CMD.spindle(linuxcnc.SPINDLE_DECREASE)
+            return {"ok": True}
+
         if cmd == "flood_on":
             require_armed(armed)
             CMD.flood(linuxcnc.FLOOD_ON)

@@ -27,6 +27,7 @@ See also: GitHub issue #9 (history of the previous in-gateway approach).
 import os
 import sys
 import json
+import signal
 import time
 import socket
 import select
@@ -136,8 +137,19 @@ def _build_snapshot() -> dict:
 
 
 next_push = time.monotonic()
+
+# Cooperative shutdown: halrun sends SIGTERM on unload. select.select() is
+# interrupted by the signal in the main thread, so the loop exits within
+# one tick (~33 ms at 30 Hz) instead of waiting for halrun's SIGKILL.
+_running = True
+def _stop(*_):
+    global _running
+    _running = False
+signal.signal(signal.SIGTERM, _stop)
+signal.signal(signal.SIGINT, _stop)
+
 try:
-    while True:
+    while _running:
         socks = [server]
         if client is not None:
             socks.append(client)
@@ -204,3 +216,7 @@ finally:
     server.close()
     if os.path.exists(SOCK_PATH):
         os.unlink(SOCK_PATH)
+    try:
+        comp.exit()
+    except Exception as e:
+        print(f"[READER] comp.exit failed: {e}", flush=True)

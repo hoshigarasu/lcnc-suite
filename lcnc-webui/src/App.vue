@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, provide, reactive, ref, watch } from "vue";
 import { evaluatePermissions, PERMISSIONS_KEY, type Permissions } from "./permissions";
-import { connectWs, connected, status, send, armed, lastReply, viewerGcode, viewerInit, gcodeContent, lcncError, latency, networkLatency, messages, unreadCount, dismissMessage, clearAllMessages, markMessagesRead, safetyTrip, acknowledgeSafetyTrip, readerStale, previewLoadError, type LcncMessage } from "./lcncWs";
+import { connectWs, connected, status, send, armed, lastReply, viewerGcode, viewerInit, gcodeContent, lcncError, latency, networkLatency, messages, unreadCount, dismissMessage, clearAllMessages, markMessagesRead, safetyTrip, acknowledgeSafetyTrip, readerStale, previewLoadError, serverShuttingDown, type LcncMessage } from "./lcncWs";
 import ThreeViewer from "./ThreeViewer.vue";
 import TabPanel from "./TabPanel.vue";
 import GcodePanel from "./GcodePanel.vue";
@@ -160,6 +160,7 @@ const STATE_COLORS: Record<MachineStateKey, string> = {
 };
 const machineStateColor = computed(() => {
   if (safetyTrip.value) return '--state-danger';
+  if (serverShuttingDown.value) return '--state-warn';
   if (readerStale.value) return '--state-warn';
   if (previewLoadError.value) return '--state-warn';
   return STATE_COLORS[machineState.value];
@@ -202,6 +203,7 @@ const bannerFlashMode = computed<'none' | 'pulse' | 'flash'>(() => {
   if (safetyTrip.value) return 'flash';
   const s = machineState.value;
   if (s === 'estop' || s === 'disconnected') return 'flash';
+  if (serverShuttingDown.value) return 'pulse';
   if (readerStale.value) return 'pulse';
   if (previewLoadError.value) return 'pulse';
   if (s === 'unhomed' || s === 'toolchange' || s === 'idle') return 'pulse';
@@ -1321,6 +1323,9 @@ watch(viewerGcode, (newGcode) => {
           <span v-if="safetyTrip" :key="'safety'" class="bannerError">
             SAFETY TRIPPED at <span class="mono">{{ fmtTimestamp(safetyTrip.ts) }}</span>
             — press Acknowledge to recover
+          </span>
+          <span v-else-if="serverShuttingDown" :key="'shutdown'" class="bannerError">
+            Server shutting down…
           </span>
           <span v-else-if="readerStale" :key="'reader-stale'" class="bannerError">
             HAL reader stale — UI values may be out of date

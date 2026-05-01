@@ -41,6 +41,13 @@ export const safetyTrip = ref<{ ts: number; reason: string } | null>(null);
 // depend on the reader (spindle RPM, eoffset, probe input, comp state) are
 // known to be stale rather than silently frozen.
 export const readerStale = ref(false);
+
+// Server is mid-shutdown (FastAPI lifespan teardown). Set when the gateway
+// broadcasts `{type: "server_shutdown"}` immediately before closing WS
+// connections. Distinguishes a planned shutdown from a network blip so the
+// UI can show "Server shutting down" instead of the generic reconnect state.
+// Cleared on the next successful WS open.
+export const serverShuttingDown = ref(false);
 // Most recent failure from the bulk-data fetches that feed the 3D viewer
 // (preview, surface points, comp grid). Set in the fetch catch handlers,
 // cleared on the next successful fetch. Surfaced in App.vue's status banner
@@ -340,6 +347,7 @@ export function connectWs() {
 
   ws.onopen = () => {
     connected.value = true;
+    serverShuttingDown.value = false;
     _hbWorker = new Worker(new URL("./heartbeatWorker.ts", import.meta.url), { type: "module" });
     _hbWorker.onmessage = () => {
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -387,6 +395,14 @@ export function connectWs() {
 
     // Server-authoritative armed state — update from every message that carries it
     if (msg.armed !== undefined) armed.value = msg.armed;
+
+    if (msg.type === "server_shutdown") {
+      // Lifespan broadcast immediately before WS close. Mark explicit so the
+      // UI can distinguish from a network blip during the brief window
+      // before onclose fires.
+      serverShuttingDown.value = true;
+      return;
+    }
 
     if (msg.type === "pong") {
       // Pure network latency: heartbeat → immediate pong reply (diagnostic only)

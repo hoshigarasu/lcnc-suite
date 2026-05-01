@@ -91,12 +91,47 @@ fi
 # ── Activate Python venv ──
 source "$GATEWAY_DIR/.venv/bin/activate"
 
+# ── Diagnostic launcher log — bypasses the tee pipe entirely so we
+# can see what the launcher is doing even if tee blocks. Append-per-
+# call (no exec >FD redirect) so each line hits disk via its own
+# open/write/close — no stdio buffer that could be lost on SIGKILL.
+LCNC_LAUNCHER_LOG="/tmp/lcnc-launcher.log"
+: > "$LCNC_LAUNCHER_LOG"
+_log() { printf '[%s] %s\n' "$(date +%H:%M:%S.%3N)" "$*" >> "$LCNC_LAUNCHER_LOG"; }
+_log "launcher start pid=$$"
+
 # ── Log gateway stdout/stderr to /tmp so we can read it after the fact
-# without needing the launching terminal. `tee` runs in a process
-# substitution so normal terminal output is preserved.
+# without needing the launching terminal. Two independent isolations:
+#
+#   1. setsid → tee gets its own session, so terminal Ctrl-C SIGINT
+#      cannot reach it directly. (GNU tee has no SIGINT handler — default
+#      disposition would kill it on the spot, dropping any in-flight
+#      gateway shutdown output.)
+#
+#   2. ( … & ) double-fork → tee is reparented to PID 1 immediately, so
+#      it is NOT a child of the launcher bash. This matters at script
+#      exit: bash 5.2 sits in wait4(-1) waiting for every direct child
+#      to be reaped; with tee as a direct child, bash would block until
+#      tee got EOF, but tee can't get EOF until bash closes FDs 1+2,
+#      which only happens after wait4 returns — classic deadlock that
+#      prevents LinuxCNC's Cleanup phase from running.
+#
+# Named FIFO (not >(setsid tee …)) because process substitution leaves
+# a hidden FD inside bash that defeats the reparent-to-PID-1 trick.
 LCNC_LOG="/tmp/lcnc-gateway.log"
-: > "$LCNC_LOG"  # truncate on each start
-exec > >(tee -a "$LCNC_LOG") 2>&1
+[[ -f "$LCNC_LOG" ]] && mv "$LCNC_LOG" "${LCNC_LOG}.prev"
+: > "$LCNC_LOG"
+LCNC_FIFO="$(mktemp -u /tmp/lcnc-fifo.XXXXXX)"
+mkfifo -m 600 "$LCNC_FIFO"
+( setsid tee -a "$LCNC_LOG" < "$LCNC_FIFO" & )
+exec > "$LCNC_FIFO" 2>&1
+_log "tee started via FIFO=$LCNC_FIFO (setsid + reparented to init)"
+# Clean the FIFO file on exit. Tee already opened the read end before
+# unlink, so unlink doesn't disturb tee — it exits naturally on EOF.
+# Capture $? FIRST — must be the very first thing in the trap, before
+# any command that would clobber it. rc<128 = explicit exit; rc>=128
+# = killed by signal (rc-128 = signal number).
+trap '_EXIT_RC=$?; rm -f "$LCNC_FIFO" 2>/dev/null; _log "EXIT trap fired rc=$_EXIT_RC"' EXIT
 
 # ── uvicorn loop selection (Experiment 3: uvloop opt-in) ──
 # Force --loop asyncio unless WEBUI_UVLOOP=1, so A/B comparisons aren't
@@ -113,43 +148,86 @@ fi
 # INFO/URL highlighting in the launching terminal.
 UVICORN_COLOR=(--use-colors)
 
+# Bound HTTP-response drain on shutdown. uvicorn's default (None) waits
+# indefinitely for in-flight responses to finish; with LAN browsers
+# fetching multi-MB STLs over /assets/, that meant 8–66 s shutdowns
+# (uvicorn HttpToolsProtocol.shutdown only sets keep_alive=False for
+# in-flight cycles, never aborts the transport — drain is bounded by
+# either response completion or kernel tcp_retries2). Desktop CNC
+# control is a singleton process, not a rolling-deploy server: the
+# correct policy on SIGTERM is "stop now, in-flight downloads error
+# out." 1 s is enough for the shutdown log line to flush, short
+# enough to feel instant. Validated against probe data 2026-05-01.
+UVICORN_GRACEFUL=(--timeout-graceful-shutdown 1)
+
 # ── Dev mode: Vite hot-reload + gateway ──
 if [[ "$DEV" == "1" ]]; then
   echo "lcnc-suite: DEV mode — Vite on :$VITE_PORT, gateway on :$PORT"
 
+  # Trap mirrors production's canonical pattern. Bound only to INT/TERM
+  # (not EXIT) so the gateway's exit status propagates instead of being
+  # clobbered by an EXIT-trap-driven `exit 0`. The trap forwards exactly
+  # one SIGTERM, then waits for the gateway's lifespan to finish before
+  # exiting — so [SHUTDOWN] output is fully drained to the log.
+  # Re-entrancy guard: ignore the same signal while the trap is running.
+  # Without this, a second Ctrl-C re-enters _term while the first is
+  # blocked in `wait`, corrupts bash's variable stack
+  # (pop_var_context errors), and produces broken state.
   VITE_PGID=""
-
   GATEWAY_PID=""
-
-  cleanup() {
-    [[ -n "${GATEWAY_PID:-}" ]] && kill -TERM "$GATEWAY_PID" 2>/dev/null || true
-    # Kill Vite's entire process group (npm → node tree)
-    [[ -n "$VITE_PGID" ]] && kill -TERM -- -"$VITE_PGID" 2>/dev/null || true
-    wait 2>/dev/null || true
+  _term() {
+    trap '' INT TERM
+    _log "DEV _term: signal received"
+    if [[ -n "$GATEWAY_PID" ]]; then
+      _log "DEV _term: SIGTERM → gateway pid=$GATEWAY_PID"
+      kill -TERM "$GATEWAY_PID" 2>/dev/null
+    fi
+    if [[ -n "$VITE_PGID" ]]; then
+      _log "DEV _term: SIGTERM → vite pgid=$VITE_PGID"
+      kill -TERM -- -"$VITE_PGID" 2>/dev/null
+    fi
+    _log "DEV _term: waiting for gateway pid=$GATEWAY_PID"
+    # `wait $PID` returns the gateway's exit status (143 if killed by
+    # SIGTERM). `|| true` is required because set -e would otherwise
+    # terminate the trap right here, skipping the rest of teardown.
+    wait "$GATEWAY_PID" 2>/dev/null || true
+    _log "DEV _term: gateway reaped, exit 0"
+    exit 0
   }
-  trap cleanup EXIT INT TERM
+  trap _term INT TERM
 
-  # Start Vite in its own session so we can kill the whole process tree.
+  # Vite in its own session — kill the whole npm→node tree on shutdown.
   # FORCE_COLOR=1 keeps chalk's ANSI output alive through the tee pipe above
   # (otherwise Vite detects non-TTY and prints its banner plain).
   setsid bash -c "cd '$WEBUI_DIR' && FORCE_COLOR=1 exec npm run dev -- --host '$HOST' --port '$VITE_PORT' --strictPort" &
   VITE_PGID=$!
+  _log "DEV vite started pgid=$VITE_PGID"
 
   # Open browser to Vite port
   if [[ "$BROWSER" == "1" ]]; then
     ( sleep 2 && xdg-open "http://localhost:$VITE_PORT" 2>/dev/null ) &
   fi
 
-  # Loop respawns the gateway on non-zero exit; cleanup trap also kills Vite.
-  until
-    python3 -m uvicorn gateway:app --host "$HOST" --port "$PORT" --app-dir "$GATEWAY_DIR" "${UVICORN_LOOP[@]}" "${UVICORN_COLOR[@]}" &
-    GATEWAY_PID=$!
-    wait "$GATEWAY_PID"
-  do
-    status=$?
-    echo "lcnc-suite: gateway exited $status, restarting" >&2
-  done
-  exit 0
+  # Gateway in its own session — terminal Ctrl-C cannot reach it; only
+  # the trap above can signal it. Gateway exit (clean or crash) propagates:
+  # we kill Vite, wait for reaping, and exit with the gateway's status.
+  # No respawn — crash is operator-diagnosable, not silently retried.
+  setsid python3 -m uvicorn gateway:app --host "$HOST" --port "$PORT" --app-dir "$GATEWAY_DIR" "${UVICORN_LOOP[@]}" "${UVICORN_COLOR[@]}" "${UVICORN_GRACEFUL[@]}" &
+  GATEWAY_PID=$!
+  _log "DEV gateway started pid=$GATEWAY_PID"
+  # `|| status=$?` keeps set -e from killing us when the gateway exits
+  # non-zero (e.g. status=143 after SIGTERM). We need to propagate the
+  # status to LinuxCNC's Cleanup via `exit "$status"` below.
+  status=0
+  wait "$GATEWAY_PID" || status=$?
+  _log "DEV main wait returned status=$status"
+
+  if [[ -n "$VITE_PGID" ]]; then
+    _log "DEV main: SIGTERM → vite pgid=$VITE_PGID"
+    kill -TERM -- -"$VITE_PGID" 2>/dev/null
+  fi
+  _log "DEV main: exit $status (vite orphaned, init reaps)"
+  exit "$status"
 fi
 
 # ── Production mode: gateway serves built frontend ──
@@ -167,16 +245,40 @@ fi
 
 echo "lcnc-suite: serving on http://$HOST:$PORT"
 
-# Loop respawns the gateway on non-zero exit. Clean SIGTERM (LinuxCNC stop)
-# returns 0 from uvicorn and breaks the loop. Crashes loop until fixed.
+# Single signal authority: terminal signals reach the launcher only;
+# the trap is the only path that signals the gateway. Trap forwards
+# exactly one SIGTERM, then waits for the gateway's lifespan to finish
+# before exiting — so [SHUTDOWN] output is fully drained to the log.
 GATEWAY_PID=""
-trap '[[ -n "$GATEWAY_PID" ]] && kill -TERM "$GATEWAY_PID" 2>/dev/null; exit 0' INT TERM
+_term() {
+  trap '' INT TERM
+  _log "PROD _term: signal received"
+  if [[ -n "$GATEWAY_PID" ]]; then
+    _log "PROD _term: SIGTERM → gateway pid=$GATEWAY_PID"
+    kill -TERM "$GATEWAY_PID" 2>/dev/null
+  fi
+  _log "PROD _term: waiting for gateway to reap"
+  # `wait $PID` returns the gateway's exit status (143 if killed by
+  # SIGTERM). `|| true` is required because set -e would otherwise
+  # terminate the trap right here, skipping the rest of teardown.
+  wait "$GATEWAY_PID" 2>/dev/null || true
+  _log "PROD _term: gateway reaped, exit 0"
+  exit 0
+}
+trap _term INT TERM
 
-until
-  python3 -m uvicorn gateway:app --host "$HOST" --port "$PORT" --app-dir "$GATEWAY_DIR" "${UVICORN_LOOP[@]}" "${UVICORN_COLOR[@]}" &
-  GATEWAY_PID=$!
-  wait "$GATEWAY_PID"
-do
-  status=$?
-  echo "lcnc-suite: gateway exited $status, restarting" >&2
-done
+# setsid → uvicorn cannot be reached by terminal Ctrl-C; only the trap
+# above can signal it. Gateway exit (clean or crash) propagates: when
+# wait returns, the launcher exits with the gateway's status, which
+# triggers LinuxCNC's Cleanup phase. No respawn — crash is operator-
+# diagnosable, not silently retried.
+setsid python3 -m uvicorn gateway:app --host "$HOST" --port "$PORT" --app-dir "$GATEWAY_DIR" "${UVICORN_LOOP[@]}" "${UVICORN_COLOR[@]}" "${UVICORN_GRACEFUL[@]}" &
+GATEWAY_PID=$!
+_log "PROD gateway started pid=$GATEWAY_PID"
+# `|| status=$?` keeps set -e from killing us when the gateway exits
+# non-zero (e.g. status=143 after SIGTERM). We need to propagate the
+# status to LinuxCNC's Cleanup via `exit "$status"` below.
+status=0
+wait "$GATEWAY_PID" || status=$?
+_log "PROD main wait returned status=$status, exit $status"
+exit "$status"

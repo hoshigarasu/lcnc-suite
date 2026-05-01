@@ -9,6 +9,7 @@ Pins survive gateway restart because this component is owned by LinuxCNC.
 import os
 import sys
 import json
+import signal
 import socket
 import select
 import hal
@@ -60,8 +61,18 @@ buf = ""
 _last_hb_ok = None
 _trip_count = 0
 
+# Cooperative shutdown: halrun sends SIGTERM on unload. select.select() is
+# interrupted by the signal in the main thread, so the loop exits within
+# one tick (~100 ms) instead of waiting for halrun's SIGKILL escalation.
+_running = True
+def _stop(*_):
+    global _running
+    _running = False
+signal.signal(signal.SIGTERM, _stop)
+signal.signal(signal.SIGINT, _stop)
+
 try:
-    while True:
+    while _running:
         socks = [server]
         if client is not None:
             socks.append(client)
@@ -155,3 +166,7 @@ finally:
     server.close()
     if os.path.exists(SOCK_PATH):
         os.unlink(SOCK_PATH)
+    try:
+        comp.exit()
+    except Exception as e:
+        print(f"[SAFETY] comp.exit failed: {e}", flush=True)

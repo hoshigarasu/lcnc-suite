@@ -21,6 +21,139 @@ from starlette.responses import StreamingResponse, JSONResponse, FileResponse, R
 
 import logging
 import click
+from contextlib import asynccontextmanager
+
+
+# === TEMP LIFECYCLE PROBE (remove after debugging) ===
+# Single timeline anchor: every probe line carries +Nms from this anchor,
+# so boot, per-client connect, and shutdown all sit on one ruler. See
+# /home/cnc/.claude/plans/can-you-plan-for-jolly-leaf.md for the full plan.
+#
+# REMOVAL MAP — when stripping this probe later, delete:
+#   1. This whole block (lines 27 .. END TEMP LIFECYCLE PROBE marker below):
+#        _T0, _dbg, _UvicornTimingFilter (+ filter install loop),
+#        _format_conn_state, _install_shutdown_probe (incl. the _patched
+#        monkey-patch of Server._wait_tasks_to_complete).
+#   2. All scattered call sites — `git grep -n '_dbg('` and `git grep -n
+#      '_T0'` and `git grep -n '_conn_t0'` in this file. As of this
+#      writing the call sites are at module-level (BOOT markers around
+#      try_connect_lcnc / _hal_connect / _load_machine_config / FastAPI
+#      app instantiated / lifespan startup yield) and inside ws_endpoint
+#      (CONN markers anchored on _conn_t0).
+#   3. The lifespan teardown `[SHUTDOWN]` lines (search `_dt(` inside
+#      `lifespan`) — re-anchored to _T0 here; either leave as permanent
+#      (recommended — they're cheap and the only signal we have for
+#      shutdown timing) or delete if going fully clean.
+#
+# DO KEEP after removal: the `--timeout-graceful-shutdown 1` flag in
+# `lcnc-suite` (the real fix that bounds shutdown drain) and the bug
+# fix in _patched's `except (Exception, asyncio.CancelledError)` IF the
+# probe block is kept around at all. If removing the probe entirely,
+# the `_patched` monkey-patch goes with it and the bug becomes moot.
+_T0 = time.monotonic()
+
+
+def _dbg(tag: str, msg: str) -> None:
+    print(f"[{tag}] +{(time.monotonic() - _T0) * 1000:.0f}ms {msg}", flush=True)
+
+
+_dbg("BOOT", f"gateway start pid={os.getpid()}")
+
+
+class _UvicornTimingFilter(logging.Filter):
+    """Prepend [+Nms] (offset from gateway boot) to every uvicorn log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        offset_ms = (time.monotonic() - _T0) * 1000
+        prefix = f"[+{offset_ms:.0f}ms] "
+        # uvicorn passes its colorised template via `color_message`; prefix
+        # both forms so the on-screen and on-file rendering both show it.
+        if isinstance(record.msg, str) and not record.msg.startswith("[+"):
+            record.msg = prefix + record.msg
+        cm = record.__dict__.get("color_message")
+        if isinstance(cm, str) and not cm.startswith("[+"):
+            record.__dict__["color_message"] = prefix + cm
+        return True
+
+
+_uv_timing_filter = _UvicornTimingFilter()
+for _logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+    logging.getLogger(_logger_name).addFilter(_uv_timing_filter)
+
+
+def _format_conn_state(c) -> str:
+    """One-line per-connection diagnostic for HttpToolsProtocol shutdown probe."""
+    try:
+        peer = c.transport.get_extra_info("peername")
+        peer_str = f"{peer[0]}:{peer[1]}" if peer else "?"
+    except Exception:
+        peer_str = "?"
+    cycle_str = "none"
+    cycle = getattr(c, "cycle", None)
+    if cycle is not None:
+        cycle_str = "complete" if getattr(cycle, "response_complete", False) else "in-flight"
+    try:
+        is_closing = c.transport.is_closing()
+    except Exception:
+        is_closing = "?"
+    try:
+        write_buf = c.transport.get_write_buffer_size()
+    except Exception:
+        write_buf = "?"
+    keep_alive = getattr(cycle, "keep_alive", "?") if cycle is not None else "?"
+    return (
+        f"peer={peer_str} cycle={cycle_str} keep_alive={keep_alive} "
+        f"is_closing={is_closing} write_buf={write_buf}"
+    )
+
+
+def _install_shutdown_probe():
+    """Tick every 500 ms during uvicorn's task-wait phase, dumping per-connection
+    state. The smoking-gun field is `write_buf` — non-zero means asyncio is
+    waiting for the kernel TCP send buffer to drain before completing
+    transport.close(), which is the suspected cause of the 66 s shutdown
+    hang seen with Range-streamed STL responses."""
+    import uvicorn.server as _uv_server
+    _orig = _uv_server.Server._wait_tasks_to_complete
+
+    async def _patched(self):
+        async def _ticker():
+            while True:
+                conns = list(self.server_state.connections)
+                tasks = list(self.server_state.tasks)
+                ct = {}
+                for c in conns:
+                    n = type(c).__name__
+                    ct[n] = ct.get(n, 0) + 1
+                pending_tasks = sum(1 for t in tasks if not t.done())
+                _dbg(
+                    "SHUTDOWN-PROBE",
+                    f"summary connections={len(conns)} {ct} server_tasks_pending={pending_tasks}",
+                )
+                for i, c in enumerate(conns):
+                    _dbg("SHUTDOWN-PROBE", f"  conn[{i}] type={type(c).__name__} {_format_conn_state(c)}")
+                await asyncio.sleep(0.5)
+        _t = asyncio.create_task(_ticker())
+        try:
+            return await _orig(self)
+        finally:
+            _t.cancel()
+            try:
+                await _t
+            except (Exception, asyncio.CancelledError):
+                # CancelledError is BaseException-derived in Py3.8+, so a
+                # bare `except Exception` lets it escape — bubbling out of
+                # wait_for and skipping uvicorn's lifespan.shutdown() when
+                # there are no in-flight connections to wait on. Catch it
+                # explicitly here since we just initiated it ourselves.
+                # KeyboardInterrupt / SystemExit are intentionally NOT
+                # caught — those must propagate.
+                pass
+
+    _uv_server.Server._wait_tasks_to_complete = _patched
+
+_install_shutdown_probe()
+# === END TEMP LIFECYCLE PROBE ===
 
 
 class _UvicornUrlColorFilter(logging.Filter):
@@ -158,18 +291,6 @@ def _hal_disconnect():
         except Exception:
             pass
         _hal_sock = None
-
-def _shutdown_signal_handler(signum, frame):
-    """Handle SIGTERM/SIGINT: disconnect from HAL watchdog before exit."""
-    print(f"Gateway received signal {signum}", flush=True)
-    _hal_disconnect()
-    _camera_release()
-    signal.signal(signum, signal.SIG_DFL)
-    os.kill(os.getpid(), signum)
-
-signal.signal(signal.SIGTERM, _shutdown_signal_handler)
-signal.signal(signal.SIGINT, _shutdown_signal_handler)
-
 
 def _hal_send(msg: dict):
     """Send a pin-update message to the HAL watchdog via socket."""
@@ -326,7 +447,7 @@ def _start_disconnect_grace():
     global _disconnect_grace_task
     if _disconnect_grace_task and not _disconnect_grace_task.done():
         return  # already running
-    _disconnect_grace_task = asyncio.get_event_loop().create_task(_disconnect_grace())
+    _disconnect_grace_task = register_bg_task(asyncio.get_event_loop().create_task(_disconnect_grace()))
 
 
 def _cancel_disconnect_grace():
@@ -391,9 +512,9 @@ _lag_monitor_task: Optional[asyncio.Task] = None
 def _start_heartbeat():
     global _heartbeat_task, _lag_monitor_task
     if _heartbeat_task is None or _heartbeat_task.done():
-        _heartbeat_task = asyncio.get_event_loop().create_task(_heartbeat_loop())
+        _heartbeat_task = register_bg_task(asyncio.get_event_loop().create_task(_heartbeat_loop()))
     if _lag_monitor_task is None or _lag_monitor_task.done():
-        _lag_monitor_task = asyncio.get_event_loop().create_task(_loop_lag_monitor())
+        _lag_monitor_task = register_bg_task(asyncio.get_event_loop().create_task(_loop_lag_monitor()))
 
 
 # ---- Shared status poller ----
@@ -756,7 +877,7 @@ async def _status_poller():
             file_changed = bool(st.active_file) and st.active_file != _gcode_last_file
             if file_changed and not _gcode_refresh_running:
                 _gcode_refresh_running = True
-                asyncio.create_task(_refresh_gcode_preview(st.active_file))
+                register_bg_task(asyncio.create_task(_refresh_gcode_preview(st.active_file)))
             elif not st.active_file and _gcode_last_file is not None:
                 _gcode_preview_pending = None
                 _gcode_preview_bytes = None
@@ -897,7 +1018,7 @@ async def _status_poller():
 def _start_status_poller():
     global _status_poller_task
     if _status_poller_task is None or _status_poller_task.done():
-        _status_poller_task = asyncio.get_event_loop().create_task(_status_poller())
+        _status_poller_task = register_bg_task(asyncio.get_event_loop().create_task(_status_poller()))
 
 
 _reader_task: Optional[asyncio.Task] = None
@@ -907,7 +1028,7 @@ def _start_reader_recv_loop():
     """Start the long-running webui-reader IPC client task once."""
     global _reader_task
     if _reader_task is None or _reader_task.done():
-        _reader_task = asyncio.get_event_loop().create_task(_reader_recv_loop())
+        _reader_task = register_bg_task(asyncio.get_event_loop().create_task(_reader_recv_loop()))
 
 
 def _get_lcnc_pid() -> Optional[int]:
@@ -1034,10 +1155,17 @@ def check_lcnc_instance() -> bool:
 
 
 # Best-effort connection at startup (gateway still runs if LinuxCNC isn't up yet)
+_dbg("BOOT", "module-level lcnc connect start")
 if _get_lcnc_pid() is not None:
+    _bt = time.monotonic()
     try_connect_lcnc()
+    _dbg("BOOT", f"try_connect_lcnc dt={(time.monotonic()-_bt)*1000:.0f}ms connected={lcnc_connected}")
     if lcnc_connected:
+        _bt = time.monotonic()
         _hal_connect()
+        _dbg("BOOT", f"_hal_connect dt={(time.monotonic()-_bt)*1000:.0f}ms sock={'ok' if _hal_sock else 'fail'}")
+else:
+    _dbg("BOOT", "lcnc pid=None — skipped try_connect_lcnc")
 
 
 # ---- NC files directory ----
@@ -2306,11 +2434,13 @@ async def _handle_command_impl(msg: Dict[str, Any], armed: bool):
             return {"ok": True}
 
         if cmd == "shutdown":
-            # No require_armed — confirmation dialog is the safety gate
+            # No require_armed — confirmation dialog is the safety gate.
+            # Raise SIGTERM so uvicorn runs the lifespan shutdown path
+            # (drains tasks, closes WS, sends final HAL state, releases
+            # camera). os._exit() bypassed all of that.
             print("Shutdown requested via web UI", flush=True)
-            _hal_disconnect()
-            _camera_release()
-            os._exit(0)
+            signal.raise_signal(signal.SIGTERM)
+            return {"ok": True}
 
         if cmd == "abort":
             require_armed(armed)
@@ -2975,7 +3105,9 @@ def _load_machine_config() -> dict:
     }
 
 
+_bt = time.monotonic()
 MACHINE_CFG = _load_machine_config()
+_dbg("BOOT", f"_load_machine_config dt={(time.monotonic()-_bt)*1000:.0f}ms name={MACHINE_CFG.get('name','?')!r}")
 
 
 def _stl_versioned(filename: str) -> str:
@@ -2995,24 +3127,36 @@ def _axes_from_mask(mask: int) -> List[str]:
 
 def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
     """Build viewer init payload from machine.json config + INI-derived bounds."""
-    print(f"[VINIT] build_viewer_init called, STAT={'OK' if STAT else 'None'}, lcnc_connected={lcnc_connected}", flush=True)
+    # Per-step timing collected for [CONN] probe; survives normal startup with
+    # negligible cost (a few time.monotonic() calls).
+    _bvi_t0 = time.monotonic()
+    _bvi_steps: Dict[str, float] = {}
 
+    def _mark(step: str, t0: float) -> None:
+        _bvi_steps[step] = (time.monotonic() - t0) * 1000
+
+    _t = time.monotonic()
     limits = read_machine_limits_from_ini(STAT) if STAT else None
+    _mark("read_machine_limits", _t)
     if limits:
         bounds_origin, bounds_size = limits
     else:
         bounds_origin, bounds_size = [0, 0, 0], [0, 0, 0]
 
+    _t = time.monotonic()
     units = get_machine_units()
+    _mark("get_machine_units", _t)
 
     # Axis letters from axis_mask (e.g. XYZ=7, XYZAC=39). If LinuxCNC hasn't
     # connected yet, we ship no axes — the client waits for viewer_init before
     # rendering axis-dependent UI.
+    _t = time.monotonic()
     if STAT:
         STAT.poll()
         axes = _axes_from_mask(STAT.axis_mask)
     else:
         axes = []
+    _mark("stat_poll_axes", _t)
 
     # Build parts with cache-busted filenames
     parts = []
@@ -3027,7 +3171,9 @@ def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
 
     # INI/static fields — delivered once per connect so the per-tick status
     # payload doesn't re-ship them to every client every cycle.
+    _t = time.monotonic()
     ini_cfg = get_ini_config()
+    _mark("get_ini_config", _t)
     ini_filename = getattr(STAT, "ini_filename", None) if STAT else None
     ini_config = {
         "ini_filename": ini_filename,
@@ -3049,7 +3195,7 @@ def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
         "debug": ini_cfg.get("debug", False),
     }
 
-    return {
+    out = {
         "units": units,
         "stl_base_url": stl_base_url,
         "axes": axes,
@@ -3064,6 +3210,13 @@ def build_viewer_init(stl_base_url: str) -> Dict[str, Any]:
         "toolGroup": MACHINE_CFG.get("toolGroup"),
         "ini_config": ini_config,
     }
+    _bvi_total = (time.monotonic() - _bvi_t0) * 1000
+    _dbg(
+        "VINIT-T",
+        f"build_viewer_init total={_bvi_total:.0f}ms "
+        + " ".join(f"{k}={v:.0f}ms" for k, v in _bvi_steps.items()),
+    )
+    return out
 
 
 def _build_wcs_rotation_patches() -> Dict[str, str]:
@@ -3085,6 +3238,8 @@ def _build_wcs_rotation_patches() -> Dict[str, str]:
     return patches
 
 
+_gcode_parse_proc: Optional[asyncio.subprocess.Process] = None  # tracked so lifespan can terminate it
+
 async def _refresh_gcode_preview(filepath: str):
     """Parse filepath in an isolated subprocess and publish the result.
 
@@ -3096,7 +3251,7 @@ async def _refresh_gcode_preview(filepath: str):
     """
     global _gcode_preview_pending, _gcode_preview_version
     global _gcode_last_file, _gcode_refresh_running
-    global _gcode_preview_bytes
+    global _gcode_preview_bytes, _gcode_parse_proc
     t_start = time.monotonic()
     try:
         ini_path = getattr(STAT, "ini_filename", None) if STAT is not None else None
@@ -3121,6 +3276,7 @@ async def _refresh_gcode_preview(filepath: str):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
+        _gcode_parse_proc = proc
         t_spawned = time.monotonic()
         print(f"[GCODE] spawn ok pid={proc.pid} fork_ms={(t_spawned - t_spawn)*1000:.0f}", flush=True)
 
@@ -3180,9 +3336,131 @@ async def _refresh_gcode_preview(filepath: str):
         print(f"[GCODE] preview refresh failed for {filepath}: {type(e).__name__}: {e}", flush=True)
     finally:
         _gcode_refresh_running = False
+        _gcode_parse_proc = None
 
 
-app = FastAPI()
+# ---- Lifespan shutdown registry ----
+# Long-lived tasks register themselves here so the FastAPI lifespan can cancel
+# them on shutdown. uvicorn replaces our module-level signal handlers, so the
+# only deterministic shutdown path is FastAPI's lifespan exit.
+_shutting_down: bool = False
+_bg_tasks: set[asyncio.Task] = set()
+
+def register_bg_task(t: asyncio.Task) -> asyncio.Task:
+    """Register a long-lived task so lifespan can cancel it. Returns the task."""
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
+    return t
+
+
+@asynccontextmanager
+async def lifespan(app: "FastAPI"):
+    _dbg("BOOT", "lifespan startup yield (app ready)")
+    yield
+    # ---- Shutdown ----
+    # Order matters. Each step is bounded so a stuck client/socket can't block
+    # the rest. Total worst case ~5s — sized to fit uvicorn's
+    # --timeout-graceful-shutdown 5 in the launcher.
+    global _shutting_down
+    _shutting_down = True
+    # Re-anchored to module-level _T0 so [SHUTDOWN] deltas line up with
+    # [BOOT]/[CONN]/[SHUTDOWN-PROBE] on a single timeline.
+    def _elapsed() -> str:
+        return f"+{(time.monotonic() - _T0) * 1000:.0f}ms"
+    print(f"[SHUTDOWN] {_elapsed()} lifespan teardown begin", flush=True)
+
+    # 1. Notify all clients before tearing the connection.
+    snapshot = list(_clients.values())
+    if snapshot:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    *(ws_send_json(c["ws"], {"type": "server_shutdown"}) for c in snapshot),
+                    return_exceptions=True,
+                ),
+                timeout=0.5,
+            )
+        except asyncio.TimeoutError:
+            print(f"[SHUTDOWN] {_elapsed()} server_shutdown broadcast timed out", flush=True)
+        print(f"[SHUTDOWN] {_elapsed()} broadcast server_shutdown to {len(snapshot)} clients", flush=True)
+
+    # 2. Close WS connections (1001 = going away).
+    if snapshot:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    *(c["ws"].close(code=1001) for c in snapshot),
+                    return_exceptions=True,
+                ),
+                timeout=1.0,
+            )
+        except asyncio.TimeoutError:
+            print(f"[SHUTDOWN] {_elapsed()} WS close timed out", flush=True)
+        print(f"[SHUTDOWN] {_elapsed()} closed {len(snapshot)} WS connection(s)", flush=True)
+
+    # 3. Cancel background tasks. Must precede step 4: _disconnect_grace and
+    # _heartbeat_loop continuously toggle the heartbeat field via _hal_send;
+    # if still running when step 4 writes the deterministic LOW, the watchdog
+    # could see a flipped value on the wire.
+    if _bg_tasks:
+        tasks = list(_bg_tasks)
+        for t in tasks:
+            t.cancel()
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=2.0,
+            )
+        except asyncio.TimeoutError:
+            print(f"[SHUTDOWN] {_elapsed()} {sum(1 for t in tasks if not t.done())} bg task(s) did not finish in 2s", flush=True)
+        print(f"[SHUTDOWN] {_elapsed()} cancelled {len(tasks)} bg tasks", flush=True)
+
+    # 4. Final HAL state — deterministic LOW transition. hal_watchdog also
+    # forces pins LOW on socket close (recv empty data), but explicit is
+    # better here so the trip-latch / safety chain settles before halrun
+    # unloads the watchdog component.
+    try:
+        _hal_send({"heartbeat": False, "connected": False})
+        print(f"[SHUTDOWN] {_elapsed()} sent final HAL state heartbeat=False connected=False", flush=True)
+    except Exception as e:
+        print(f"[SHUTDOWN] {_elapsed()} final _hal_send failed: {e}", flush=True)
+
+    # 5. Disconnect HAL sockets (must follow step 4 — _hal_send needs the socket).
+    _hal_disconnect()
+    if _reader_writer is not None:
+        try:
+            _reader_writer.close()
+            await asyncio.wait_for(_reader_writer.wait_closed(), timeout=0.5)
+        except (asyncio.TimeoutError, Exception) as e:
+            print(f"[SHUTDOWN] {_elapsed()} reader writer close: {type(e).__name__}: {e}", flush=True)
+    print(f"[SHUTDOWN] {_elapsed()} HAL sockets disconnected", flush=True)
+
+    # 6. Terminate gcode parse subprocess if alive.
+    proc = _gcode_parse_proc
+    if proc is not None and proc.returncode is None:
+        try:
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+            print(f"[SHUTDOWN] {_elapsed()} gcode parse subprocess terminated rc={proc.returncode}", flush=True)
+        except Exception as e:
+            print(f"[SHUTDOWN] {_elapsed()} gcode proc terminate failed: {e}", flush=True)
+
+    # 7. Camera.
+    try:
+        _camera_release()
+        print(f"[SHUTDOWN] {_elapsed()} camera released", flush=True)
+    except Exception as e:
+        print(f"[SHUTDOWN] {_elapsed()} camera release failed: {e}", flush=True)
+
+    print(f"[SHUTDOWN] {_elapsed()} lifespan teardown complete", flush=True)
+
+
+app = FastAPI(lifespan=lifespan)
+_dbg("BOOT", "FastAPI app instantiated")
 
 app.add_middleware(
     CORSMiddleware,
@@ -3859,7 +4137,7 @@ def _ensure_halshow_loop() -> None:
     """Start the live-update task if it isn't already running."""
     global _halshow_loop_task
     if _halshow_loop_task is None or _halshow_loop_task.done():
-        _halshow_loop_task = asyncio.create_task(_halshow_loop())
+        _halshow_loop_task = register_bg_task(asyncio.create_task(_halshow_loop()))
 
 
 async def _halshow_loop() -> None:
@@ -3940,6 +4218,7 @@ async def get_g30():
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
+    _conn_t0 = time.monotonic()  # === TEMP LIFECYCLE PROBE anchor for [CONN] deltas ===
     await ws.accept()
     armed = False  # connection-local arming
 
@@ -3956,19 +4235,26 @@ async def ws_endpoint(ws: WebSocket):
     _start_heartbeat()
     _start_status_poller()
     _start_reader_recv_loop()
+    _dbg("CONN", f"client#{client_id} ip={client_ip} accept+register+bg-tasks dt={(time.monotonic()-_conn_t0)*1000:.0f}ms")
 
     # Restore lcnc_connected if LinuxCNC is still running but the flag was
     # cleared by a previous connection's WebSocket error
     global lcnc_connected
+    _t = time.monotonic()
+    _stat_path = "noop"
     if not lcnc_connected:
         if STAT is not None:
             try:
                 STAT.poll()
                 lcnc_connected = True
+                _stat_path = "stat-poll"
             except Exception:
                 try_connect_lcnc()
+                _stat_path = "stat-fail-reconnect"
         else:
             try_connect_lcnc()
+            _stat_path = "reconnect"
+    _dbg("CONN", f"client#{client_id} lcnc-restored dt={(time.monotonic()-_t)*1000:.0f}ms path={_stat_path} connected={lcnc_connected}")
 
     # Viewer: send static model/init once per connection
     host = ws.headers.get("host", "127.0.0.1:8000")  # includes port
@@ -3981,17 +4267,21 @@ async def ws_endpoint(ws: WebSocket):
     stl_base_url = f"http://{host_only}:8000/assets/"
 
     print(f"[VINIT] client#{client_id} connect-time viewer_init: lcnc_connected={lcnc_connected}, STAT={'OK' if STAT else 'None'}", flush=True)
+    _t = time.monotonic()
     try:
         await ws_send_json(ws, {"type": "viewer_init", "data": build_viewer_init(stl_base_url)})
         viewer_init_sent = True  # prevents status_loop re-send; reset on LinuxCNC reconnect
         print(f"[VINIT] client#{client_id} connect-time viewer_init SENT OK", flush=True)
+        _dbg("CONN", f"client#{client_id} viewer-init-sent dt={(time.monotonic()-_t)*1000:.0f}ms (since-accept={(time.monotonic()-_conn_t0)*1000:.0f}ms)")
     except Exception as e:
         print(f"[VINIT] client#{client_id} connect-time viewer_init FAILED: {e}", flush=True)
 
     # Send initial settings snapshot (part of WS handshake)
+    _t = time.monotonic()
     try:
         _init_settings = await asyncio.get_event_loop().run_in_executor(None, load_settings)
         await ws_send_json(ws, {"type": "settings_init", "settings": _init_settings, "armed": armed})
+        _dbg("CONN", f"client#{client_id} settings-sent dt={(time.monotonic()-_t)*1000:.0f}ms")
     except Exception as e:
         print(f"[SETTINGS] client#{client_id} settings_init FAILED: {e}", flush=True)
 
@@ -4003,6 +4293,8 @@ async def ws_endpoint(ws: WebSocket):
     # client's status_loop picks up the ping on the next version bump.
     # File *content* is fetched separately via GET /gcode.
     _init_preview_ver = _gcode_preview_version
+    _t = time.monotonic()
+    _gcode_path = "no-file"
     try:
         if STAT is not None:
             STAT.poll()
@@ -4019,11 +4311,17 @@ async def ws_endpoint(ws: WebSocket):
                     "version": _gcode_preview_version,
                     "file": initial_file,
                 })
+                _gcode_path = "cache-hit-sent"
             elif not _gcode_refresh_running:
                 _gcode_refresh_running = True
-                asyncio.create_task(_refresh_gcode_preview(initial_file))
+                register_bg_task(asyncio.create_task(_refresh_gcode_preview(initial_file)))
+                _gcode_path = "refresh-scheduled"
+            else:
+                _gcode_path = "refresh-already-running"
     except Exception as e:
         print(f"Error loading initial G-code: {e}")
+    _dbg("CONN", f"client#{client_id} gcode-ping dt={(time.monotonic()-_t)*1000:.0f}ms path={_gcode_path}")
+    _dbg("CONN", f"client#{client_id} ready (total since accept={(time.monotonic()-_conn_t0)*1000:.0f}ms)")
 
     viewer_init_sent = False
     _probe_results: dict = {}  # populated from shared poller probe updates
@@ -4102,10 +4400,12 @@ async def ws_endpoint(ws: WebSocket):
                 # Send viewer_init on first successful poll for this client
                 if not viewer_init_sent:
                     print(f"[VINIT] client#{client_id} sending viewer_init (post-poll), STAT={'OK' if STAT else 'None'}", flush=True)
+                    _t = time.monotonic()
                     try:
                         await ws_send_json(ws, {"type": "viewer_init", "data": build_viewer_init(stl_base_url)})
                         viewer_init_sent = True
                         print(f"[VINIT] client#{client_id} viewer_init SENT OK", flush=True)
+                        _dbg("CONN", f"client#{client_id} viewer-init-sent (post-poll) dt={(time.monotonic()-_t)*1000:.0f}ms (since-accept={(time.monotonic()-_conn_t0)*1000:.0f}ms)")
                     except Exception as e:
                         print(f"[VINIT] client#{client_id} viewer_init FAILED: {e}", flush=True)
 
@@ -4366,7 +4666,7 @@ async def ws_endpoint(ws: WebSocket):
                     break
                 await asyncio.sleep(0.5)
 
-    status_task = asyncio.create_task(status_loop())
+    status_task = register_bg_task(asyncio.create_task(status_loop()))
 
     try:
         while True:
@@ -4532,8 +4832,12 @@ async def ws_endpoint(ws: WebSocket):
     finally:
         _clients.pop(client_id, None)
         _halshow_topology_sent.pop(client_id, None)
-        # Safety: stop all motion if this armed client disconnects
-        if armed and CMD is not None:
+        # Safety: stop all motion if this armed client disconnects.
+        # During global lifespan shutdown we already broadcast server_shutdown
+        # and closed WS sockets — N clients each acquiring _cmd_lock to call
+        # CMD.abort() while LinuxCNC is itself tearing down would stall the
+        # shutdown path. Lifespan owns the global stop instead.
+        if armed and CMD is not None and not _shutting_down:
             try:
                 async with _get_cmd_lock():
                     STAT.poll()

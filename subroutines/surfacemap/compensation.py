@@ -21,12 +21,25 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 update = 0.05	# this is how often the z external offset value is updated based on current x & y position 
 
 import sys
+import signal
 import os.path, time, json, tempfile
 import numpy as np
 from scipy.interpolate import griddata
 from enum import Enum, unique
 
 import linuxcnc
+
+# Cooperative shutdown: halrun sends SIGTERM on unload. time.sleep() in the
+# main loop is interrupted by the signal in the main thread, so the loop
+# exits within one tick (~50 ms) instead of waiting for halrun's SIGKILL.
+# Registered at module top so it works even if Compensation.__init__ raises
+# during argv validation below.
+_running = True
+def _stop(*_):
+	global _running
+	_running = False
+signal.signal(signal.SIGTERM, _stop)
+signal.signal(signal.SIGINT, _stop)
 
 @unique
 class States(Enum):
@@ -183,7 +196,7 @@ class Compensation :
 		self.h['method'] = self.default_method
 
 		try:
-			while True:
+			while _running:
 				time.sleep(update)
 				
 				# get linuxcnc task_state status for machine on / off transitions
@@ -323,7 +336,12 @@ class Compensation :
 						currentState = States.LOADMAP
 
 		except KeyboardInterrupt:
-	  	  raise SystemExit
+			raise SystemExit
+		finally:
+			try:
+				self.h.exit()
+			except Exception as e:
+				print(f"[COMP] h.exit failed: {e}", flush=True)
 
 comp = Compensation()
 comp.run()

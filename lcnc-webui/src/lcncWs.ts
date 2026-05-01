@@ -20,6 +20,10 @@ export interface WsStatus {
   probe_results?: Record<string, number>;
   type?: string;
   timing?: any;
+  // Sibling of `data` — gateway injects on tool change / library edit.
+  // Lives at envelope top-level so the shared msgpack encode of `data` stays
+  // valid every tick (delta-off path).
+  tool_meta?: Record<string, any> | null;
 }
 export const status = shallowRef<WsStatus | null>(null);
 export const lastReply = ref<any>(null);
@@ -440,10 +444,12 @@ export function connectWs() {
       // Preserve tool_meta across batched messages — gateway sends it only
       // once per tool change, so if a second status overwrites _pendingStatus
       // before the rAF fires, the one-shot tool_meta would be lost forever.
-      if (msg.data?.tool_meta && msg.data?.tool_number != null) {
-        _lastToolMeta = { num: msg.data.tool_number, meta: msg.data.tool_meta };
-      } else if (_lastToolMeta && msg.data?.tool_number === _lastToolMeta.num && !msg.data?.tool_meta) {
-        msg.data.tool_meta = _lastToolMeta.meta;
+      // tool_meta lives at top level; tool_number stays inside data (it comes
+      // from linuxcnc.stat).
+      if (msg.tool_meta && msg.data?.tool_number != null) {
+        _lastToolMeta = { num: msg.data.tool_number, meta: msg.tool_meta };
+      } else if (_lastToolMeta && msg.data?.tool_number === _lastToolMeta.num && !msg.tool_meta) {
+        msg.tool_meta = _lastToolMeta.meta;
       }
 
       // Sync sticky safety-trip state from every status message. Gateway

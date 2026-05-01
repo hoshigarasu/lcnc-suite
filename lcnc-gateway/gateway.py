@@ -2091,10 +2091,9 @@ def _diff_status_data(last: Dict[str, Any], current: Dict[str, Any]) -> Dict[str
 
     Single-level diff — StatusPayload is flat (no nested dataclasses per the
     definition around line 1144). For list-valued fields, Python == compares
-    element-wise; mismatched lists are included whole. Removed keys are NOT
-    reported: the one-shot injected field `tool_meta` would otherwise be
-    cleared on the cycle after tool-change, which is exactly what we don't
-    want (client keeps last known tool_meta — server re-injects on actual change).
+    element-wise; mismatched lists are included whole. Reports added/changed
+    keys only (no tombstone semantics) — `data` mirrors `linuxcnc.stat`, whose
+    keys are stable, so removals don't occur in practice.
     """
     diff: Dict[str, Any] = {}
     for k, v in current.items():
@@ -4114,18 +4113,16 @@ async def ws_endpoint(ws: WebSocket):
                 if _shared_probe_updates:
                     _probe_results.update(_shared_probe_updates)
 
-                # Build status message. When the wire format is msgpack, no
-                # delta is active, and this tick has no per-client data
-                # mutation (tool_meta), splice the poller's pre-encoded bytes
-                # via msgspec.Raw instead of re-encoding an identical dict for
-                # each client. Otherwise fall back to the legacy path — copy
-                # the shared dict, optionally mutate, and let ws_send_measured
-                # encode per client.
+                # Build status message. When the wire format is msgpack and no
+                # delta is active, splice the poller's pre-encoded bytes via
+                # msgspec.Raw instead of re-encoding an identical dict for each
+                # client. tool_meta now lives at top-level (not inside data),
+                # so tool-change ticks no longer mutate the shared dict and the
+                # shared-encode path stays engaged.
                 _tool_meta_tick = (st.tool_number != _prev_tool_num or _tool_meta_dirty)
                 _use_shared = (
                     _WIRE_FORMAT == "msgpack"
                     and not _STATUS_DELTA_ENABLED
-                    and not _tool_meta_tick
                     and _shared_status_data_msgpack is not None
                 )
                 if _use_shared:
@@ -4147,8 +4144,8 @@ async def ws_endpoint(ws: WebSocket):
                     status_msg["probe_results"] = _probe_results
 
                 # Inject tool_meta on tool_number change or library edit (for
-                # 3D rendering). status_msg["data"] is guaranteed to be a dict
-                # here — shared-encode path excludes tool_meta ticks.
+                # 3D rendering). Lives at top level — sibling of `data` — so
+                # the shared-encode of `data` stays valid every tick.
                 if _tool_meta_tick:
                     _prev_tool_num = st.tool_number
                     _tool_meta_dirty = False
@@ -4165,7 +4162,7 @@ async def ws_endpoint(ws: WebSocket):
                                     "holder_segments", "stl_file",
                                 ) if k in _meta}
                                 if _tm:
-                                    status_msg["data"]["tool_meta"] = _tm
+                                    status_msg["tool_meta"] = _tm
                         except (KeyError, TypeError, OSError) as e:
                             print(f"[STATUS] tool_meta build failed for T{st.tool_number}: {type(e).__name__}: {e}", flush=True)
 

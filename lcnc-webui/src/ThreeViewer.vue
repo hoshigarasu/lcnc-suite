@@ -177,6 +177,8 @@ type ViewerState = {
   tool_number?: number | null;
   tool_diameter?: number | null;
   tool_length?: number | null;
+  // Folded in by the status watcher from the envelope top level — gateway
+  // sends `status_msg["tool_meta"]` (sibling of `data`), not inside `data`.
   tool_meta?: ToolMeta | null;
 
   work_pos?: Vec3;
@@ -1798,15 +1800,18 @@ watch(() => props.active, (now) => {
 
 // Buffer latest status for rAF consumption (frame dropping)
 // Always buffer even when hidden so state is ready when viewer becomes active.
-// Also cache tool_meta in the shared cache — gateway sends it only once per
-// tool change, so we must grab it here before pendingState gets overwritten.
+// tool_meta lives at the envelope top level (sibling of data) — fold it into
+// pendingState so applyState's `st.tool_meta` read just works. Also cache it
+// in the shared map; gateway sends it only once per tool change, so we must
+// grab it here before pendingState gets overwritten.
 watch(
   () => status.value,
   (msg) => {
     if (!msg?.data) return;
-    pendingState = msg.data;
-    if (msg.data.tool_meta && msg.data.tool_number != null) {
-      _toolMetaCache.set(msg.data.tool_number, msg.data.tool_meta);
+    const tm: ToolMeta | null = msg.tool_meta ?? null;
+    pendingState = tm ? { ...msg.data, tool_meta: tm } : msg.data;
+    if (tm && msg.data.tool_number != null) {
+      _toolMetaCache.set(msg.data.tool_number, tm);
     }
   },
 );

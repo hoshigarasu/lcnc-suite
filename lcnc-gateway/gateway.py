@@ -424,6 +424,7 @@ _comp_grid_pending: dict | None = None       # latest parsed probe-results-grid.
 _comp_grid_version: int = int(time.time())   # bumped each time new grid is ready; seeded from startup so ?v= URLs don't collide across restarts
 _comp_grid_initialized: bool = False         # True after startup file-read attempted
 _last_comp_hal_ver: int | None = None        # last seen compensation.grid-version HAL value
+_tool_table_version: int = int(time.time())  # bumped after every CMD.load_tool_table(); per-client trackers in status_loop send a `tool_table_changed` ping so other clients refetch
 
 # Halshow live loop — pushes value deltas to clients viewing the Settings → Halshow tab.
 # Topology (pin/signal/param structure, links) is built once via halcmd subprocess on subscribe;
@@ -1305,6 +1306,19 @@ def write_tool_table(path: str, tools: list):
         except Exception:
             pass
         raise
+
+
+async def _reload_tool_table_and_bump():
+    """Reload tool.tbl into LinuxCNC and bump the broadcast version.
+
+    Status_loop sends `tool_table_changed` to every client whose
+    `_last_tool_table_version` lags this counter, so a remote edit
+    propagates within one tick instead of waiting for manual refresh.
+    """
+    global _tool_table_version
+    if CMD:
+        await asyncio.to_thread(CMD.load_tool_table)
+    _tool_table_version += 1
 
 
 def _current_ini_path() -> str:
@@ -2345,8 +2359,7 @@ async def _handle_command_impl(msg: Dict[str, Any], armed: bool):
                 return {"ok": False, "error": f"Tool T{tool_num} not found"}
 
             write_tool_table(tbl_path, tbl_tools)
-            if CMD:
-                await asyncio.to_thread(CMD.load_tool_table)
+            await _reload_tool_table_and_bump()
 
             # Update metadata
             library = load_tool_library()
@@ -2381,8 +2394,7 @@ async def _handle_command_impl(msg: Dict[str, Any], armed: bool):
                 "remark": str(msg.get("remark", "")),
             })
             write_tool_table(tbl_path, tbl_tools)
-            if CMD:
-                await asyncio.to_thread(CMD.load_tool_table)
+            await _reload_tool_table_and_bump()
 
             # Save metadata if provided
             library = load_tool_library()
@@ -2418,8 +2430,7 @@ async def _handle_command_impl(msg: Dict[str, Any], armed: bool):
                 return {"ok": False, "error": f"Tool T{tool_num} not found"}
 
             write_tool_table(tbl_path, new_tools)
-            if CMD:
-                await asyncio.to_thread(CMD.load_tool_table)
+            await _reload_tool_table_and_bump()
 
             library = load_tool_library()
             library.pop(str(tool_num), None)
@@ -3525,8 +3536,7 @@ async def apply_tool_library_import(
             library[key]["presets"] = tool["presets"]
 
     write_tool_table(tbl_path, tbl_tools)
-    if CMD:
-        await asyncio.to_thread(CMD.load_tool_table)
+    await _reload_tool_table_and_bump()
     save_tool_library(library)
 
     return {"ok": True, "added": len(parsed), "skipped": len(_skipped)}
@@ -4039,6 +4049,7 @@ async def ws_endpoint(ws: WebSocket):
         _prev_encode_ms = 0.0  # encode_ms from previous cycle (wire-format serialise time)
         _last_surface_version = 0  # tracks which _surface_points_version was last sent to this client
         _last_comp_grid_version = 0  # tracks which _comp_grid_version was last sent to this client
+        _last_tool_table_version = 0  # tracks which _tool_table_version was last sent to this client
         _last_gcode_preview_version = _init_preview_ver  # initialized from connect-time snapshot
         # Experiment 2: status-delta per-client state
         _last_status_data: Optional[Dict[str, Any]] = None
@@ -4292,6 +4303,19 @@ async def ws_endpoint(ws: WebSocket):
                             })
                         except RuntimeError:
                             pass
+
+                # Tool table: ping clients to refetch via WS RPC `get_tool_table`.
+                # Bumped by _reload_tool_table_and_bump() after every save/add/
+                # delete/import. Initial connect resyncs because _last_*=0.
+                if _tool_table_version != _last_tool_table_version:
+                    _last_tool_table_version = _tool_table_version
+                    try:
+                        await ws_send_json(ws, {
+                            "type": "tool_table_changed",
+                            "version": _tool_table_version,
+                        })
+                    except RuntimeError:
+                        pass
 
                 # Heartbeat timeout
                 if client_id in _clients:

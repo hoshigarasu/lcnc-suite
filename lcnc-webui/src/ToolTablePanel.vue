@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { send, lastReply, connected } from "./lcncWs";
+import { send, lastReply, connected, toolTableVersion } from "./lcncWs";
 import { loadMachineDefaults, STEP_DEFAULT, type ToolChangeMode } from "./defaults";
 import { TOOL_TYPE_LABELS, toolTypeLabel } from "./toolTypes";
 import { fmtCell } from "./format";
@@ -114,6 +114,9 @@ watch(connected, (val) => {
 watch(() => props.iniFilename, (newIni, oldIni) => {
   if (newIni && newIni !== oldIni) fetchTools();
 });
+
+// Re-fetch when any client edits the tool table (gateway pings via tool_table_changed).
+watch(toolTableVersion, () => fetchTools());
 
 // ---- Edit modal ----
 const editTool = ref<Tool | null>(null);

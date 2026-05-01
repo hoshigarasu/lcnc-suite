@@ -195,6 +195,10 @@ export function getTimingCsv(): string {
 
 export const viewerInit = ref<any>(null);
 export const viewerGcode = ref<any>(null);
+// Tool-table version pinged by gateway after every save/add/delete/import.
+// Components watch this ref and re-fetch via the existing get_tool_table RPC,
+// so a remote edit propagates without manual refresh.
+export const toolTableVersion = ref(0);
 // File text for the currently loaded program. Fetched over HTTP (not WS) from
 // GET /gcode when viewer_gcode arrives with a new file — keeps multi-MB bodies
 // off the WS writer so the gateway's heartbeat loop isn't delayed by N-way
@@ -510,6 +514,8 @@ export function connectWs() {
         () => _compGridFetchAbort, ac => { _compGridFetchAbort = ac; },
         data => { status.value = { ...(status.value ?? {}), comp_grid: data }; },
       );
+    } else if (msg.type === "tool_table_changed") {
+      toolTableVersion.value = msg.version ?? 0;
     } else if (msg.type === "settings_changed" || msg.type === "settings_init") {
       updateServerCache(msg.settings);
     } else if (msg.type === "halshow_snapshot") {

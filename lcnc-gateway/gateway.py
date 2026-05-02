@@ -1303,8 +1303,9 @@ def get_ini_config() -> dict:
         debug_raw = ini.find("DISPLAY", "DEBUG")
         config["debug"] = bool(int(debug_raw)) if debug_raw else False
 
-        # Spindle speed limits — try SPINDLE_0 through SPINDLE_9
-        for i in range(10):
+        # Spindle speed limits — try SPINDLE_0 through SPINDLE_7
+        # (LinuxCNC's EMCMOT_MAX_SPINDLES default; higher requires a rebuild)
+        for i in range(8):
             section = f"SPINDLE_{i}"
             v = _ini_float(ini, section, "MAX_FORWARD_VELOCITY")
             if v is not None:

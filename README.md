@@ -873,7 +873,7 @@ All velocity values are in **machine units per second** (mm/s or in/s). The gate
 | `MIN_FORWARD_VELOCITY` | optional | Minimum spindle RPM |
 | `INCREMENT` | optional | RPM step applied by the spindle `+` / `−` buttons (default: `100.0`). Used by the motion controller when running and client-side when staging. |
 
-The gateway checks `SPINDLE_0` through `SPINDLE_9` and uses the first section found.
+The gateway checks `SPINDLE_0` through `SPINDLE_7` (LinuxCNC's `EMCMOT_MAX_SPINDLES` default; higher indices require a LinuxCNC rebuild) and uses the first section found.
 
 #### `[AXIS_X]`, `[AXIS_Y]`, `[AXIS_Z]`
 

@@ -12,6 +12,11 @@ export interface ButtonDef {
   muted?: boolean;
   inline?: boolean;
   mono?: boolean;
+  // Disable while a probe operation is in flight (st.probing). Centralises
+  // the ~14 ad-hoc `:disabled="probing"` props that were scattered across
+  // ProbePanel and the tool actions in App.vue. MachineBtn injects the
+  // 'probing' ref provided by App.vue and ANDs this flag into isDisabled.
+  whileProbing?: boolean;
 }
 
 export const BUTTON_TYPES = {
@@ -29,13 +34,13 @@ export const BUTTON_TYPES = {
   unhome:         { gate: 'zero',     variant: 'default', size: 'md' },
 
   // Probe
-  probe:          { gate: 'probe',    variant: 'default', size: 'md' },
-  probeReset:     { gate: 'probe',    variant: 'danger',  size: 'md' },
+  probe:          { gate: 'probe',    variant: 'default', size: 'md', whileProbing: true },
+  probeReset:     { gate: 'probe',    variant: 'danger',  size: 'md', whileProbing: true },
 
   // Tool
   toolLoad:       { gate: 'ready',    variant: 'default', size: 'md' },
-  toolMeasure:    { gate: 'ready',    variant: 'default', size: 'md' },
-  toolUnload:     { gate: 'ready',    variant: 'default', size: 'md' },
+  toolMeasure:    { gate: 'ready',    variant: 'default', size: 'md', whileProbing: true },
+  toolUnload:     { gate: 'ready',    variant: 'default', size: 'md', whileProbing: true },
 
   // Spindle
   spindleFwd:      { gate: 'ready',    variant: 'default', size: 'md' },

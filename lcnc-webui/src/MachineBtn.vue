@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, useSlots } from 'vue';
+import { computed, inject, useSlots, type ComputedRef } from 'vue';
 import Btn from './Btn.vue';
 import { Square } from 'lucide-vue-next';
 import { usePermissions } from './permissions';
@@ -32,8 +32,16 @@ const props = withDefaults(defineProps<{
 
 const slots = useSlots();
 const can = usePermissions();
+// Provided by App.vue. Tests/standalone use of MachineBtn falls back to a
+// dummy ref so the inject doesn't throw — `whileProbing` simply has no
+// effect when no provider exists.
+const probing = inject<ComputedRef<boolean>>('probing', computed(() => false));
 const def = computed(() => BUTTON_TYPES[props.type] as ButtonDef);
-const isDisabled = computed(() => !can.value[def.value.gate] || props.disabled);
+const isDisabled = computed(() =>
+  !can.value[def.value.gate]
+  || props.disabled
+  || (def.value.whileProbing === true && probing.value)
+);
 const useAbortDefault = computed(() => props.type === 'abort' && !slots.default);
 const resolvedVariant = computed(() => props.variant ?? def.value.variant);
 const resolvedIcon = computed(() => props.icon ?? def.value.icon);

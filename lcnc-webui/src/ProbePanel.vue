@@ -694,7 +694,6 @@ function fmtR(key: string): string {
             type="probe"
             class="gridCell"
             :class="{ probing: probing && activeGridOp === op.id }"
-            :disabled="probing"
             :title="op.description"
             @click="runGridProbe(op)"
           >
@@ -783,7 +782,6 @@ function fmtR(key: string): string {
             type="probe"
             class="gridCell"
             :class="{ probing: probing && activeGridOp === op.id }"
-            :disabled="probing"
             :title="op.description"
             @click="runGridProbe(op)"
           >
@@ -872,7 +870,6 @@ function fmtR(key: string): string {
             type="probe"
             class="gridCell"
             :class="{ probing: probing && activeGridOp === op.id }"
-            :disabled="probing"
             :title="op.description"
             @click="runBossProbe(op)"
           >
@@ -964,7 +961,6 @@ function fmtR(key: string): string {
             type="probe"
             class="gridCell"
             :class="{ probing: probing && activeGridOp === op.id }"
-            :disabled="probing"
             :title="op.description"
             @click="runAngleProbe(op)"
           >
@@ -1063,7 +1059,7 @@ function fmtR(key: string): string {
         <div class="sub">Round Hole</div>
         <div class="calRow">
           <div class="calBtnPair">
-            <MachineBtn type="probe" class="gridCell" :disabled="probing" title="Round hole — edge start" @click="runCalProbe('probe_cal_round_pocket')">
+            <MachineBtn type="probe" class="gridCell" title="Round hole — edge start" @click="runCalProbe('probe_cal_round_pocket')">
               <svg viewBox="0 0 80 80" class="gridIcon">
                 <path d="M0 0H80V80H0Z M40 18a22 22 0 1 0 0 44a22 22 0 1 0 0-44Z" fill-rule="evenodd" class="workpiece" />
                 <circle cx="5" cy="40" r="3" class="probeTip" />
@@ -1074,7 +1070,7 @@ function fmtR(key: string): string {
                 <circle cx="40" cy="40" r="2.5" class="crosshair" />
               </svg>
             </MachineBtn>
-            <MachineBtn type="probe" class="gridCell" :disabled="probing" title="Round boss — outside start" @click="runCalProbe('probe_cal_round_boss')">
+            <MachineBtn type="probe" class="gridCell" title="Round boss — outside start" @click="runCalProbe('probe_cal_round_boss')">
               <svg viewBox="0 0 80 80" class="gridIcon">
                 <circle cx="40" cy="40" r="22" class="workpiece" />
                 <polygon points="40,18 35,9 45,9" class="arrowHead" />
@@ -1100,7 +1096,7 @@ function fmtR(key: string): string {
         <div class="sub">Rectangular Pocket</div>
         <div class="calRow">
           <div class="calBtnPair">
-            <MachineBtn type="probe" class="gridCell" :disabled="probing" title="Rect pocket — edge start" @click="runCalProbe('probe_cal_square_pocket')">
+            <MachineBtn type="probe" class="gridCell" title="Rect pocket — edge start" @click="runCalProbe('probe_cal_square_pocket')">
               <svg viewBox="0 0 80 80" class="gridIcon">
                 <path d="M0 0H80V80H0Z M15 15H65V65H15Z" fill-rule="evenodd" class="workpiece" />
                 <circle cx="5" cy="40" r="3" class="probeTip" />
@@ -1111,7 +1107,7 @@ function fmtR(key: string): string {
                 <circle cx="40" cy="40" r="2.5" class="crosshair" />
               </svg>
             </MachineBtn>
-            <MachineBtn type="probe" class="gridCell" :disabled="probing" title="Rect boss — outside start" @click="runCalProbe('probe_cal_square_boss')">
+            <MachineBtn type="probe" class="gridCell" title="Rect boss — outside start" @click="runCalProbe('probe_cal_square_boss')">
               <svg viewBox="0 0 80 80" class="gridIcon">
                 <rect x="15" y="15" width="50" height="50" class="workpiece" />
                 <polygon points="40,15 35,6 45,6" class="arrowHead" />
@@ -1146,7 +1142,7 @@ function fmtR(key: string): string {
             <label><MachineRadio gate="probeParam" name="calAxis" :value="2" v-model.number="calAxis" /> Y Error</label>
           </div>
         </div>
-        <MachineBtn type="probeReset" :disabled="probing" @click="resetCal">Reset Calibration</MachineBtn>
+        <MachineBtn type="probeReset" @click="resetCal">Reset Calibration</MachineBtn>
       </div>
       </div>
     </template>
@@ -1163,7 +1159,6 @@ function fmtR(key: string): string {
             type="probe"
             class="gridCell"
             :class="{ probing: probing && activeGridOp === op.id }"
-            :disabled="probing"
             :title="op.description"
             @click="runRidgeProbe(op)"
           >
@@ -1262,7 +1257,7 @@ function fmtR(key: string): string {
           <div v-if="!surfacePoints?.length" class="emptyState">No scan data</div>
         </div>
         <div class="compPanel stack-controls">
-          <MachineBtn type="probe" :disabled="probing" @click="runSurfaceScan">Start Scan</MachineBtn>
+          <MachineBtn type="probe" @click="runSurfaceScan">Start Scan</MachineBtn>
           <MachineBtn type="surfaceRefresh" @click="refreshSurface">Reload Data</MachineBtn>
           <div class="sep"></div>
           <div class="row-tight">

@@ -427,6 +427,12 @@ const permissions = computed(() => {
 });
 provide(PERMISSIONS_KEY, permissions);
 
+// Provide a probing flag so catalog-aware MachineBtn instances with
+// `whileProbing: true` self-disable while a probe op is in flight. Replaces
+// ~14 inline `:disabled="probing"` props that were scattered across panels.
+const isProbing = computed(() => !!st.value.probing);
+provide("probing", isProbing);
+
 const isHomed = computed(() => {
   const h = st.value.homed;
   if (Array.isArray(h)) return h.every(Boolean);
@@ -1519,8 +1525,8 @@ watch(viewerGcode, (newGcode) => {
               <div class="toolTabActions stack-controls">
                 <div class="toolTabRow">
                   <div class="row-tight">
-                    <MachineBtn type="toolMeasure" :disabled="!!st.probing" @click="measureAuto">Measure Current</MachineBtn>
-                    <MachineBtn type="toolUnload" :disabled="!!st.probing" @click="unloadTool">Unload</MachineBtn>
+                    <MachineBtn type="toolMeasure" @click="measureAuto">Measure Current</MachineBtn>
+                    <MachineBtn type="toolUnload" @click="unloadTool">Unload</MachineBtn>
                     <MachineBtn type="abort" @click="send({ cmd: 'abort' })" />
                   </div>
                   <div class="row-tight toolTabManage">

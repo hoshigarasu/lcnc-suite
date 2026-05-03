@@ -148,15 +148,10 @@ def _build_snapshot() -> dict:
     return snap
 
 
-# Aggregate stats for reader.tick: emit one summary every N ticks rather
-# than spamming every 33 ms. (The merged trace would be unreadable
-# otherwise; we want signal, not raw cadence.)
-_tick_count = 0
-_tick_max_pin_ms = 0.0
-_tick_max_send_ms = 0.0
-_tick_total_pin_ms = 0.0
-_tick_total_send_ms = 0.0
-_TICK_SUMMARY_EVERY = 30  # ~1 s at POLL_HZ=30
+# reader.tick_summary is emitted once per N ticks (~1 s at POLL_HZ=30)
+# by the shared Aggregator. The merged trace would be unreadable if we
+# emitted at every cycle; we want signal, not raw cadence.
+_tick_agg = _trace.Aggregator("reader.tick_summary", every=30)
 
 
 next_push = time.monotonic()
@@ -236,27 +231,7 @@ try:
                 _t2 = time.monotonic()
                 pin_ms = (_t1 - _t0) * 1000
                 send_ms = (_t2 - _t1) * 1000
-                _tick_count += 1
-                _tick_total_pin_ms += pin_ms
-                _tick_total_send_ms += send_ms
-                if pin_ms > _tick_max_pin_ms:
-                    _tick_max_pin_ms = pin_ms
-                if send_ms > _tick_max_send_ms:
-                    _tick_max_send_ms = send_ms
-                if _tick_count >= _TICK_SUMMARY_EVERY:
-                    _trace.emit(
-                        "reader.tick_summary",
-                        count=_tick_count,
-                        avg_pin_ms=round(_tick_total_pin_ms / _tick_count, 3),
-                        max_pin_ms=round(_tick_max_pin_ms, 3),
-                        avg_send_ms=round(_tick_total_send_ms / _tick_count, 3),
-                        max_send_ms=round(_tick_max_send_ms, 3),
-                    )
-                    _tick_count = 0
-                    _tick_max_pin_ms = 0.0
-                    _tick_max_send_ms = 0.0
-                    _tick_total_pin_ms = 0.0
-                    _tick_total_send_ms = 0.0
+                _tick_agg.record(pin_ms=pin_ms, send_ms=send_ms)
                 # Always-on individual-tick event for slow ticks: anything
                 # over 5 ms is unusual at 30 Hz and worth surfacing.
                 if pin_ms > 5 or send_ms > 5:

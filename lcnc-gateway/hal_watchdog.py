@@ -127,12 +127,27 @@ def _stop(*_):
 signal.signal(signal.SIGTERM, _stop)
 signal.signal(signal.SIGINT, _stop)
 
-# Aggregate stats for wd.tick_summary: emit one summary every N ticks.
-_wd_tick_count = 0
-_wd_tick_max_select_ms = 0.0
-_wd_tick_total_select_ms = 0.0
+# wd.tick_summary is emitted once per N ticks (~1 s at 10 Hz select
+# cadence) by the shared Aggregator. `msgs`/`client_inq`/`trip_latch`/
+# `hb_ok` are point-in-time at emit (extras callback resets msgs).
 _wd_msgs_processed = 0
-_WD_TICK_SUMMARY_EVERY = 10  # ~1 s at 10 Hz select cadence
+
+
+def _wd_extras() -> dict:
+    global _wd_msgs_processed
+    out = {
+        "msgs": _wd_msgs_processed,
+        "client_inq": _client_inq(client),
+        "trip_latch": bool(comp["trip-latch"]),
+        "hb_ok": bool(comp["hb-ok-in"]),
+    }
+    _wd_msgs_processed = 0
+    return out
+
+
+_wd_tick_agg = _trace.Aggregator(
+    "wd.tick_summary", every=10, count_field="ticks", extra_fields=_wd_extras
+)
 
 try:
     while _running:
@@ -145,10 +160,7 @@ try:
         _select_t0 = time.monotonic()
         readable, _, _ = select.select(socks, [], [], 0.1)
         _select_dt = (time.monotonic() - _select_t0) * 1000
-        _wd_tick_count += 1
-        _wd_tick_total_select_ms += _select_dt
-        if _select_dt > _wd_tick_max_select_ms:
-            _wd_tick_max_select_ms = _select_dt
+        _wd_tick_agg.record(select_ms=_select_dt)
 
         # Falling-edge detection on hb-ok-in. Increment trip-count so the
         # gateway can read it via webui-monitor and register a new trip.
@@ -159,7 +171,6 @@ try:
             _trip_count += 1
             comp["trip-count"] = _trip_count
             comp["trip-latch"] = False
-            print(f"[SAFETY] oneshot.0.out FALSE edge, trip-count={_trip_count}", flush=True)
             _trace.emit(
                 "wd.hb_edge", level="warn",
                 edge="falling", trip_count=_trip_count,
@@ -268,23 +279,9 @@ try:
                     client = None
                     buf = ""
 
-        # Per-tick summary: emit one structured event per second so the
-        # merged trace shows watchdog cadence without flooding it 10 Hz.
-        if _wd_tick_count >= _WD_TICK_SUMMARY_EVERY:
-            _trace.emit(
-                "wd.tick_summary",
-                ticks=_wd_tick_count,
-                avg_select_ms=round(_wd_tick_total_select_ms / _wd_tick_count, 2),
-                max_select_ms=round(_wd_tick_max_select_ms, 2),
-                msgs=_wd_msgs_processed,
-                client_inq=_client_inq(client),
-                trip_latch=bool(comp["trip-latch"]),
-                hb_ok=bool(comp["hb-ok-in"]),
-            )
-            _wd_tick_count = 0
-            _wd_tick_max_select_ms = 0.0
-            _wd_tick_total_select_ms = 0.0
-            _wd_msgs_processed = 0
+        # The Aggregator above flushes wd.tick_summary every 10
+        # recordings; nothing to do here. msgs counter is consumed
+        # by `_wd_extras` at flush time.
 except KeyboardInterrupt:
     pass
 finally:

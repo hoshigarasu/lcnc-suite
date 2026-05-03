@@ -320,7 +320,26 @@ _wcs_cache = [{"name": n, "x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0, "b": 0.0, "c":
 _wcs_var_file_mtime: Optional[float] = None  # None means "not yet seeded"
 
 # ---- Connected WebSocket clients ----
-_clients: Dict[int, Dict[str, Any]] = {}
+@dataclass
+class ClientState:
+    """Per-client server-side state. Replaces the prior dict-of-dict
+    registry; the field set is small and stable, so a typed shape
+    catches typos at write time and avoids `.get()` defaults entirely
+    for known fields.
+
+    The broadcast `clients` envelope reads only `ip` and `armed`; the
+    rest are server-internal."""
+    ip: str
+    ws: "WebSocket"
+    armed: bool = False
+    halshow_live: bool = False
+    last_hb: float = 0.0       # wall-clock time of last heartbeat from this client
+    hb_mono: float = 0.0       # monotonic ts of last hb (0 = never seen)
+    send_pending: bool = False # status fan-out is in-flight to this client
+    hidden: bool = False       # client tab is backgrounded (visibilityState)
+
+
+_clients: Dict[int, ClientState] = {}
 _next_client_id = 0
 
 # ---- HAL watchdog socket client ----
@@ -380,18 +399,30 @@ def _hal_disconnect():
             pass
         _hal_sock = None
 
-# Aggregate stats for hal.send_summary: emit one summary every N sends
-# rather than spamming every send (the heartbeat alone is ~30 Hz).
-_hal_send_count = 0
-_hal_send_max_ms = 0.0
-_hal_send_total_ms = 0.0
+# hal.send_summary is emitted once per N sends (N=30 ≈ 1 s at heartbeat
+# cadence) by the shared Aggregator. `slow_count` is tallied locally
+# (it isn't an avg/max metric) and reset by the extra-fields callable
+# at emit time. `tcp_outq` is read fresh on each emit so the kernel
+# buffer state is captured at summary-publication time, not at
+# Aggregator construction.
 _hal_send_slow_count = 0
-_HAL_SEND_SUMMARY_EVERY = 30  # ~1 s at heartbeat cadence
+
+
+def _hal_send_extras() -> dict:
+    global _hal_send_slow_count
+    out = {"slow_count": _hal_send_slow_count, "tcp_outq": _hal_tcp_outq()}
+    _hal_send_slow_count = 0
+    return out
+
+
+_hal_send_agg = _trace.Aggregator(
+    "hal.send_summary", every=30, extra_fields=_hal_send_extras
+)
 
 
 def _hal_send(msg: dict):
     """Send a pin-update message to the HAL watchdog via socket."""
-    global _hal_sock, _hal_send_count, _hal_send_max_ms, _hal_send_total_ms, _hal_send_slow_count
+    global _hal_sock, _hal_send_slow_count
     if _hal_sock is None:
         _hal_connect()
     if _hal_sock is not None:
@@ -416,38 +447,12 @@ def _hal_send(msg: dict):
                         msg_keys=list(msg.keys()))
             return
         _send_dt = (time.monotonic() - _send_t0) * 1000
-        # Per-call probe: keep the existing >30 ms gated print plus a
-        # structured trace of the same event.
         if _send_dt > 30:
-            print(
-                f"[HAL-SEND] +{(time.monotonic() - _T0) * 1000:.0f}ms "
-                f"slow sendall {_send_dt:.0f}ms (msg keys={list(msg.keys())})",
-                flush=True,
-            )
             _trace.emit("hal.send_slow", level="warn",
                         send_ms=round(_send_dt, 1),
                         msg_keys=list(msg.keys()))
-        # Aggregate
-        _hal_send_count += 1
-        _hal_send_total_ms += _send_dt
-        if _send_dt > _hal_send_max_ms:
-            _hal_send_max_ms = _send_dt
-        if _send_dt > 30:
             _hal_send_slow_count += 1
-        if _hal_send_count >= _HAL_SEND_SUMMARY_EVERY:
-            avg = _hal_send_total_ms / _hal_send_count
-            _trace.emit(
-                "hal.send_summary",
-                count=_hal_send_count,
-                avg_ms=round(avg, 2),
-                max_ms=round(_hal_send_max_ms, 2),
-                slow_count=_hal_send_slow_count,
-                tcp_outq=_hal_tcp_outq(),
-            )
-            _hal_send_count = 0
-            _hal_send_max_ms = 0.0
-            _hal_send_total_ms = 0.0
-            _hal_send_slow_count = 0
+        _hal_send_agg.record(ms=_send_dt)
 
 
 try:
@@ -836,12 +841,6 @@ async def _loop_lag_monitor():
             window = _phase_window(window_start, window_end)
             dominant = _dominant_phase(window)
             phase_age_ms = (now - _phase_started_at) * 1000 if _phase_started_at else 0
-            print(
-                f"[LAG] event loop stalled {drift*1000:.0f}ms "
-                f"dominant={dominant!r} last={_current_phase!r} "
-                f"(in_phase_for={phase_age_ms:.0f}ms)",
-                flush=True,
-            )
             _trace.emit(
                 "lag.window",
                 level="warn",
@@ -1218,7 +1217,7 @@ def _poll_and_serialize():
         _trace.emit(
             "poll_status.slow", level="warn",
             poll_ms=round(poll_ms, 1),
-            asdict_ms=round(serialize_ms, 1),  # field name kept for trace continuity
+            serialize_ms=round(serialize_ms, 1),
             total_ms=round(total_ms, 1),
         )
     return st, out
@@ -1451,16 +1450,6 @@ async def _status_poller():
                         "ts": int(time.time() * 1000),
                         "reason": "hal_heartbeat_timeout",
                     }
-                    # === TEMP HB-TRACE PROBE === include +Nms anchor so this
-                    # lines up with the [HB]/[BOOT]/[CONN] timeline above; the
-                    # epoch-ms field stays for absolute correlation with
-                    # external traces (kernel logs, hypervisor pause events).
-                    _trip_offset_ms = (time.monotonic() - _T0) * 1000
-                    print(
-                        f"[SAFETY] +{_trip_offset_ms:.0f}ms HAL heartbeat watchdog tripped "
-                        f"at {_unacked_trip['ts']} (trip-count {trip_count})",
-                        flush=True,
-                    )
                     _trace.emit(
                         "safety.tripped", level="error",
                         trip_count=trip_count,
@@ -1493,7 +1482,7 @@ async def _status_poller():
                 shared_encode_ms = 0.0
             _set_phase("status_poller.build_clients_list")
             _shared_clients_list = [
-                {"ip": c["ip"], "armed": c["armed"]} for c in _clients.values()
+                {"ip": c.ip, "armed": c.armed} for c in _clients.values()
             ]
             t3 = time.monotonic()
             _shared_errors = errs
@@ -2828,8 +2817,8 @@ def _ws_hidden_flag(ws: WebSocket) -> bool:
     O(n) over _clients but bounded by tab count and only on warn paths."""
     try:
         for c in _clients.values():
-            if c.get("ws") is ws:
-                return bool(c.get("hidden", False))
+            if c.ws is ws:
+                return c.hidden
     except Exception:
         pass
     return False
@@ -2948,12 +2937,6 @@ async def ws_send_measured(ws: WebSocket, obj: Dict[str, Any]) -> Tuple[float, i
         except Exception:
             obj_type = "?"
         send_ms = (time.monotonic() - send_t0) * 1000
-        print(
-            f"[SLOW-CLIENT-DROP] +{(time.monotonic() - _T0) * 1000:.0f}ms "
-            f"ws send timed out >{int(_WS_SEND_TIMEOUT_S * 1000)}ms peer={peer} "
-            f"bytes={len(data)} obj_type={obj_type} — closing WS",
-            flush=True,
-        )
         _trace.emit(
             "ws.slow_client_drop", level="warn",
             peer=peer, send_ms=round(send_ms, 1),
@@ -2995,15 +2978,6 @@ async def ws_send_measured(ws: WebSocket, obj: Dict[str, Any]) -> Tuple[float, i
             encode_ms=encode_ms, bytes=len(data), obj_type=obj_type,
             hidden=_ws_hidden_flag(ws),
         )
-        # === TEMP SLOW-SEND PROBE === keep the legacy human-readable line
-        # for grep familiarity; remove with the rest of the temp probes.
-        if send_dt_ms > 1000:
-            print(
-                f"[SLOW-SEND] +{(time.monotonic() - _T0) * 1000:.0f}ms "
-                f"ws send blocked {send_dt_ms:.0f}ms peer={peer} "
-                f"bytes={len(data)} obj_type={obj_type}",
-                flush=True,
-            )
     # msgspec returns bytes; stdlib json returns str — both have len() == bytes/chars
     return (encode_ms, len(data))
 
@@ -4198,7 +4172,7 @@ async def lifespan(app: "FastAPI"):
         try:
             await asyncio.wait_for(
                 asyncio.gather(
-                    *(ws_send_json(c["ws"], {"type": "server_shutdown"}) for c in snapshot),
+                    *(ws_send_json(c.ws, {"type": "server_shutdown"}) for c in snapshot),
                     return_exceptions=True,
                 ),
                 timeout=0.5,
@@ -4212,7 +4186,7 @@ async def lifespan(app: "FastAPI"):
         try:
             await asyncio.wait_for(
                 asyncio.gather(
-                    *(c["ws"].close(code=1001) for c in snapshot),
+                    *(c.ws.close(code=1001) for c in snapshot),
                     return_exceptions=True,
                 ),
                 timeout=1.0,
@@ -5069,14 +5043,14 @@ async def _halshow_loop() -> None:
     """Push topology snapshot to new subscribers, then 5 Hz value deltas to all subscribers."""
     global _halshow_last_values
     try:
-        while any(c.get("halshow_live") for c in _clients.values()):
+        while any(c.halshow_live for c in _clients.values()):
             # New subscribers: send full topology once
             for cid, c in list(_clients.items()):
-                if not c.get("halshow_live"):
+                if not c.halshow_live:
                     continue
                 if _halshow_topology_sent.get(cid):
                     continue
-                ws = c.get("ws")
+                ws = c.ws
                 if ws is None:
                     continue
                 topology = await _halshow_topology()
@@ -5096,11 +5070,11 @@ async def _halshow_loop() -> None:
                         section, name = k.split("/", 1)
                         msg[section][name] = v
                     for cid, c in list(_clients.items()):
-                        if not c.get("halshow_live"):
+                        if not c.halshow_live:
                             continue
                         if not _halshow_topology_sent.get(cid):
                             continue
-                        ws = c.get("ws")
+                        ws = c.ws
                         if ws is None:
                             continue
                         try:
@@ -5160,23 +5134,15 @@ async def ws_endpoint(ws: WebSocket):
         client_id = _next_client_id
         _next_client_id += 1
         client_ip = ws.client.host if ws.client else "unknown"
-        _clients[client_id] = {"ip": client_ip, "armed": False, "last_hb": time.time(), "hb_mono": 0.0,
-                               "ws": ws, "halshow_live": False,
-                               # send_pending: a status fan-out is currently in-flight to this client.
-                               # status_loop sets it before the await and clears in finally; subsequent
-                               # ticks skip the client until it clears, bounding loop work per tick to
-                               # one outstanding send per peer.
-                               "send_pending": False,
-                               # hidden: client has reported document.visibilityState === "hidden".
-                               # Backgrounded tabs stop draining the WS, fill the kernel TCP buffer,
-                               # and stall the gateway loop. While hidden, status fan-out is skipped
-                               # for this client; on visibilitychange→visible the next tick resumes.
-                               "hidden": False}
+        _clients[client_id] = ClientState(
+            ip=client_ip,
+            ws=ws,
+            last_hb=time.time(),
+        )
         _cancel_disconnect_grace()
         _start_heartbeat()
         _start_status_poller()
         _start_reader_recv_loop()
-        _dbg("CONN", f"client#{client_id} ip={client_ip} accept+register+bg-tasks dt={(time.monotonic()-_conn_t0)*1000:.0f}ms")
         _trace.emit(
             "ws.connect.accept",
             client_id=client_id, peer=client_ip,
@@ -5219,7 +5185,6 @@ async def ws_endpoint(ws: WebSocket):
             await ws_send_json(ws, {"type": "viewer_init", "data": build_viewer_init(stl_base_url)})
             viewer_init_sent = True  # prevents status_loop re-send; reset on LinuxCNC reconnect
             print(f"[VINIT] client#{client_id} connect-time viewer_init SENT OK", flush=True)
-            _dbg("CONN", f"client#{client_id} viewer-init-sent dt={(time.monotonic()-_t)*1000:.0f}ms (since-accept={(time.monotonic()-_conn_t0)*1000:.0f}ms)")
             _trace.emit(
                 "ws.connect.viewer_init",
                 client_id=client_id,
@@ -5240,7 +5205,6 @@ async def ws_endpoint(ws: WebSocket):
             _init_settings = await asyncio.get_event_loop().run_in_executor(None, load_settings)
             _set_phase(f"send_settings_init client#{client_id}")
             await ws_send_json(ws, {"type": "settings_init", "settings": _init_settings, "armed": armed})
-            _dbg("CONN", f"client#{client_id} settings-sent dt={(time.monotonic()-_t)*1000:.0f}ms")
             _trace.emit(
                 "ws.connect.settings",
                 client_id=client_id,
@@ -5329,12 +5293,12 @@ async def ws_endpoint(ws: WebSocket):
                         if armed:
                             armed = False
                             if client_id in _clients:
-                                _clients[client_id]["armed"] = False
+                                _clients[client_id].armed = False
                         try:
                             await ws_send_json(ws, {
                                 "type": "status_error",
                                 "error": "LinuxCNC not connected",
-                                "clients": [{"ip": c["ip"], "armed": c["armed"]} for c in _clients.values()],
+                                "clients": [{"ip": c.ip, "armed": c.armed} for c in _clients.values()],
                                 "armed": armed,
                             })
                         except Exception:
@@ -5370,7 +5334,7 @@ async def ws_endpoint(ws: WebSocket):
                     # and re-waits on _status_event for the next tick.
                     _client_state = _clients.get(client_id)
                     if _client_state is not None and (
-                        _client_state.get("send_pending") or _client_state.get("hidden")
+                        _client_state.send_pending or _client_state.hidden
                     ):
                         continue
 
@@ -5470,7 +5434,7 @@ async def ws_endpoint(ws: WebSocket):
                     # Two exact sums:
                     #   RT = Network + Server  (client-side, by construction)
                     #   Cycle = Poll + Errors + Parse + Overhead  (server-side)
-                    hb_mono = _clients.get(client_id, {}).get("hb_mono", 0.0)
+                    hb_mono = _clients[client_id].hb_mono if client_id in _clients else 0.0
                     if hb_mono > 0:
                         status_msg["timing"] = {
                             "server_ms": round((time.monotonic() - hb_mono) * 1000, 2),
@@ -5491,7 +5455,7 @@ async def ws_endpoint(ws: WebSocket):
                             "encode_ms": _prev_encode_ms,
                         }
                         if client_id in _clients:
-                            _clients[client_id]["hb_mono"] = 0.0
+                            _clients[client_id].hb_mono = 0.0
 
                     pre_send = time.monotonic()
                     # Mark the client as having an in-flight send. Cleared in
@@ -5500,12 +5464,12 @@ async def ws_endpoint(ws: WebSocket):
                     # client). The skip check at the top of the loop reads this
                     # flag to bound outstanding work to one send per peer.
                     if client_id in _clients:
-                        _clients[client_id]["send_pending"] = True
+                        _clients[client_id].send_pending = True
                     try:
                         _prev_encode_ms, _bytes_sent = await ws_send_measured(ws, status_msg)
                     finally:
                         if client_id in _clients:
-                            _clients[client_id]["send_pending"] = False
+                            _clients[client_id].send_pending = False
                     _prev_send_ms = round((time.monotonic() - pre_send) * 1000, 2)
 
                     # Contribute to per-tick aggregate stats (logged by poller on
@@ -5615,11 +5579,11 @@ async def ws_endpoint(ws: WebSocket):
 
                     # Heartbeat timeout
                     if client_id in _clients:
-                        if time.time() - _clients[client_id].get("last_hb", 0) > 3.0:
+                        if time.time() - _clients[client_id].last_hb > 3.0:
                             if armed:
                                 # Armed client stalled — disarm and stop motion
                                 armed = False
-                                _clients[client_id]["armed"] = False
+                                _clients[client_id].armed = False
                                 try:
                                     async with _get_cmd_lock():
                                         if bool(safe_get("enabled", False)):
@@ -5683,8 +5647,8 @@ async def ws_endpoint(ws: WebSocket):
 
             if msg.get("cmd") == "heartbeat":
                 if client_id in _clients:
-                    _clients[client_id]["last_hb"] = time.time()
-                    _clients[client_id]["hb_mono"] = time.monotonic()
+                    _clients[client_id].last_hb = time.time()
+                    _clients[client_id].hb_mono = time.monotonic()
                 await ws_send_json(ws, {"type": "pong"})
                 continue
 
@@ -5735,8 +5699,8 @@ async def ws_endpoint(ws: WebSocket):
                     continue
                 armed = want_armed
                 if client_id in _clients:
-                    _clients[client_id]["armed"] = armed
-                    _clients[client_id]["last_hb"] = time.time()  # reset on arm change
+                    _clients[client_id].armed = armed
+                    _clients[client_id].last_hb = time.time()  # reset on arm change
                 await ws_send_json(ws, {"type": "reply", "ok": True, "armed": armed})
                 continue
 
@@ -5778,7 +5742,7 @@ async def ws_endpoint(ws: WebSocket):
             if msg.get("cmd") == "halshow_live":
                 on = bool(msg.get("on", False))
                 if client_id in _clients:
-                    _clients[client_id]["halshow_live"] = on
+                    _clients[client_id].halshow_live = on
                 if not on:
                     _halshow_topology_sent.pop(client_id, None)
                 else:
@@ -5804,7 +5768,7 @@ async def ws_endpoint(ws: WebSocket):
                 # test with the reply present). Frontend fire-and-forgets.
                 hidden = bool(msg.get("hidden", False))
                 if client_id in _clients:
-                    _clients[client_id]["hidden"] = hidden
+                    _clients[client_id].hidden = hidden
                 _trace.emit(
                     "ws.tab_visibility",
                     client_id=client_id, hidden=hidden,

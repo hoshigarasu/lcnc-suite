@@ -128,3 +128,92 @@ def _json_default(o: Any) -> Any:
         except Exception:
             return repr(o)
     return repr(o)
+
+
+class Aggregator:
+    """Periodic-summary helper for trace events.
+
+    Three call sites (gateway _hal_send, hal_reader per-tick,
+    hal_watchdog per-tick) all follow the same pattern: accumulate
+    count + per-metric total + per-metric max for N events, emit a
+    summary, reset. This class collapses the boilerplate.
+
+    Usage::
+
+        agg = Aggregator("hal.send_summary", every=30)
+        agg.record(send_ms=1.4)
+        # ... after every 30 record() calls, emits one event with
+        # count=30, avg_send_ms=..., max_send_ms=...
+
+    Per-metric fields are emitted as ``avg_<metric>_ms`` and
+    ``max_<metric>_ms`` if the metric name ends in ``_ms``, otherwise
+    as ``avg_<metric>`` and ``max_<metric>``. The ``count`` field is
+    always included. Optional ``extra_fields`` are merged into the
+    summary at emit-time; pass a callable to defer evaluation.
+    """
+
+    def __init__(self, tag: str, every: int = 30,
+                 level: str = "info",
+                 count_field: str = "count",
+                 extra_fields=None) -> None:
+        self._tag = tag
+        self._every = max(1, int(every))
+        self._level = level
+        # count_field overrides the field name for the recordings
+        # counter. Most call sites use "count"; the watchdog summary
+        # historically used "ticks", and we preserve that field name
+        # exactly so trace consumers don't see a rename.
+        self._count_field = count_field
+        # extra_fields can be a dict (static) or a zero-arg callable
+        # returning a dict (computed at emit time, e.g. for
+        # `client_inq` that needs to be read fresh).
+        self._extra_fields = extra_fields
+        self._count = 0
+        self._totals: dict = {}
+        self._maxes: dict = {}
+
+    def record(self, **measurements: float) -> None:
+        """Add one observation. Triggers an emit + reset every
+        ``every`` calls. Never raises."""
+        try:
+            for k, v in measurements.items():
+                fv = float(v)
+                self._totals[k] = self._totals.get(k, 0.0) + fv
+                if fv > self._maxes.get(k, float("-inf")):
+                    self._maxes[k] = fv
+            self._count += 1
+            if self._count >= self._every:
+                self._emit()
+        except Exception:
+            # Telemetry must never break the caller; drop on error.
+            self._reset()
+
+    def _emit(self) -> None:
+        fields: dict = {self._count_field: self._count}
+        for k, total in self._totals.items():
+            avg = total / self._count if self._count else 0.0
+            # Field naming: simply prefix with `avg_` / `max_`. Caller
+            # chooses metric names — `record(ms=…)` → `avg_ms`/`max_ms`,
+            # `record(pin_ms=…, send_ms=…)` → `avg_pin_ms`/`max_pin_ms`/etc.
+            fields[f"avg_{k}"] = round(avg, 3)
+            fields[f"max_{k}"] = round(self._maxes.get(k, 0.0), 3)
+        # Static or computed extras. Computed lets callers attach
+        # point-in-time state (current pin values, kernel buffer
+        # depth) without having to record them every observation.
+        try:
+            if callable(self._extra_fields):
+                extras = self._extra_fields() or {}
+            elif isinstance(self._extra_fields, dict):
+                extras = self._extra_fields
+            else:
+                extras = {}
+            fields.update(extras)
+        except Exception:
+            pass
+        emit(self._tag, level=self._level, **fields)
+        self._reset()
+
+    def _reset(self) -> None:
+        self._count = 0
+        self._totals.clear()
+        self._maxes.clear()

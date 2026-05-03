@@ -45,6 +45,7 @@ if [[ -n "$INI_FILE" ]]; then
   UVLOOP_ON="${WEBUI_UVLOOP:-$(ini_get WEBUI_UVLOOP)}"
   ADAPTIVE_POLL="${WEBUI_ADAPTIVE_POLL:-$(ini_get WEBUI_ADAPTIVE_POLL)}"
   IDLE_POLL_HZ="${WEBUI_IDLE_POLL_HZ:-$(ini_get WEBUI_IDLE_POLL_HZ)}"
+  WS_INIT_CONC="${WEBUI_WS_INIT_CONCURRENCY:-$(ini_get WEBUI_WS_INIT_CONCURRENCY)}"
 else
   HOST="${LCNC_WEBUI_HOST:-}"
   PORT="${LCNC_WEBUI_PORT:-}"
@@ -58,6 +59,7 @@ else
   UVLOOP_ON="${WEBUI_UVLOOP:-}"
   ADAPTIVE_POLL="${WEBUI_ADAPTIVE_POLL:-}"
   IDLE_POLL_HZ="${WEBUI_IDLE_POLL_HZ:-}"
+  WS_INIT_CONC="${WEBUI_WS_INIT_CONCURRENCY:-}"
 fi
 
 # Apply defaults
@@ -82,6 +84,13 @@ VITE_PORT="5173"
 [[ -n "$UVLOOP_ON"     ]] && export WEBUI_UVLOOP="$UVLOOP_ON"
 [[ -n "$ADAPTIVE_POLL" ]] && export WEBUI_ADAPTIVE_POLL="$ADAPTIVE_POLL"
 [[ -n "$IDLE_POLL_HZ"  ]] && export WEBUI_IDLE_POLL_HZ="$IDLE_POLL_HZ"
+# Cap simultaneous WS-init handshakes. Default (set in gateway.py) is 20,
+# effectively unbounded for typical 1–4 client setups. For multi-tab
+# (e.g. multi-monitor) deployments, lower to ~2 to spread cold-start
+# CPU work and avoid kernel-TCP saturation that can starve the asyncio
+# loop and trip the HAL safety chain. Higher values = lower per-tab
+# connect latency but bigger CPU peaks.
+[[ -n "$WS_INIT_CONC"  ]] && export WEBUI_WS_INIT_CONCURRENCY="$WS_INIT_CONC"
 
 # ── Ensure NVM Node is on PATH (LinuxCNC may launch with minimal PATH) ──
 if [[ -s "$HOME/.nvm/nvm.sh" ]]; then

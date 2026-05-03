@@ -343,11 +343,12 @@ WEBUI_BROWSER = 1
 WEBUI_DEV = 0
 
 # Gateway performance flags
-WEBUI_STATUS_DELTA  = 1       # recommended ON
-WEBUI_ADAPTIVE_POLL = 1       # recommended ON for SBCs, optional on workstations
-WEBUI_IDLE_POLL_HZ  = 5
-WEBUI_UVLOOP        = 0
-WEBUI_WIRE_FORMAT   = msgpack
+WEBUI_STATUS_DELTA        = 1       # recommended ON for 1–5 clients, OFF for 6+
+WEBUI_ADAPTIVE_POLL       = 1       # recommended ON for SBCs, optional on workstations
+WEBUI_IDLE_POLL_HZ        = 5
+WEBUI_UVLOOP              = 0
+WEBUI_WIRE_FORMAT         = msgpack
+WEBUI_WS_INIT_CONCURRENCY = 20      # lower (e.g. 2) for multi-tab cold-start CPU smoothing
 ```
 
 | Variable | Default | Description |
@@ -370,6 +371,7 @@ WEBUI_WIRE_FORMAT   = msgpack
 | `WEBUI_IDLE_POLL_HZ` | `5` | Integer poll rate used while `WEBUI_ADAPTIVE_POLL=1` and the machine is idle. Lower = more CPU savings, longer DRO lag. | Raise to `10` if 200 ms lag feels sluggish, lower to `2` for maximum CPU savings. |
 | `WEBUI_UVLOOP` | `0` | Swaps asyncio's default event loop for libuv (requires `uvloop` package). Faster socket I/O and callback scheduling under load. No measurable effect on a single localhost client at 30 Hz. | Real deployments with multiple concurrent clients and/or camera streaming alongside status WS. |
 | `WEBUI_WIRE_FORMAT` | `msgpack` | WS encoding. `msgpack` (default) sends binary frames via `msgspec` — smaller payloads, C-accelerated encode, and when `WEBUI_STATUS_DELTA=0` unlocks a one-encode-per-tick fan-out path (each client splices the shared bytes via `msgspec.Raw`). `json` produces text frames readable directly in browser DevTools. | Set to `json` only when actively debugging status frames in DevTools. |
+| `WEBUI_WS_INIT_CONCURRENCY` | `20` | Caps the number of WebSocket clients allowed to run their initialization handshake (`ws.accept` + viewer_init send + settings load) in parallel. The lever for cold-start CPU smoothing in multi-tab setups: each handshake is ~30 ms of work, so without a cap N=12 simultaneous tabs can spike the asyncio loop into kernel-TCP saturation and starve the heartbeat task → HAL safety chain trips on a healthy gateway. | Lower (typical: `2`–`4`) when expecting 5+ tabs to cold-start in lockstep — multi-monitor deployments, shop-floor kiosks, automated test scenarios. Trade-off: ~30 ms per queued tab; at concurrency=2 the 12th tab is fully ready ~300 ms after the 1st. |
 
 Environment variables `LCNC_WEBUI_HOST`, `LCNC_WEBUI_PORT`, `LCNC_WEBUI_BROWSER`, `LCNC_WEBUI_DEV` override INI values. `WEBUI_*` flags can also be set as environment variables (same name) and take precedence over the INI. Camera variables: `LCNC_CAMERA_SOURCE`, `LCNC_CAMERA_RESOLUTION`, `LCNC_CAMERA_FPS`.
 

@@ -1075,3 +1075,48 @@ label:has(input:disabled, select:disabled) {
 .inactive {
   opacity: var(--opacity-disabled);
 }
+
+/* ── Probe-grid SVG glyph styles ─────────────────────────────────────
+   Used by CornerGlyph.vue (extracted) AND the inline boss/angle/ridge
+   SVGs that remain in ProbePanel.vue. Shared globally so both inherit
+   one source of truth. Class names are SVG-element-internal — the risk
+   of collision outside the probe panel is essentially zero. */
+.gridIcon {
+  width: 100%;
+  height: 100%;
+  max-width: 80px;
+  max-height: 80px;
+}
+.workpiece {
+  fill: color-mix(in oklab, var(--fg) 12%, var(--bg));
+  stroke: var(--fg);
+  stroke-width: 1.5;
+  stroke-opacity: var(--opacity-muted);
+}
+.probeTip {
+  fill: var(--warn);
+  stroke: var(--fg);
+  stroke-width: 1;
+  stroke-opacity: var(--opacity-muted);
+}
+.arrowHead {
+  fill: var(--ok);
+  opacity: var(--opacity-secondary);
+}
+.crosshair {
+  fill: none;
+  stroke: var(--ok);
+  stroke-width: 1.5;
+}
+.crosshairLine {
+  stroke: var(--ok);
+  stroke-width: 1.5;
+  opacity: var(--opacity-secondary);
+}
+.gridZLabel {
+  fill: var(--fg);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  text-anchor: middle;
+  dominant-baseline: central;
+}

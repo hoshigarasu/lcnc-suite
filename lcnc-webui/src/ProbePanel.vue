@@ -8,6 +8,7 @@ import MachineRadio from "./MachineRadio.vue";
 import { usePermissions } from "./permissions";
 import { STEP_DEFAULT, STEP_FEED, loadProbeDefaults, saveProbeDefaults, settingsVersion, serverSettingsReady, saveToolsetterDefaults, TOOLSETTER_FALLBACK } from "./defaults";
 import ToolsetterSettings from "./ToolsetterSettings.vue";
+import CornerGlyph from "./CornerGlyph.vue";
 import Gate from "./Gate.vue";
 import HelpIcon from "./HelpIcon.vue";
 
@@ -697,73 +698,7 @@ function fmtR(key: string): string {
             :title="op.description"
             @click="runGridProbe(op)"
           >
-            <!-- BL corner: triangles pointing ↓ and → from outside -->
-            <svg v-if="op.id === 'bl'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" class="workpiece" />
-              <circle cx="28" cy="28" r="4" class="probeTip" />
-              <polygon points="28,10 23,1 33,1" class="arrowHead" />
-              <polygon points="10,28 1,23 1,33" class="arrowHead" />
-              <circle cx="10" cy="10" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Back edge: triangle pointing ↓ from outside, circle at vertex -->
-            <svg v-else-if="op.id === 'b'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" class="workpiece" />
-              <circle cx="40" cy="28" r="4" class="probeTip" />
-              <polygon points="40,10 35,1 45,1" class="arrowHead" />
-              <circle cx="40" cy="10" r="2.5" class="crosshair" />
-            </svg>
-            <!-- BR corner: triangles pointing ↓ and ← from outside -->
-            <svg v-else-if="op.id === 'br'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" class="workpiece" />
-              <circle cx="52" cy="28" r="4" class="probeTip" />
-              <polygon points="52,10 47,1 57,1" class="arrowHead" />
-              <polygon points="70,28 79,23 79,33" class="arrowHead" />
-              <circle cx="70" cy="10" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Left edge: triangle pointing → from outside, circle at vertex -->
-            <svg v-else-if="op.id === 'l'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" class="workpiece" />
-              <circle cx="28" cy="40" r="4" class="probeTip" />
-              <polygon points="10,40 1,35 1,45" class="arrowHead" />
-              <circle cx="10" cy="40" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Z center: probe centered, green crosshair circle around probe tip -->
-            <svg v-else-if="op.id === 'z'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" class="workpiece" />
-              <circle cx="40" cy="40" r="9" class="crosshair" />
-              <circle cx="40" cy="40" r="5" class="probeTip" />
-              <text x="40" y="60" class="gridZLabel">Z</text>
-            </svg>
-            <!-- Right edge: triangle pointing ← from outside, circle at vertex -->
-            <svg v-else-if="op.id === 'r'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" class="workpiece" />
-              <circle cx="52" cy="40" r="4" class="probeTip" />
-              <polygon points="70,40 79,35 79,45" class="arrowHead" />
-              <circle cx="70" cy="40" r="2.5" class="crosshair" />
-            </svg>
-            <!-- FL corner: triangles pointing ↑ and → from outside -->
-            <svg v-else-if="op.id === 'fl'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" class="workpiece" />
-              <circle cx="28" cy="52" r="4" class="probeTip" />
-              <polygon points="28,70 23,79 33,79" class="arrowHead" />
-              <polygon points="10,52 1,47 1,57" class="arrowHead" />
-              <circle cx="10" cy="70" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Front edge: triangle pointing ↑ from outside, circle at vertex -->
-            <svg v-else-if="op.id === 'f'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" class="workpiece" />
-              <circle cx="40" cy="52" r="4" class="probeTip" />
-              <polygon points="40,70 35,79 45,79" class="arrowHead" />
-              <circle cx="40" cy="70" r="2.5" class="crosshair" />
-            </svg>
-            <!-- FR corner: triangles pointing ↑ and ← from outside -->
-            <svg v-else-if="op.id === 'fr'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="10" y="10" width="60" height="60" class="workpiece" />
-              <circle cx="52" cy="52" r="4" class="probeTip" />
-              <polygon points="52,70 47,79 57,79" class="arrowHead" />
-              <polygon points="70,52 79,47 79,57" class="arrowHead" />
-              <circle cx="70" cy="70" r="2.5" class="crosshair" />
-            </svg>
+            <CornerGlyph mode="outside" :corner="op.id" />
           </MachineBtn>
         </div>
       </div>
@@ -785,73 +720,7 @@ function fmtR(key: string): string {
             :title="op.description"
             @click="runGridProbe(op)"
           >
-            <!-- BL corner: L-shape wall top+left, probe inside L near corner -->
-            <svg v-if="op.id === 'bl'" viewBox="0 0 80 80" class="gridIcon">
-              <path d="M0 0H80V35H35V80H0Z" class="workpiece" />
-              <circle cx="24" cy="24" r="4" class="probeTip" />
-              <polygon points="52,35 47,44 57,44" class="arrowHead" />
-              <polygon points="35,52 44,47 44,57" class="arrowHead" />
-              <circle cx="35" cy="35" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Back wall: half-rect top -->
-            <svg v-else-if="op.id === 'b'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="0" y="0" width="80" height="35" class="workpiece" />
-              <circle cx="40" cy="55" r="4" class="probeTip" />
-              <polygon points="40,35 35,44 45,44" class="arrowHead" />
-              <circle cx="40" cy="35" r="2.5" class="crosshair" />
-            </svg>
-            <!-- BR corner: L-shape wall top+right, probe inside L near corner -->
-            <svg v-else-if="op.id === 'br'" viewBox="0 0 80 80" class="gridIcon">
-              <path d="M0 0H80V80H45V35H0Z" class="workpiece" />
-              <circle cx="56" cy="24" r="4" class="probeTip" />
-              <polygon points="28,35 23,44 33,44" class="arrowHead" />
-              <polygon points="45,52 36,47 36,57" class="arrowHead" />
-              <circle cx="45" cy="35" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Left wall: half-rect left -->
-            <svg v-else-if="op.id === 'l'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="0" y="0" width="35" height="80" class="workpiece" />
-              <circle cx="55" cy="40" r="4" class="probeTip" />
-              <polygon points="35,40 44,35 44,45" class="arrowHead" />
-              <circle cx="35" cy="40" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Z center: full workpiece -->
-            <svg v-else-if="op.id === 'z'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="0" y="0" width="80" height="80" class="workpiece" />
-              <circle cx="40" cy="40" r="9" class="crosshair" />
-              <circle cx="40" cy="40" r="5" class="probeTip" />
-              <text x="40" y="60" class="gridZLabel">Z</text>
-            </svg>
-            <!-- Right wall: half-rect right -->
-            <svg v-else-if="op.id === 'r'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="45" y="0" width="35" height="80" class="workpiece" />
-              <circle cx="25" cy="40" r="4" class="probeTip" />
-              <polygon points="45,40 36,35 36,45" class="arrowHead" />
-              <circle cx="45" cy="40" r="2.5" class="crosshair" />
-            </svg>
-            <!-- FL corner: L-shape wall bottom+left, probe inside L near corner -->
-            <svg v-else-if="op.id === 'fl'" viewBox="0 0 80 80" class="gridIcon">
-              <path d="M0 0H35V45H80V80H0Z" class="workpiece" />
-              <circle cx="24" cy="56" r="4" class="probeTip" />
-              <polygon points="52,45 47,36 57,36" class="arrowHead" />
-              <polygon points="35,28 44,23 44,33" class="arrowHead" />
-              <circle cx="35" cy="45" r="2.5" class="crosshair" />
-            </svg>
-            <!-- Front wall: half-rect bottom -->
-            <svg v-else-if="op.id === 'f'" viewBox="0 0 80 80" class="gridIcon">
-              <rect x="0" y="45" width="80" height="35" class="workpiece" />
-              <circle cx="40" cy="25" r="4" class="probeTip" />
-              <polygon points="40,45 35,36 45,36" class="arrowHead" />
-              <circle cx="40" cy="45" r="2.5" class="crosshair" />
-            </svg>
-            <!-- FR corner: L-shape wall bottom+right, probe inside L near corner -->
-            <svg v-else-if="op.id === 'fr'" viewBox="0 0 80 80" class="gridIcon">
-              <path d="M45 0H80V80H0V45H45Z" class="workpiece" />
-              <circle cx="56" cy="56" r="4" class="probeTip" />
-              <polygon points="28,45 23,36 33,36" class="arrowHead" />
-              <polygon points="45,28 36,23 36,33" class="arrowHead" />
-              <circle cx="45" cy="45" r="2.5" class="crosshair" />
-            </svg>
+            <CornerGlyph mode="inside" :corner="op.id" />
           </MachineBtn>
         </div>
       </div>
@@ -1450,25 +1319,6 @@ function fmtR(key: string): string {
 
 /* .section — uses stack-controls utility */
 
-.workpiece {
-  fill: color-mix(in oklab, var(--fg) 12%, var(--bg));
-  stroke: var(--fg);
-  stroke-width: 1.5;
-  stroke-opacity: var(--opacity-muted);
-}
-
-.probeTip {
-  fill: var(--warn);
-  stroke: var(--fg);
-  stroke-width: 1;
-  stroke-opacity: var(--opacity-muted);
-}
-
-.arrowHead {
-  fill: var(--ok);
-  opacity: var(--opacity-secondary);
-}
-
 /* Fixed-height section so grid + params don't shift when switching tabs */
 .gridSection {
   height: 360px;
@@ -1571,33 +1421,6 @@ function fmtR(key: string): string {
   background: color-mix(in oklab, var(--warn) 25%, var(--button-bg));
   border-color: color-mix(in oklab, var(--warn) 40%, var(--border));
   animation: pulse 0.8s ease-in-out infinite alternate;
-}
-
-.gridIcon {
-  width: 100%;
-  height: 100%;
-  max-width: 80px;
-  max-height: 80px;
-}
-
-.gridZLabel {
-  fill: var(--fg);
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-bold);
-  text-anchor: middle;
-  dominant-baseline: central;
-}
-
-.crosshair {
-  fill: none;
-  stroke: var(--ok);
-  stroke-width: 1.5;
-}
-
-.crosshairLine {
-  stroke: var(--ok);
-  stroke-width: 1.5;
-  opacity: var(--opacity-secondary);
 }
 
 

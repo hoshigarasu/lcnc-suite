@@ -12,7 +12,33 @@ import json
 import signal
 import socket
 import select
+import time
 import hal
+
+import lcnc_trace as _trace
+_trace.init("hal_watchdog")
+
+try:
+    import fcntl as _fcntl
+    import struct as _struct
+    _SIOCINQ = 0x541B
+except Exception:
+    _fcntl = None
+    _struct = None
+    _SIOCINQ = 0
+
+
+def _client_inq(sock) -> int:
+    """Bytes pending in the kernel recv buffer for the client socket.
+    Linux only. Returns -1 if unavailable. Cheap (one ioctl)."""
+    if sock is None or _fcntl is None or _struct is None:
+        return -1
+    try:
+        buf = bytearray(4)
+        _fcntl.ioctl(sock.fileno(), _SIOCINQ, buf)
+        return _struct.unpack("I", bytes(buf))[0]
+    except Exception:
+        return -1
 
 COMP_NAME = "webui-safety"
 SOCK_PATH = "/tmp/webui-safety.sock"
@@ -61,6 +87,36 @@ buf = ""
 _last_hb_ok = None
 _trip_count = 0
 
+# === TEMP HB-RECV PROBE === track time of last received heartbeat
+# message from the gateway. The gateway sends heartbeats at ~30 Hz
+# (every ~33 ms). If the kernel socket buffer or hal_watchdog's read
+# loop introduces delivery latency that the gateway itself can't see,
+# this catches it: a gap >100 ms between received messages means the
+# gateway-to-watchdog pipe is the bottleneck, not the gateway's heart-
+# beat loop. Output goes to its own file so we don't depend on halrun's
+# stdout routing (which gets eaten by LinuxCNC's startup).
+_T0 = time.monotonic()
+_last_hb_recv = None  # monotonic time of last heartbeat msg received
+_last_hb_recv_true = None  # monotonic time of last heartbeat msg with value=True
+_RECV_GAP_THRESHOLD_S = 0.10
+_HB_RECV_LOG_PATH = "/tmp/lcnc-hal-watchdog.log"
+try:
+    _hb_recv_log = open(_HB_RECV_LOG_PATH, "w", buffering=1)  # line-buffered
+except OSError as _e:
+    _hb_recv_log = None
+    print(f"[HB-RECV] failed to open {_HB_RECV_LOG_PATH}: {_e}", flush=True)
+
+
+def _hb_recv_print(line: str) -> None:
+    if _hb_recv_log is not None:
+        try:
+            _hb_recv_log.write(line + "\n")
+        except OSError:
+            pass
+
+
+_hb_recv_print(f"[HB-RECV] +{(time.monotonic() - _T0) * 1000:.0f}ms watchdog ready, instrumentation active")
+
 # Cooperative shutdown: halrun sends SIGTERM on unload. select.select() is
 # interrupted by the signal in the main thread, so the loop exits within
 # one tick (~100 ms) instead of waiting for halrun's SIGKILL escalation.
@@ -71,6 +127,13 @@ def _stop(*_):
 signal.signal(signal.SIGTERM, _stop)
 signal.signal(signal.SIGINT, _stop)
 
+# Aggregate stats for wd.tick_summary: emit one summary every N ticks.
+_wd_tick_count = 0
+_wd_tick_max_select_ms = 0.0
+_wd_tick_total_select_ms = 0.0
+_wd_msgs_processed = 0
+_WD_TICK_SUMMARY_EVERY = 10  # ~1 s at 10 Hz select cadence
+
 try:
     while _running:
         socks = [server]
@@ -79,7 +142,13 @@ try:
 
         # 100ms select timeout → edge polling at ~10Hz. oneshot width is 500ms,
         # so a trip window is always ≥500ms wide; 100ms resolution never misses.
+        _select_t0 = time.monotonic()
         readable, _, _ = select.select(socks, [], [], 0.1)
+        _select_dt = (time.monotonic() - _select_t0) * 1000
+        _wd_tick_count += 1
+        _wd_tick_total_select_ms += _select_dt
+        if _select_dt > _wd_tick_max_select_ms:
+            _wd_tick_max_select_ms = _select_dt
 
         # Falling-edge detection on hb-ok-in. Increment trip-count so the
         # gateway can read it via webui-monitor and register a new trip.
@@ -91,6 +160,14 @@ try:
             comp["trip-count"] = _trip_count
             comp["trip-latch"] = False
             print(f"[SAFETY] oneshot.0.out FALSE edge, trip-count={_trip_count}", flush=True)
+            _trace.emit(
+                "wd.hb_edge", level="warn",
+                edge="falling", trip_count=_trip_count,
+            )
+        elif _last_hb_ok is False and hb_ok:
+            _trace.emit(
+                "wd.hb_edge", edge="rising", trip_count=_trip_count,
+            )
         _last_hb_ok = hb_ok
 
         for sock in readable:
@@ -131,7 +208,40 @@ try:
                             continue
                         msg = json.loads(line)
                         if "heartbeat" in msg:
-                            comp["heartbeat"] = bool(msg["heartbeat"])
+                            # === TEMP HB-RECV PROBE === log inter-arrival gap
+                            # for heartbeat messages. Gateway sends at ~33 ms
+                            # cadence; anything past 100 ms means delivery is
+                            # late from the watchdog's perspective regardless
+                            # of what the gateway thinks. Logged from the
+                            # process that actually drives the HAL pin, so a
+                            # gap >500 ms here would directly explain a
+                            # watchdog trip. Lower threshold (100 ms) catches
+                            # sub-trip jitter that compounds.
+                            _now = time.monotonic()
+                            _new_val = bool(msg["heartbeat"])
+                            # === TEMP HB-RECV PROBE === log EVERY heartbeat.
+                            # The HAL `oneshot` likely retriggers on rising
+                            # edge only — what matters is the time between
+                            # consecutive TRUE values, not raw inter-arrival.
+                            # Log every message (compact format) plus a
+                            # dedicated `[HB-RISING]` line for True-to-True
+                            # gaps over 200 ms so trip-relevant gaps are
+                            # easy to spot.
+                            ts_ms = int((_now - _T0) * 1000)
+                            _hb_recv_print(
+                                f"[HB-RECV] +{ts_ms}ms hb={'T' if _new_val else 'F'}"
+                            )
+                            if _new_val:
+                                if _last_hb_recv_true is not None:
+                                    rising_gap_ms = int((_now - _last_hb_recv_true) * 1000)
+                                    if rising_gap_ms > 200:
+                                        _hb_recv_print(
+                                            f"[HB-RISING] +{ts_ms}ms "
+                                            f"True-to-True gap {rising_gap_ms}ms"
+                                        )
+                                _last_hb_recv_true = _now
+                            _last_hb_recv = _now
+                            comp["heartbeat"] = _new_val
                         if "connected" in msg:
                             comp["connected"] = bool(msg["connected"])
                         if "tool_changed" in msg:
@@ -143,6 +253,8 @@ try:
                         if msg.get("trip_reset"):
                             comp["trip-latch"] = True
                             print("[SAFETY] trip-latch released by operator reset", flush=True)
+                            _trace.emit("wd.trip_reset")
+                        _wd_msgs_processed += 1
                 except Exception:
                     # Socket error — force pins LOW for safety
                     comp["connected"] = False
@@ -155,6 +267,24 @@ try:
                         pass
                     client = None
                     buf = ""
+
+        # Per-tick summary: emit one structured event per second so the
+        # merged trace shows watchdog cadence without flooding it 10 Hz.
+        if _wd_tick_count >= _WD_TICK_SUMMARY_EVERY:
+            _trace.emit(
+                "wd.tick_summary",
+                ticks=_wd_tick_count,
+                avg_select_ms=round(_wd_tick_total_select_ms / _wd_tick_count, 2),
+                max_select_ms=round(_wd_tick_max_select_ms, 2),
+                msgs=_wd_msgs_processed,
+                client_inq=_client_inq(client),
+                trip_latch=bool(comp["trip-latch"]),
+                hb_ok=bool(comp["hb-ok-in"]),
+            )
+            _wd_tick_count = 0
+            _wd_tick_max_select_ms = 0.0
+            _wd_tick_total_select_ms = 0.0
+            _wd_msgs_processed = 0
 except KeyboardInterrupt:
     pass
 finally:

@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 import linuxcnc
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, List, Tuple
 from fastapi.staticfiles import StaticFiles
 import re
@@ -22,6 +22,9 @@ from starlette.responses import StreamingResponse, JSONResponse, FileResponse, R
 import logging
 import click
 from contextlib import asynccontextmanager
+
+import lcnc_trace as _trace
+_trace.init("gateway")
 
 
 # === TEMP LIFECYCLE PROBE (remove after debugging) ===
@@ -153,6 +156,42 @@ def _install_shutdown_probe():
     _uv_server.Server._wait_tasks_to_complete = _patched
 
 _install_shutdown_probe()
+
+
+# === TEMP GC-PROBE === log generation-0/1/2 garbage-collector events
+# with duration. Python GC mark-sweep can stall the main thread for
+# hundreds of ms on a large object graph (e.g. accumulated msgpack
+# envelopes / status snapshots / error queues during a 12-client
+# storm). If a multi-second event-loop stall coincides with a [GC]
+# line showing generation=2 and high duration_ms, GC is the culprit.
+# Gen-0 fires very frequently (every few hundred allocations) and is
+# usually <1 ms; only logged when slow. Gen-2 is logged unconditionally.
+import gc as _gc
+_gc_start_t: Dict[int, float] = {}
+
+
+def _gc_callback(phase: str, info: Dict[str, Any]) -> None:
+    gen = info.get("generation", -1)
+    if phase == "start":
+        _gc_start_t[gen] = time.monotonic()
+        return
+    if phase != "stop":
+        return
+    t0 = _gc_start_t.pop(gen, None)
+    if t0 is None:
+        return
+    dt_ms = (time.monotonic() - t0) * 1000
+    if gen == 2 or dt_ms > 10:
+        offset_ms = (time.monotonic() - _T0) * 1000
+        print(
+            f"[GC] +{offset_ms:.0f}ms gen={gen} duration={dt_ms:.1f}ms "
+            f"collected={info.get('collected', 0)} "
+            f"uncollectable={info.get('uncollectable', 0)}",
+            flush=True,
+        )
+
+
+_gc.callbacks.append(_gc_callback)
 # === END TEMP LIFECYCLE PROBE ===
 
 
@@ -188,6 +227,17 @@ MACHINE_DIR = BASE_DIR / "machine"
 _WIRE_FORMAT = (os.environ.get("WEBUI_WIRE_FORMAT") or "msgpack").strip().lower()
 if _WIRE_FORMAT not in ("json", "msgpack"):
     _WIRE_FORMAT = "msgpack"
+
+# Per-send timeout for ws.send_* calls. A backgrounded browser tab that
+# stops reading back-pressures the kernel TCP write buffer; `await
+# ws.send_bytes` then holds the asyncio loop long enough (1+ s observed)
+# to break the 500 ms HAL heartbeat budget and trigger a safety trip.
+# We bound any single send to this many seconds and force-close the
+# offending client on timeout — bug fix, not trip suppression: the
+# heartbeat task is unchanged and still trips on any other loop hang.
+# 0.2 s leaves ~300 ms of remaining budget for the rest of the cycle.
+# See plan in /home/cnc/.claude/plans/can-you-plan-for-jolly-leaf.md.
+_WS_SEND_TIMEOUT_S = 0.2
 _STATUS_DELTA_ENABLED = os.environ.get("WEBUI_STATUS_DELTA") == "1"
 _ADAPTIVE_POLL_ENABLED = os.environ.get("WEBUI_ADAPTIVE_POLL") == "1"
 try:
@@ -296,13 +346,25 @@ _estop_hold = False  # hold connected=FALSE during UI e-stop
 _CMD_WAIT_TIMEOUT = 2.0
 
 def _hal_connect():
-    """Connect to the HAL watchdog Unix socket. Non-fatal if unavailable."""
+    """Connect to the HAL watchdog Unix socket. Non-fatal if unavailable.
+
+    Socket is set to a tight (50 ms) sendall timeout so that, if the kernel
+    Unix-socket send buffer fills (e.g. watchdog process scheduling-delayed
+    during a cold-start handshake storm), our heartbeat task does NOT block
+    the entire asyncio loop waiting for buffer space. A timed-out sendall
+    raises socket.timeout, which we catch and treat as a dropped heartbeat
+    — the watchdog will correctly trip if heartbeats stop reaching it. The
+    timeout is generous compared to the 33 ms heartbeat cadence and tiny
+    compared to the 500 ms HAL trip threshold; we lose at most one
+    heartbeat to detect backpressure.
+    """
     global _hal_sock
     if _hal_sock is not None:
         return  # already connected
     try:
         _hal_sock = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
         _hal_sock.connect(_HAL_SOCK_PATH)
+        _hal_sock.settimeout(0.05)
         print("Connected to HAL watchdog socket")
     except Exception as e:
         print(f"[HAL] socket connect failed: {e}", flush=True)
@@ -318,16 +380,133 @@ def _hal_disconnect():
             pass
         _hal_sock = None
 
+# Aggregate stats for hal.send_summary: emit one summary every N sends
+# rather than spamming every send (the heartbeat alone is ~30 Hz).
+_hal_send_count = 0
+_hal_send_max_ms = 0.0
+_hal_send_total_ms = 0.0
+_hal_send_slow_count = 0
+_HAL_SEND_SUMMARY_EVERY = 30  # ~1 s at heartbeat cadence
+
+
 def _hal_send(msg: dict):
     """Send a pin-update message to the HAL watchdog via socket."""
-    global _hal_sock
+    global _hal_sock, _hal_send_count, _hal_send_max_ms, _hal_send_total_ms, _hal_send_slow_count
     if _hal_sock is None:
         _hal_connect()
     if _hal_sock is not None:
+        _send_t0 = time.monotonic()
         try:
             _hal_sock.sendall((json.dumps(msg) + "\n").encode())
+        except _socket.timeout:
+            # Kernel send buffer full — watchdog process is scheduling-
+            # delayed (or hung). Drop this message and DON'T block the loop
+            # waiting for buffer space. Heartbeat task continues firing; if
+            # the watchdog truly isn't reading, the trip will fire correctly
+            # via oneshot.0.out going FALSE on its own. This converts a
+            # multi-second loop stall into a logged drop of one heartbeat.
+            _send_dt_to = (time.monotonic() - _send_t0) * 1000
+            _trace.emit("hal.send_timeout", level="warn",
+                        send_ms=round(_send_dt_to, 1),
+                        msg_keys=list(msg.keys()))
+            return
         except (OSError, BrokenPipeError):
             _hal_sock = None  # will reconnect on next send
+            _trace.emit("hal.send_disconnect", level="warn",
+                        msg_keys=list(msg.keys()))
+            return
+        _send_dt = (time.monotonic() - _send_t0) * 1000
+        # Per-call probe: keep the existing >30 ms gated print plus a
+        # structured trace of the same event.
+        if _send_dt > 30:
+            print(
+                f"[HAL-SEND] +{(time.monotonic() - _T0) * 1000:.0f}ms "
+                f"slow sendall {_send_dt:.0f}ms (msg keys={list(msg.keys())})",
+                flush=True,
+            )
+            _trace.emit("hal.send_slow", level="warn",
+                        send_ms=round(_send_dt, 1),
+                        msg_keys=list(msg.keys()))
+        # Aggregate
+        _hal_send_count += 1
+        _hal_send_total_ms += _send_dt
+        if _send_dt > _hal_send_max_ms:
+            _hal_send_max_ms = _send_dt
+        if _send_dt > 30:
+            _hal_send_slow_count += 1
+        if _hal_send_count >= _HAL_SEND_SUMMARY_EVERY:
+            avg = _hal_send_total_ms / _hal_send_count
+            _trace.emit(
+                "hal.send_summary",
+                count=_hal_send_count,
+                avg_ms=round(avg, 2),
+                max_ms=round(_hal_send_max_ms, 2),
+                slow_count=_hal_send_slow_count,
+                tcp_outq=_hal_tcp_outq(),
+            )
+            _hal_send_count = 0
+            _hal_send_max_ms = 0.0
+            _hal_send_total_ms = 0.0
+            _hal_send_slow_count = 0
+
+
+try:
+    import fcntl as _fcntl
+    import struct as _struct
+    _SIOCOUTQ = 0x5411  # Linux: bytes in TCP send buffer not yet acked
+    _SIOCINQ = 0x541B   # Linux: bytes in TCP recv buffer not yet read
+except Exception:
+    _fcntl = None
+    _struct = None
+    _SIOCOUTQ = 0
+    _SIOCINQ = 0
+
+
+def _snapshot_trip(trip_ts_ns: int) -> None:
+    """Write a forensic bundle when a HAL safety trip fires. Runs in a
+    worker thread (asyncio.to_thread) so it can't block the loop. Best
+    effort: any failure is logged but doesn't propagate."""
+    out_dir = f"/tmp/lcnc-trip-{trip_ts_ns}/"
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except Exception as e:
+        print(f"[SAFETY] snapshot mkdir failed: {e}", flush=True)
+        return
+    try:
+        # The bundler is best-effort: 10 s timeout protects against the
+        # rare case where /tmp is on a slow filesystem (e.g. tmpfs full).
+        rc = subprocess.run(
+            [
+                "python3",
+                "/home/cnc/lcnc-suite/scripts/trace-bundle.py",
+                "--trip",
+                "--out", out_dir,
+            ],
+            timeout=10,
+            capture_output=True,
+            check=False,
+        )
+        print(
+            f"[SAFETY] trip snapshot → {out_dir} rc={rc.returncode}",
+            flush=True,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"[SAFETY] trip snapshot timed out (>10s) → {out_dir}", flush=True)
+    except Exception as e:
+        print(f"[SAFETY] trip snapshot failed: {type(e).__name__}: {e}", flush=True)
+
+
+def _hal_tcp_outq() -> int:
+    """Bytes queued in the kernel send buffer for _hal_sock. Linux only.
+    Returns -1 on any failure. Cheap (one ioctl, ~1 us)."""
+    if _hal_sock is None or _fcntl is None or _struct is None:
+        return -1
+    try:
+        buf = bytearray(4)
+        _fcntl.ioctl(_hal_sock.fileno(), _SIOCOUTQ, buf)
+        return _struct.unpack("I", bytes(buf))[0]
+    except Exception:
+        return -1
 
 
 # ---- HAL reader (sibling process: webui-reader) ----
@@ -357,6 +536,7 @@ async def _reader_recv_loop():
     """
     global _reader_writer, _reader_state
     while True:
+        _set_phase("reader_recv.connecting")
         try:
             reader, writer = await asyncio.open_unix_connection(_READER_SOCK_PATH)
         except Exception as e:
@@ -367,9 +547,11 @@ async def _reader_recv_loop():
         print("Connected to HAL reader socket", flush=True)
         try:
             while True:
+                _set_phase("reader_recv.readline")
                 line = await reader.readline()
                 if not line:
                     break
+                _set_phase("reader_recv.process_line")
                 try:
                     msg = json.loads(line.decode())
                 except Exception as e:
@@ -385,6 +567,7 @@ async def _reader_recv_loop():
         except Exception as e:
             print(f"[READER] recv loop error: {type(e).__name__}: {e}", flush=True)
         finally:
+            _set_phase("reader_recv.cleanup")
             try:
                 writer.close()
                 await writer.wait_closed()
@@ -457,16 +640,21 @@ def _reader_is_stale() -> bool:
 
 async def _disconnect_grace():
     """Keep heartbeat alive while waiting for reconnect, then drop pins."""
+    _set_phase("disconnect_grace.entry")
     global _hal_last_hb
     ticks = int(_DISCONNECT_GRACE_SEC * POLL_HZ)
-    for _ in range(ticks):
+    for _i in range(ticks):
         if _clients:
+            _set_phase("disconnect_grace.client_returned_exit")
             return  # client reconnected during grace
+        _set_phase(f"disconnect_grace.tick {_i}/{ticks}")
         _hal_last_hb = not _hal_last_hb
         _hal_send({"heartbeat": _hal_last_hb, "connected": True})
         await asyncio.sleep(1.0 / POLL_HZ)
     if not _clients:
+        _set_phase("disconnect_grace.final_drop")
         _hal_send({"connected": False, "heartbeat": False})
+    _set_phase("disconnect_grace.exit")
 
 
 def _start_disconnect_grace():
@@ -497,7 +685,39 @@ async def _heartbeat_loop():
     global _hal_last_hb
     _hb_expected = 1.0 / POLL_HZ
     _hb_last = time.monotonic()
+    # === TEMP HB-TRACE PROBE === counts heartbeat iterations so we can see
+    # gaps that [HB-STALL]'s post-sleep drift detector misses. The drift
+    # detector only fires when the task wakes up and notices the elapsed
+    # time was longer than expected — but if monotonic *itself* froze
+    # (VM pause / cgroup throttle / OS scheduler lockout where the whole
+    # process timer subsystem stops), the post-sleep drift looks normal.
+    # Logging the iteration count + monotonic + walltime every ~1s makes
+    # any frozen-window visible: a [HB] line that should appear ~1 s after
+    # the prior one but appears ~3 s later, with iteration count having
+    # advanced by only ~30 instead of ~30 × elapsed_seconds, exposes the
+    # gap. Walltime is included so a pause invisible to monotonic but
+    # visible to clock_gettime(CLOCK_REALTIME) (rare) shows up too.
+    _hb_iter = 0
+    # === TEMP HB-WAKE PROBE === pre-send anchor to catch a hidden gap that
+    # [HB-STALL] cannot see: scheduling delay between asyncio.sleep returning
+    # and the heartbeat task actually being selected to run its body. If a
+    # busy event loop holds the heartbeat task ready-but-not-running for
+    # 100+ ms, this fires while [HB-STALL] (which measures post-sleep drift)
+    # stays silent because the elapsed-vs-expected math at sleep return is
+    # normal. Threshold 100ms — well under the 200 ms HB-STALL threshold so
+    # we catch sub-stall scheduling jitter that otherwise compounds silently.
+    _hb_last_pre_send = time.monotonic()
     while True:
+        _hb_pre_send = time.monotonic()
+        _hb_pre_send_gap = (_hb_pre_send - _hb_last_pre_send) * 1000
+        if _hb_pre_send_gap > 100:
+            print(
+                f"[HB-WAKE] +{(_hb_pre_send - _T0) * 1000:.0f}ms "
+                f"pre-send-to-pre-send gap {_hb_pre_send_gap:.0f}ms "
+                f"(expected {_hb_expected*1000:.0f}ms)",
+                flush=True,
+            )
+        _hb_last_pre_send = _hb_pre_send
         if _clients:
             _hal_last_hb = not _hal_last_hb
             _hal_send({"heartbeat": _hal_last_hb, "connected": not _estop_hold})
@@ -510,37 +730,289 @@ async def _heartbeat_loop():
         if _hb_drift > 0.2:
             print(f"[HB-STALL] heartbeat gap {_hb_drift*1000:.0f}ms (expected {_hb_expected*1000:.0f}ms)", flush=True)
         _hb_last = _hb_now
+        _hb_iter += 1
+        # Log every 30 iterations (~1 s at POLL_HZ=30). The space between
+        # consecutive [HB] lines should always be ≈1 s in monotonic terms;
+        # any larger jump means the loop was paused.
+        if _hb_iter % 30 == 0:
+            print(
+                f"[HB] +{(_hb_now - _T0) * 1000:.0f}ms iter={_hb_iter} "
+                f"wall={time.time():.3f} clients={len(_clients)}",
+                flush=True,
+            )
+
+
+# Phase ring buffer — replaces last-writer-wins single global. Each
+# _set_phase call appends (mono_s, name) to the ring. When [LAG] fires we
+# dump the slice of the ring that overlaps the stall window, plus compute
+# the phase that occupied the largest fraction of it ("dominant_phase" =
+# the actual culprit). The previous single-global design always reported
+# whoever woke first after the stall, which is innocent.
+_PHASE_RING_LEN = 256
+_phase_ring: List[Tuple[float, str]] = []
+_phase_ring_idx = 0
+_current_phase: str = "idle"
+_phase_started_at: float = 0.0
+
+
+def _set_phase(name: str) -> None:
+    """Append a phase marker to the ring and update the current pointer.
+    Cheap: append + 2 globals + monotonic()."""
+    global _current_phase, _phase_started_at, _phase_ring_idx
+    now = time.monotonic()
+    _current_phase = name
+    _phase_started_at = now
+    if len(_phase_ring) < _PHASE_RING_LEN:
+        _phase_ring.append((now, name))
+    else:
+        _phase_ring[_phase_ring_idx] = (now, name)
+        _phase_ring_idx = (_phase_ring_idx + 1) % _PHASE_RING_LEN
+
+
+def _phase_ring_snapshot() -> List[Tuple[float, str]]:
+    """Return phases in chronological order. Caller must not mutate."""
+    if len(_phase_ring) < _PHASE_RING_LEN:
+        return list(_phase_ring)
+    # Already filled; reorder so oldest is first.
+    return _phase_ring[_phase_ring_idx:] + _phase_ring[:_phase_ring_idx]
+
+
+def _phase_window(start_mono: float, end_mono: float) -> List[dict]:
+    """Phases that overlap [start, end]. Each entry has start_ms, dur_ms,
+    name. Durations clipped to the window so dominant_phase math is honest."""
+    snap = _phase_ring_snapshot()
+    out: List[dict] = []
+    for i, (t_begin, name) in enumerate(snap):
+        # End of this phase is the start of the next, or `now` for the last.
+        t_end = snap[i + 1][0] if i + 1 < len(snap) else end_mono
+        # Skip phases entirely before the window or entirely after.
+        if t_end <= start_mono:
+            continue
+        if t_begin >= end_mono:
+            continue
+        clipped_begin = max(t_begin, start_mono)
+        clipped_end = min(t_end, end_mono)
+        out.append({
+            "start_ms": round((clipped_begin - start_mono) * 1000, 2),
+            "dur_ms": round((clipped_end - clipped_begin) * 1000, 2),
+            "name": name,
+        })
+    return out
+
+
+def _dominant_phase(window: List[dict]) -> Optional[str]:
+    """Phase name that occupied the largest total duration in the window."""
+    if not window:
+        return None
+    totals: Dict[str, float] = {}
+    for ph in window:
+        totals[ph["name"]] = totals.get(ph["name"], 0.0) + ph["dur_ms"]
+    return max(totals.items(), key=lambda kv: kv[1])[0]
 
 
 async def _loop_lag_monitor():
     """Fire-and-forget task that measures event-loop scheduling lag.
 
-    Prints whenever the loop takes >100ms longer than the requested sleep to
-    wake back up — a proxy for 'main thread blocked on something synchronous'.
-    Used to diagnose heartbeat-watchdog trips by correlating [LAG] lines with
-    parse / encode / file-IO log lines.
+    Prints + emits a structured `lag.window` event whenever the loop takes
+    >50 ms longer than the requested sleep to wake back up. The structured
+    event includes the ring-buffer slice that overlaps the stall window
+    plus the computed `dominant_phase` (the actual culprit). The legacy
+    [LAG] line is preserved for grep familiarity.
     """
     TICK = 0.05
-    THRESHOLD = 0.10
+    THRESHOLD = 0.05  # 50 ms — was 100; lower for sub-trip visibility
     last = time.monotonic()
     while True:
         await asyncio.sleep(TICK)
         now = time.monotonic()
         drift = now - last - TICK
         if drift > THRESHOLD:
-            print(f"[LAG] event loop stalled {drift*1000:.0f}ms", flush=True)
+            # Stall window: the period between when we expected to wake
+            # (last + TICK) and when we actually woke (now). Pad backward
+            # by a small margin so we catch the phase that started just
+            # before the stall.
+            window_start = last + TICK - 0.005
+            window_end = now
+            window = _phase_window(window_start, window_end)
+            dominant = _dominant_phase(window)
+            phase_age_ms = (now - _phase_started_at) * 1000 if _phase_started_at else 0
+            print(
+                f"[LAG] event loop stalled {drift*1000:.0f}ms "
+                f"dominant={dominant!r} last={_current_phase!r} "
+                f"(in_phase_for={phase_age_ms:.0f}ms)",
+                flush=True,
+            )
+            _trace.emit(
+                "lag.window",
+                level="warn",
+                drift_ms=round(drift * 1000, 1),
+                window_ms=round((window_end - window_start) * 1000, 1),
+                dominant_phase=dominant,
+                last_phase=_current_phase,
+                last_phase_age_ms=round(phase_age_ms, 1),
+                phases=window,
+            )
         last = now
 
 
 _lag_monitor_task: Optional[asyncio.Task] = None
+_loop_tick_task: Optional[asyncio.Task] = None
+
+
+def _read_rss_kb() -> int:
+    """Read VmRSS from /proc/self/status. Returns 0 on any failure (Linux-
+    only path; harmless on other OSes since the gateway runs on Linux)."""
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        return int(parts[1])
+    except Exception:
+        pass
+    return 0
+
+
+def _executor_qsize() -> int:
+    """Pending items in the default thread-pool executor. Best-effort:
+    accesses a private attribute (_default_executor._work_queue) since
+    asyncio doesn't expose a stable getter. Returns -1 if unavailable."""
+    try:
+        loop = asyncio.get_event_loop()
+        ex = getattr(loop, "_default_executor", None)
+        if ex is None:
+            return -1
+        wq = getattr(ex, "_work_queue", None)
+        if wq is None:
+            return -1
+        return wq.qsize()
+    except Exception:
+        return -1
+
+
+def _encode_pool_qsize() -> int:
+    """Pending items in the dedicated status-encode executor pool
+    (`_status_encode_executor`, 2 workers). When this number grows, fan-out
+    encodes are queueing — distinct from default-executor pressure which
+    `_executor_qsize` already measures. Same private-attr caveat applies."""
+    try:
+        wq = getattr(_status_encode_executor, "_work_queue", None)
+        if wq is None:
+            return -1
+        return wq.qsize()
+    except Exception:
+        return -1
+
+
+# /proc/stat aggregate CPU breakdown — first line is "cpu  user nice system
+# idle iowait irq softirq steal guest guest_nice". The `steal` field is what
+# we care about: time the VM was runnable but the hypervisor was running
+# something else. Inside a VM under host load, this delta jumps. Outside a
+# VM (or when the host has plenty of CPU) it stays at 0. Counter unit is
+# USER_HZ (100 jiffies/s on Linux), so we convert to ms for readability.
+_USER_HZ = 100  # standard on Linux x86; sysconf(_SC_CLK_TCK) confirms but
+                # the value has been 100 forever.
+_last_proc_stat: Optional[Tuple[float, dict]] = None  # (mono_s, parsed)
+
+
+def _read_proc_stat() -> Optional[dict]:
+    """Read /proc/stat aggregate cpu line. Returns a dict of jiffy counters
+    or None on parse failure. Only the aggregate `cpu` line is parsed —
+    per-core breakdown is not needed for steal-time detection."""
+    try:
+        with open("/proc/stat") as f:
+            line = f.readline()
+        if not line.startswith("cpu "):
+            return None
+        parts = line.split()
+        # parts[0] = 'cpu', parts[1..] = counters in jiffies
+        names = ["user", "nice", "system", "idle", "iowait", "irq",
+                 "softirq", "steal", "guest", "guest_nice"]
+        out: Dict[str, int] = {}
+        for i, name in enumerate(names):
+            if i + 1 < len(parts):
+                try:
+                    out[name] = int(parts[i + 1])
+                except ValueError:
+                    out[name] = 0
+            else:
+                out[name] = 0
+        return out
+    except Exception:
+        return None
+
+
+def _proc_stat_delta() -> Dict[str, Any]:
+    """Compute per-second jiffy deltas from the last `loop.tick` call.
+    Returns dict with `steal_ms`, `iowait_ms`, `idle_pct`, plus raw jiffy
+    deltas. First call after start returns absolute values (warm-up)."""
+    global _last_proc_stat
+    now = time.monotonic()
+    cur = _read_proc_stat()
+    if cur is None:
+        return {"steal_ms": -1}
+    if _last_proc_stat is None:
+        _last_proc_stat = (now, cur)
+        return {"steal_ms": 0, "warmup": True}
+    prev_t, prev = _last_proc_stat
+    dt_s = max(now - prev_t, 1e-6)
+    _last_proc_stat = (now, cur)
+    deltas = {k: max(0, cur.get(k, 0) - prev.get(k, 0)) for k in cur}
+    total = sum(deltas.values())
+    # Convert jiffies → ms via USER_HZ. If the system actually used 250 Hz
+    # this would be off by 2.5×, but USER_HZ=100 is universal on x86_64.
+    jiffy_ms = 1000.0 / _USER_HZ
+    return {
+        "steal_ms": round(deltas.get("steal", 0) * jiffy_ms, 1),
+        "iowait_ms": round(deltas.get("iowait", 0) * jiffy_ms, 1),
+        "user_ms": round(deltas.get("user", 0) * jiffy_ms, 1),
+        "system_ms": round(deltas.get("system", 0) * jiffy_ms, 1),
+        "idle_ms": round(deltas.get("idle", 0) * jiffy_ms, 1),
+        "total_ms": round(total * jiffy_ms, 1),
+        "dt_s": round(dt_s, 3),
+    }
+
+
+async def _loop_tick():
+    """Emit one `loop.tick` event every 1 s with snapshot of loop health:
+    pending tasks, executor queue depth, GC counts, RSS, plus host CPU
+    steal time (definitive signal for hypervisor preemption inside a VM).
+    Cheap (~80 us total)."""
+    import gc
+    while True:
+        try:
+            await asyncio.sleep(1.0)
+            try:
+                pending = sum(1 for t in asyncio.all_tasks() if not t.done())
+            except Exception:
+                pending = -1
+            ps = _proc_stat_delta()
+            _trace.emit(
+                "loop.tick",
+                pending_tasks=pending,
+                executor_qsize=_executor_qsize(),
+                encode_qsize=_encode_pool_qsize(),
+                gc_counts=list(gc.get_count()),
+                rss_kb=_read_rss_kb(),
+                clients=len(_clients) if "_clients" in globals() else 0,
+                **ps,
+            )
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            # Never let this task die quietly; loop.
+            await asyncio.sleep(1.0)
 
 
 def _start_heartbeat():
-    global _heartbeat_task, _lag_monitor_task
+    global _heartbeat_task, _lag_monitor_task, _loop_tick_task
     if _heartbeat_task is None or _heartbeat_task.done():
         _heartbeat_task = register_bg_task(asyncio.get_event_loop().create_task(_heartbeat_loop()))
     if _lag_monitor_task is None or _lag_monitor_task.done():
         _lag_monitor_task = register_bg_task(asyncio.get_event_loop().create_task(_loop_lag_monitor()))
+    if _loop_tick_task is None or _loop_tick_task.done():
+        _loop_tick_task = register_bg_task(asyncio.get_event_loop().create_task(_loop_tick()))
 
 
 # ---- Shared status poller ----
@@ -719,12 +1191,37 @@ def _read_comp_grid_file() -> "dict | None":
 def _poll_and_serialize():
     """Executor-thread helper: poll STAT + serialize to dict in one hop.
 
-    Combines poll_status() and asdict() so neither touches the event loop.
-    Returns (StatusPayload, dict) — the dict is cached as _shared_status_dict
-    and consumed (via .copy()) by every per-client status_loop.
+    Combines poll_status() and the dataclass→dict conversion so neither
+    touches the event loop. Returns (StatusPayload, dict) — the dict is
+    cached as _shared_status_dict and consumed (via .copy()) by every
+    per-client status_loop.
+
+    The conversion uses `__dict__.copy()` rather than dataclasses.asdict().
+    asdict() recursively deep-copies every field; for StatusPayload (no
+    nested dataclasses, only primitives + flat lists) the deep copy
+    produces the same shape as the shallow copy but cost 100–200 ms under
+    storm-time GIL contention (measured 2026-05-02). Shallow copy is
+    correct because no consumer mutates the dict's list values.
+
+    Emits poll_status.slow on >50 ms total so we keep visibility on
+    regressions.
     """
+    _t0 = time.monotonic()
     st = poll_status()
-    return st, asdict(st)
+    _t1 = time.monotonic()
+    out = st.__dict__.copy()
+    _t2 = time.monotonic()
+    poll_ms = (_t1 - _t0) * 1000
+    serialize_ms = (_t2 - _t1) * 1000
+    total_ms = poll_ms + serialize_ms
+    if total_ms > 50:
+        _trace.emit(
+            "poll_status.slow", level="warn",
+            poll_ms=round(poll_ms, 1),
+            asdict_ms=round(serialize_ms, 1),  # field name kept for trace continuity
+            total_ms=round(total_ms, 1),
+        )
+    return st, out
 
 
 async def _status_poller():
@@ -760,6 +1257,7 @@ async def _status_poller():
             _cycle_start = time.monotonic()
 
             if not _clients:
+                _set_phase("status_poller.idle_wait")
                 # Periodic idle marker (every ~5s) so the operator can see
                 # at a glance that the gateway is alive but unconnected.
                 if _cycle_start - _idle_last_log >= 5.0:
@@ -811,10 +1309,17 @@ async def _status_poller():
             # same hop so StatusPayload serialisation stays off the event
             # loop too.
             t0 = time.monotonic()
+            _set_phase("status_poller.poll_and_serialize")
             st, status_dict = await loop.run_in_executor(None, _poll_and_serialize)
             t1 = time.monotonic()
-            raw_errs = read_errors_nonblocking()
+            _set_phase("status_poller.read_errors")
+            # ERR.poll() is a C-extension call that holds the GIL for its
+            # NML read; running it inline on the main thread blocks the
+            # event loop in the same way STAT.poll does. Move it to the
+            # default executor so heartbeat / WS sends can interleave.
+            raw_errs = await loop.run_in_executor(None, read_errors_nonblocking)
             t2 = time.monotonic()
+            _set_phase("status_poller.post_poll")
             _poll_fails = 0
 
             # Parse probe results from DEBUG EVAL messages; detect surface scan completion
@@ -946,7 +1451,29 @@ async def _status_poller():
                         "ts": int(time.time() * 1000),
                         "reason": "hal_heartbeat_timeout",
                     }
-                    print(f"[SAFETY] HAL heartbeat watchdog tripped at {_unacked_trip['ts']} (trip-count {trip_count})", flush=True)
+                    # === TEMP HB-TRACE PROBE === include +Nms anchor so this
+                    # lines up with the [HB]/[BOOT]/[CONN] timeline above; the
+                    # epoch-ms field stays for absolute correlation with
+                    # external traces (kernel logs, hypervisor pause events).
+                    _trip_offset_ms = (time.monotonic() - _T0) * 1000
+                    print(
+                        f"[SAFETY] +{_trip_offset_ms:.0f}ms HAL heartbeat watchdog tripped "
+                        f"at {_unacked_trip['ts']} (trip-count {trip_count})",
+                        flush=True,
+                    )
+                    _trace.emit(
+                        "safety.tripped", level="error",
+                        trip_count=trip_count,
+                        ts_ms=_unacked_trip["ts"],
+                    )
+                    # Auto-snapshot the trace bus into a forensic bundle so
+                    # the trip is reconstructable end-to-end without operator
+                    # action. Run in to_thread so the bundler subprocess can't
+                    # block the asyncio loop or the safety-trip status update.
+                    _trip_ts_ns = int(time.time_ns())
+                    asyncio.create_task(
+                        asyncio.to_thread(_snapshot_trip, _trip_ts_ns)
+                    )
                 _last_trip_count = trip_count
 
             # Cache results for per-client loops
@@ -957,12 +1484,14 @@ async def _status_poller():
             # instead of re-encoding the identical payload N times. JSON wire
             # format has no Raw-splice primitive, so we skip there.
             if _WIRE_FORMAT == "msgpack":
+                _set_phase("status_poller.shared_msgpack_encode")
                 _t_enc = time.monotonic()
                 _shared_status_data_msgpack = _msgpack_encoder.encode(status_dict)
                 shared_encode_ms = round((time.monotonic() - _t_enc) * 1000, 2)
             else:
                 _shared_status_data_msgpack = None
                 shared_encode_ms = 0.0
+            _set_phase("status_poller.build_clients_list")
             _shared_clients_list = [
                 {"ip": c["ip"], "armed": c["armed"]} for c in _clients.values()
             ]
@@ -2004,10 +2533,35 @@ def _seed_wcs_cache():
         print(f"[wcs] seed cache failed: {e}", flush=True)
 
 
+def _stat_poll_timed(caller: str = "?") -> None:
+    """Drop-in replacement for STAT.poll() that times the call and emits
+    `stat.poll_slow` on >30 ms. Use from main-thread call sites (handlers)
+    so we can localize storm-time GIL contention. The shared poller has
+    its own inline probe inside poll_status."""
+    if STAT is None:
+        return
+    t0 = time.monotonic()
+    STAT.poll()
+    dt_ms = (time.monotonic() - t0) * 1000
+    if dt_ms > 30:
+        _trace.emit("stat.poll_slow", level="warn",
+                    duration_ms=round(dt_ms, 1), caller=caller)
+
+
 def poll_status() -> StatusPayload:
     if STAT is None:
         raise RuntimeError("LinuxCNC not connected")
+    # Time STAT.poll() in isolation. Trace shows status_poller.poll_and_serialize
+    # holding the loop for 700+ms; we don't know yet whether it's STAT.poll
+    # itself (LinuxCNC NML read), the var-file mtime check, or Python work.
+    # Per-call probe surfaces the actual culprit. Threshold tight enough to
+    # catch storm-time elevations (typical poll is <2 ms).
+    _stat_t0 = time.monotonic()
     STAT.poll()
+    _stat_dt_ms = (time.monotonic() - _stat_t0) * 1000
+    if _stat_dt_ms > 30:
+        _trace.emit("stat.poll_slow", level="warn",
+                    duration_ms=round(_stat_dt_ms, 1), caller="poll_status")
 
     # ---- safety/state ----
     estop = bool(safe_get("estop", True))
@@ -2266,6 +2820,37 @@ def read_errors_nonblocking() -> list:
     return out
 
 
+def _ws_hidden_flag(ws: WebSocket) -> bool:
+    """Look up the `hidden` state of the client owning `ws` by identity.
+    Used by the slow-send probes so a single trace event tells us whether
+    the slow consumer was a backgrounded tab (hidden-tab gating should
+    have caught it) or a genuinely-visible peer (separate problem).
+    O(n) over _clients but bounded by tab count and only on warn paths."""
+    try:
+        for c in _clients.values():
+            if c.get("ws") is ws:
+                return bool(c.get("hidden", False))
+    except Exception:
+        pass
+    return False
+
+
+async def _safe_ws_close(ws: WebSocket, peer: str) -> None:
+    """Fire-and-forget close used by the ws_send_measured timeout branch.
+
+    Bounds its own work to 500 ms total. Runs in a background task created
+    via asyncio.create_task — the caller (timeout branch in ws_send_measured)
+    must NOT await this. ws.close() itself can await an internal drain that
+    isn't reliably bounded under storm conditions; if our wait_for here
+    fires, the connection is forcibly torn down by the underlying TCP
+    timeout / the peer's reconnect logic.
+    """
+    try:
+        await asyncio.wait_for(ws.close(code=1001), timeout=0.5)
+    except Exception:
+        pass
+
+
 async def ws_send_json(ws: WebSocket, obj: Dict[str, Any]):
     # Legacy-name shim: all sends go through ws_send_measured so the wire-format
     # flag applies uniformly and non-status messages don't diverge from status
@@ -2300,23 +2885,125 @@ async def ws_send_measured(ws: WebSocket, obj: Dict[str, Any]) -> Tuple[float, i
     excludes the actual ws.send_* call; bytes_sent is the size of the encoded
     payload. Returns (encode_ms, 0) if the client disconnected mid-send.
     """
-    loop = asyncio.get_event_loop()
     t0 = time.monotonic()
+    _set_phase("ws_send_measured.encode")
+    # Inline encode. Earlier this went through `_status_encode_executor` for
+    # parallelism, but the trace bus showed encode_qsize=0 across every
+    # storm-time loop.tick while encode_ms still climbed to 50–200 ms — pool
+    # dispatch isn't the cost, GIL contention is, and offloading to a worker
+    # only adds dispatch overhead while making the worker fight for the GIL
+    # alongside the main loop. msgspec's C-level encoder is fast (sub-ms for
+    # the typical envelope) and inline encoding eliminates one full thread
+    # round-trip per send. The legacy `ws.encode_slow` event still fires if
+    # this assumption breaks under future load.
     if _WIRE_FORMAT == "msgpack":
-        # Dedicated encode pool — see _status_encode_executor docstring.
-        # Both wire-format branches use it so flipping WEBUI_WIRE_FORMAT=json
-        # doesn't silently revert to the contended default executor.
-        data = await loop.run_in_executor(_status_encode_executor, _msgpack_encoder.encode, obj)
+        data = _msgpack_encoder.encode(obj)
     else:
-        data = await loop.run_in_executor(_status_encode_executor, _json_encoder_encode, obj)
+        data = _json_encoder_encode(obj)
     encode_ms = round((time.monotonic() - t0) * 1000, 3)
     try:
+        _send_peer = f"{ws.client.host}:{ws.client.port}" if ws.client else "?"
+    except Exception:
+        _send_peer = "?"
+    # Encode-only slow path: catches the case where the encode pool was
+    # contended / GIL-starved but the actual ws.send returns fast. Without
+    # this, ws.fanout_send_slow only fires when SEND is also slow and we'd
+    # miss encode-pool starvation entirely.
+    if encode_ms > 50:
+        _trace.emit(
+            "ws.encode_slow",
+            level="warn" if encode_ms > 200 else "info",
+            peer=_send_peer, encode_ms=encode_ms, bytes=len(data),
+            hidden=_ws_hidden_flag(ws),
+        )
+    _set_phase(f"ws_send.{_WIRE_FORMAT} peer={_send_peer} bytes={len(data)}")
+    # Bound any single send to _WS_SEND_TIMEOUT_S. A backgrounded browser
+    # tab stops reading → kernel TCP write buffer fills → `await
+    # ws.send_bytes` holds the loop ~1+ s, breaking the 500 ms HAL
+    # heartbeat budget. wait_for caps it; on timeout we close the slow
+    # client (they're already not getting updates anyway). Other clients
+    # are unaffected — each runs in its own status_loop task. The
+    # heartbeat task remains tied to the same asyncio loop, so any other
+    # cause of loop hang still trips the watchdog correctly.
+    send_t0 = time.monotonic()
+    try:
         if _WIRE_FORMAT == "msgpack":
-            await ws.send_bytes(data)
+            await asyncio.wait_for(ws.send_bytes(data), timeout=_WS_SEND_TIMEOUT_S)
         else:
-            await ws.send_text(data if isinstance(data, str) else data.decode("utf-8"))
-    except RuntimeError:
+            await asyncio.wait_for(
+                ws.send_text(data if isinstance(data, str) else data.decode("utf-8")),
+                timeout=_WS_SEND_TIMEOUT_S,
+            )
+    except asyncio.TimeoutError:
+        _set_phase(f"ws_send_measured.timeout_caught peer={_send_peer}")
+        # Slow consumer — log peer and close the WS. The per-client
+        # status_loop catches the resulting WebSocketDisconnect and
+        # exits cleanly (existing handler).
+        try:
+            peer = f"{ws.client.host}:{ws.client.port}" if ws.client else "?"
+        except Exception:
+            peer = "?"
+        try:
+            obj_type = str(obj.get("type", "?"))
+        except Exception:
+            obj_type = "?"
+        send_ms = (time.monotonic() - send_t0) * 1000
+        print(
+            f"[SLOW-CLIENT-DROP] +{(time.monotonic() - _T0) * 1000:.0f}ms "
+            f"ws send timed out >{int(_WS_SEND_TIMEOUT_S * 1000)}ms peer={peer} "
+            f"bytes={len(data)} obj_type={obj_type} — closing WS",
+            flush=True,
+        )
+        _trace.emit(
+            "ws.slow_client_drop", level="warn",
+            peer=peer, send_ms=round(send_ms, 1),
+            timeout_ms=int(_WS_SEND_TIMEOUT_S * 1000),
+            bytes=len(data), obj_type=obj_type,
+            hidden=_ws_hidden_flag(ws),
+        )
+        # Schedule the close as fire-and-forget so the timeout branch
+        # itself never blocks the asyncio loop. With N concurrent slow
+        # peers the previous inline `await wait_for(ws.close, 0.1)` could
+        # add N × 100 ms of loop-hold; create_task adds ~0 ms. The close
+        # task is bounded internally (see _safe_ws_close). Combined with
+        # the per-client send_pending flag, no further fan-out is queued
+        # to this client until the close completes or the connection
+        # errors out.
+        asyncio.create_task(_safe_ws_close(ws, peer))
+        _set_phase(f"ws_send_measured.timeout_returning peer={_send_peer}")
         return (encode_ms, 0)
+    except RuntimeError:
+        _set_phase(f"ws_send_measured.RuntimeError peer={_send_peer}")
+        return (encode_ms, 0)
+    _set_phase(f"ws_send_measured.send_done peer={_send_peer}")
+    send_dt_ms = (time.monotonic() - send_t0) * 1000
+    # Promote any slow but completed send (>50 ms) into the trace bus so
+    # we see backpressure building before it timeouts.
+    if send_dt_ms > 50:
+        try:
+            peer = f"{ws.client.host}:{ws.client.port}" if ws.client else "?"
+        except Exception:
+            peer = "?"
+        try:
+            obj_type = str(obj.get("type", "?"))
+        except Exception:
+            obj_type = "?"
+        _trace.emit(
+            "ws.fanout_send_slow",
+            level="warn" if send_dt_ms > 200 else "info",
+            peer=peer, send_ms=round(send_dt_ms, 1),
+            encode_ms=encode_ms, bytes=len(data), obj_type=obj_type,
+            hidden=_ws_hidden_flag(ws),
+        )
+        # === TEMP SLOW-SEND PROBE === keep the legacy human-readable line
+        # for grep familiarity; remove with the rest of the temp probes.
+        if send_dt_ms > 1000:
+            print(
+                f"[SLOW-SEND] +{(time.monotonic() - _T0) * 1000:.0f}ms "
+                f"ws send blocked {send_dt_ms:.0f}ms peer={peer} "
+                f"bytes={len(data)} obj_type={obj_type}",
+                flush=True,
+            )
     # msgspec returns bytes; stdlib json returns str — both have len() == bytes/chars
     return (encode_ms, len(data))
 
@@ -3640,6 +4327,45 @@ class CacheStaticAssets:
 app.add_middleware(CacheStaticAssets)
 
 
+@app.middleware("http")
+async def trace_http(request: Request, call_next):
+    """Phase-track + emit start/end for every HTTP request. Single hook
+    covers all routes so we never miss one (the audit found 15+ routes
+    that were uninstrumented under the old per-handler approach)."""
+    t0 = time.monotonic()
+    path = request.url.path
+    method = request.method
+    peer = "?"
+    try:
+        if request.client is not None:
+            peer = f"{request.client.host}:{request.client.port}"
+    except Exception:
+        pass
+    # Skip /assets and /static (served by StaticFiles, no instrumentation
+    # value, and they fan out a lot during cold-load).
+    if path.startswith("/assets/") or path.startswith("/static/"):
+        return await call_next(request)
+    _set_phase(f"http.{method}.{path}")
+    _trace.emit("http.start", path=path, method=method, peer=peer)
+    status = 0
+    try:
+        resp = await call_next(request)
+        try:
+            status = int(getattr(resp, "status_code", 0) or 0)
+        except Exception:
+            status = 0
+        return resp
+    except Exception as e:
+        _trace.emit("http.error", level="error", path=path, method=method,
+                    peer=peer, exc=type(e).__name__, msg=str(e))
+        raise
+    finally:
+        dur = (time.monotonic() - t0) * 1000
+        level = "warn" if dur > 50 else "info"
+        _trace.emit("http.end", level=level, path=path, method=method,
+                    peer=peer, duration_ms=round(dur, 1), status=status)
+
+
 # Serve static machine assets (STLs etc.)
 # Always resolve relative to THIS FILE, not cwd
 
@@ -3650,6 +4376,58 @@ app.mount("/assets", StaticFiles(directory=str(MACHINE_DIR), html=False), name="
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.post("/telemetry")
+async def telemetry(request: Request):
+    """Browser → server telemetry sink.
+
+    Body is NDJSON: one JSON object per line. Each event is forwarded to
+    the trace bus tagged `browser.<event_kind>`. Designed to be cheap and
+    survive partial / malformed batches: a bad line is dropped, not 500'd.
+    Used by lcncWs.ts to report tab visibility, WS connect/disconnect,
+    send-buffer pressure, and JS errors.
+
+    Sized for ~1 KB / s / tab steady state with sendBeacon flushes on
+    pagehide. Treat as untrusted: every field becomes a string in the
+    trace, never executed or rendered raw.
+    """
+    raw = b""
+    try:
+        raw = await request.body()
+    except Exception:
+        return {"ok": False, "error": "body_read_failed"}
+    if not raw:
+        return {"ok": True, "events": 0}
+    peer = "?"
+    try:
+        if request.client is not None:
+            peer = f"{request.client.host}:{request.client.port}"
+    except Exception:
+        pass
+    accepted = 0
+    rejected = 0
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            evt = json.loads(line)
+        except Exception:
+            rejected += 1
+            continue
+        if not isinstance(evt, dict):
+            rejected += 1
+            continue
+        kind = str(evt.get("kind") or evt.get("tag") or "event")
+        # Forward all fields as-is (strings/numbers/bools only after JSON
+        # decode anyway). Prefix tag with `browser.` so the merged trace
+        # makes the source obvious.
+        fields = {k: v for k, v in evt.items() if k not in ("kind", "tag")}
+        fields["peer"] = peer
+        _trace.emit(f"browser.{kind}", **fields)
+        accepted += 1
+    return {"ok": True, "events": accepted, "rejected": rejected}
 
 
 @app.post("/upload")
@@ -4383,12 +5161,27 @@ async def ws_endpoint(ws: WebSocket):
         _next_client_id += 1
         client_ip = ws.client.host if ws.client else "unknown"
         _clients[client_id] = {"ip": client_ip, "armed": False, "last_hb": time.time(), "hb_mono": 0.0,
-                               "ws": ws, "halshow_live": False}
+                               "ws": ws, "halshow_live": False,
+                               # send_pending: a status fan-out is currently in-flight to this client.
+                               # status_loop sets it before the await and clears in finally; subsequent
+                               # ticks skip the client until it clears, bounding loop work per tick to
+                               # one outstanding send per peer.
+                               "send_pending": False,
+                               # hidden: client has reported document.visibilityState === "hidden".
+                               # Backgrounded tabs stop draining the WS, fill the kernel TCP buffer,
+                               # and stall the gateway loop. While hidden, status fan-out is skipped
+                               # for this client; on visibilitychange→visible the next tick resumes.
+                               "hidden": False}
         _cancel_disconnect_grace()
         _start_heartbeat()
         _start_status_poller()
         _start_reader_recv_loop()
         _dbg("CONN", f"client#{client_id} ip={client_ip} accept+register+bg-tasks dt={(time.monotonic()-_conn_t0)*1000:.0f}ms")
+        _trace.emit(
+            "ws.connect.accept",
+            client_id=client_id, peer=client_ip,
+            accept_ms=round((time.monotonic() - _conn_t0) * 1000, 1),
+        )
 
         # Restore lcnc_connected if LinuxCNC is still running but the flag was
         # cleared by a previous connection's WebSocket error
@@ -4422,21 +5215,43 @@ async def ws_endpoint(ws: WebSocket):
         print(f"[VINIT] client#{client_id} connect-time viewer_init: lcnc_connected={lcnc_connected}, STAT={'OK' if STAT else 'None'}", flush=True)
         _t = time.monotonic()
         try:
+            _set_phase(f"build_viewer_init client#{client_id}")
             await ws_send_json(ws, {"type": "viewer_init", "data": build_viewer_init(stl_base_url)})
             viewer_init_sent = True  # prevents status_loop re-send; reset on LinuxCNC reconnect
             print(f"[VINIT] client#{client_id} connect-time viewer_init SENT OK", flush=True)
             _dbg("CONN", f"client#{client_id} viewer-init-sent dt={(time.monotonic()-_t)*1000:.0f}ms (since-accept={(time.monotonic()-_conn_t0)*1000:.0f}ms)")
+            _trace.emit(
+                "ws.connect.viewer_init",
+                client_id=client_id,
+                viewer_init_ms=round((time.monotonic() - _t) * 1000, 1),
+                since_accept_ms=round((time.monotonic() - _conn_t0) * 1000, 1),
+            )
         except Exception as e:
             print(f"[VINIT] client#{client_id} connect-time viewer_init FAILED: {e}", flush=True)
+            _trace.emit(
+                "ws.connect.viewer_init", level="error",
+                client_id=client_id, exc=type(e).__name__, msg=str(e),
+            )
 
         # Send initial settings snapshot (part of WS handshake)
         _t = time.monotonic()
         try:
+            _set_phase(f"load_settings client#{client_id}")
             _init_settings = await asyncio.get_event_loop().run_in_executor(None, load_settings)
+            _set_phase(f"send_settings_init client#{client_id}")
             await ws_send_json(ws, {"type": "settings_init", "settings": _init_settings, "armed": armed})
             _dbg("CONN", f"client#{client_id} settings-sent dt={(time.monotonic()-_t)*1000:.0f}ms")
+            _trace.emit(
+                "ws.connect.settings",
+                client_id=client_id,
+                settings_ms=round((time.monotonic() - _t) * 1000, 1),
+            )
         except Exception as e:
             print(f"[SETTINGS] client#{client_id} settings_init FAILED: {e}", flush=True)
+            _trace.emit(
+                "ws.connect.settings", level="error",
+                client_id=client_id, exc=type(e).__name__, msg=str(e),
+            )
 
         # Send initial G-code ping if a file is already loaded. The full preview
         # payload (feed/rapid polylines, stats) is served over HTTP via GET
@@ -4483,6 +5298,7 @@ async def ws_endpoint(ws: WebSocket):
 
 
         async def status_loop():
+            _set_phase(f"status_loop.entry client#{client_id}")
             nonlocal armed, viewer_init_sent, _probe_results, _prev_tc_req, _prev_tool_num
             global _tool_meta_dirty, _fb_scale, _spindle_load_pin
             loop = asyncio.get_event_loop()
@@ -4545,6 +5361,19 @@ async def ws_endpoint(ws: WebSocket):
                     _last_gen = _status_gen
                     pickup_ts = time.monotonic()
 
+                    # Slow-consumer / hidden-tab skip: if a previous tick's
+                    # send to this client is still in flight, OR the client's
+                    # tab is backgrounded, skip building and sending status
+                    # this tick. Bounds per-client outstanding work to one
+                    # send and removes hidden tabs (the storm trigger) from
+                    # the fan-out entirely. Loop continues to the next iter
+                    # and re-waits on _status_event for the next tick.
+                    _client_state = _clients.get(client_id)
+                    if _client_state is not None and (
+                        _client_state.get("send_pending") or _client_state.get("hidden")
+                    ):
+                        continue
+
                     st = _shared_status
                     if st is None:
                         await asyncio.sleep(0.5)
@@ -4581,7 +5410,7 @@ async def ws_endpoint(ws: WebSocket):
                     if _use_shared:
                         status_data: Any = _msgspec.Raw(_shared_status_data_msgpack)
                     else:
-                        status_data = _shared_status_dict.copy() if _shared_status_dict else asdict(st)
+                        status_data = _shared_status_dict.copy() if _shared_status_dict else st.__dict__.copy()
                     status_msg: dict = {
                         "type": "status",
                         "data": status_data,
@@ -4665,7 +5494,18 @@ async def ws_endpoint(ws: WebSocket):
                             _clients[client_id]["hb_mono"] = 0.0
 
                     pre_send = time.monotonic()
-                    _prev_encode_ms, _bytes_sent = await ws_send_measured(ws, status_msg)
+                    # Mark the client as having an in-flight send. Cleared in
+                    # finally so even an exception path doesn't leave the flag
+                    # stuck (which would silently mute future fan-out for this
+                    # client). The skip check at the top of the loop reads this
+                    # flag to bound outstanding work to one send per peer.
+                    if client_id in _clients:
+                        _clients[client_id]["send_pending"] = True
+                    try:
+                        _prev_encode_ms, _bytes_sent = await ws_send_measured(ws, status_msg)
+                    finally:
+                        if client_id in _clients:
+                            _clients[client_id]["send_pending"] = False
                     _prev_send_ms = round((time.monotonic() - pre_send) * 1000, 2)
 
                     # Contribute to per-tick aggregate stats (logged by poller on
@@ -4818,23 +5658,28 @@ async def ws_endpoint(ws: WebSocket):
                     _consec_fails = 0
 
                 except Exception as e:
+                    _set_phase(f"status_loop.exception client#{client_id} type={type(e).__name__}")
                     _consec_fails += 1
                     print(f"[STATUS] client#{client_id} status_loop exception ({_consec_fails}/10): {type(e).__name__}: {e}", flush=True)
                     if _consec_fails >= 10:
                         print(f"[STATUS] client#{client_id} aborting status loop after 10 consecutive failures", flush=True)
                         break
                     await asyncio.sleep(0.5)
+            _set_phase(f"status_loop.exit client#{client_id}")
 
         status_task = register_bg_task(asyncio.create_task(status_loop()))
 
+    _disc_reason = "unknown"
     try:
         while True:
+            _set_phase(f"ws.receive_text client#{client_id}")
             raw = await ws.receive_text()
             try:
                 msg = json.loads(raw)
             except Exception:
                 await ws_send_json(ws, {"type": "reply", "ok": False, "error": "Invalid JSON"})
                 continue
+            _set_phase(f"handle_msg cmd={msg.get('cmd', '?')} client#{client_id}")
 
             if msg.get("cmd") == "heartbeat":
                 if client_id in _clients:
@@ -4943,6 +5788,29 @@ async def ws_endpoint(ws: WebSocket):
                 await ws_send_json(ws, {"type": "reply", "ok": True})
                 continue
 
+            if msg.get("cmd") == "tab_visibility":
+                # Frontend reports document.visibilityState. While hidden, the
+                # browser stops draining the WS and the kernel TCP buffer fills,
+                # which is the storm trigger we measured. Status fan-out skips
+                # this client while hidden; resumes on the next tick after the
+                # tab returns to visible. State-only update — does not require
+                # `armed` and never affects machine state.
+                #
+                # NO REPLY: the very client sending this command is, by
+                # definition, the one whose tab just became hidden — i.e. the
+                # one whose WS is about to back up. Awaiting `ws_send_json`
+                # for a reply would re-introduce the slow-consumer hang we're
+                # trying to escape (a 495 ms stall observed in the first storm
+                # test with the reply present). Frontend fire-and-forgets.
+                hidden = bool(msg.get("hidden", False))
+                if client_id in _clients:
+                    _clients[client_id]["hidden"] = hidden
+                _trace.emit(
+                    "ws.tab_visibility",
+                    client_id=client_id, hidden=hidden,
+                )
+                continue
+
             if msg.get("cmd") == "simulate_probe_trip":
                 if not armed:
                     await ws_send_json(ws, {"type": "reply", "ok": False, "error": "Not armed"})
@@ -5007,6 +5875,7 @@ async def ws_endpoint(ws: WebSocket):
                 await ws_send_json(ws, {"type": "reply", "ok": True})
                 continue
 
+            _set_phase(f"handle_command cmd={msg.get('cmd', '?')} client#{client_id}")
             reply = await handle_command(msg, armed)
             if msg.get("cmd") == "unload_file" and reply.get("ok"):
                 # reset_interpreter doesn't clear stat.file, so the shared
@@ -5019,9 +5888,12 @@ async def ws_endpoint(ws: WebSocket):
                 _gcode_last_file = None
             await ws_send_json(ws, {"type": "reply", **reply})
 
-    except (WebSocketDisconnect, RuntimeError):
-        pass
+    except (WebSocketDisconnect, RuntimeError) as _disc_e:
+        _set_phase(f"ws_endpoint.WebSocketDisconnect_caught client#{client_id}")
+        _disc_reason = type(_disc_e).__name__
     finally:
+        _finally_t0 = time.monotonic()
+        _set_phase(f"ws_endpoint.finally.entry client#{client_id}")
         _clients.pop(client_id, None)
         _halshow_topology_sent.pop(client_id, None)
         # Safety: stop all motion if this armed client disconnects.
@@ -5030,8 +5902,10 @@ async def ws_endpoint(ws: WebSocket):
         # CMD.abort() while LinuxCNC is itself tearing down would stall the
         # shutdown path. Lifespan owns the global stop instead.
         if armed and CMD is not None and not _shutting_down:
+            _set_phase(f"ws_endpoint.finally.armed_motion_abort client#{client_id}")
             try:
                 async with _get_cmd_lock():
+                    _set_phase(f"ws_endpoint.finally.armed_abort.cmd_lock_held client#{client_id}")
                     STAT.poll()
                     if bool(safe_get("enabled", False)):
                         mode = safe_get("task_mode", None)
@@ -5049,6 +5923,7 @@ async def ws_endpoint(ws: WebSocket):
                             CMD.abort()
             except Exception:
                 pass
+        _set_phase(f"ws_endpoint.finally.cancel_status_task client#{client_id}")
         status_task.cancel()
         # Clear estop hold if no clients remain
         if not _clients:
@@ -5056,10 +5931,21 @@ async def ws_endpoint(ws: WebSocket):
         # Update HAL pins to reflect this client is gone
         has_clients = bool(_clients)
         if has_clients:
+            _set_phase(f"ws_endpoint.finally.hal_send_disconnected client#{client_id}")
             _hal_send({"connected": True, "heartbeat": False})
         else:
             # Grace period: delay dropping connected pin to allow page refresh
+            _set_phase(f"ws_endpoint.finally.start_disconnect_grace client#{client_id}")
             _start_disconnect_grace()
+        _set_phase(f"ws_endpoint.finally.done client#{client_id}")
+        _trace.emit(
+            "ws.disconnect",
+            client_id=client_id, peer=client_ip,
+            reason=_disc_reason,
+            cleanup_ms=round((time.monotonic() - _finally_t0) * 1000, 1),
+            session_ms=round((time.monotonic() - _conn_t0) * 1000, 1),
+            remaining_clients=len(_clients),
+        )
 
 
 # ── Camera streaming (optional — requires LCNC_CAMERA_SOURCE env var) ────

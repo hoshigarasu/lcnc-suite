@@ -108,5 +108,8 @@ export type WsCommand =
   | { cmd: "timing_log"; enable: boolean }
   // Halshow (Settings → Halshow tab) live updates
   | { cmd: "halshow_live"; on: boolean }
+  // Tab visibility — gateway pauses status fan-out to hidden tabs to keep
+  // the asyncio loop responsive under multi-tab storm conditions.
+  | { cmd: "tab_visibility"; hidden: boolean }
   // Safety trip acknowledgment (clears sticky trip, re-allows arming)
   | { cmd: "safety_trip_ack" };

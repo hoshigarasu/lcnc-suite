@@ -193,6 +193,110 @@ _wait_or_kill() {
     wait "$pid" 2>/dev/null || true
 }
 
+# === TEMP HAL-SAMPLE PROBE === capture every servo-cycle value of the
+# safety-chain bool pins. The HAL sampler component fills a FIFO every
+# servo cycle (~1ms); halsampler -n 0 drains it to stdout. We pipe into
+# a CSV so we can correlate Python-side heartbeat events with what the
+# realtime thread actually sees on oneshot.0.in / oneshot.0.out. The
+# matching `loadrt sampler` lives in the LinuxCNC HAL config file
+# (lcnc_webui.hal). If halsampler isn't on PATH (older LinuxCNC, or
+# packaging miss), we skip silently — gateway operation is unaffected.
+SAMPLER_PID=""
+HAL_SAMPLE_PATH="/tmp/lcnc-hal-sample.csv"
+
+_start_hal_sampler() {
+    local mode="$1"
+    if ! command -v halsampler >/dev/null 2>&1; then
+        _log "$mode halsampler not on PATH — skipping HAL-sample capture"
+        return
+    fi
+    # Self-describing CSV: write a header so the bundler / human readers
+    # know the column layout. halsampler appends raw rows after this.
+    # Columns mirror sampler cfg in lcnc_webui.hal (cfg=bbbbbbf).
+    printf '# t_sample,heartbeat,hb_ok,connected,trip_latch,motion_enabled,paused,vel\n' \
+        > "$HAL_SAMPLE_PATH"
+    # `stdbuf -oL` forces line-buffered stdout so the file fills as
+    # samples arrive, not in 8 KB chunks. Without it the redirect
+    # default (fully buffered) leaves the file empty for many seconds.
+    # `-t` prefixes each line with the sample number (servo-cycle id)
+    # so we can detect missed cycles by gaps in the sequence — that's
+    # the diagnostic we actually need (gateway-side logs already show
+    # message timing). No `-n` means continuous capture (a previous
+    # version mistakenly used `-n 0` which means "read 0 then exit").
+    # halsampler exits when its sampler component is unloaded (LinuxCNC
+    # shutdown), so no explicit kill is strictly required; we still send
+    # SIGTERM in the trap to flush stdout promptly.
+    stdbuf -oL halsampler -t >> "$HAL_SAMPLE_PATH" 2>>"$LCNC_LAUNCHER_LOG" &
+    SAMPLER_PID=$!
+    _log "$mode halsampler started pid=$SAMPLER_PID → $HAL_SAMPLE_PATH"
+    # Detect early exit (e.g. sampler component not loaded — HAL config
+    # change wasn't picked up because LinuxCNC wasn't fully restarted).
+    sleep 0.2
+    if ! kill -0 "$SAMPLER_PID" 2>/dev/null; then
+        _log "$mode halsampler exited within 200ms — sampler not loaded? Check HAL config."
+        SAMPLER_PID=""
+    fi
+}
+
+_stop_hal_sampler() {
+    if [[ -n "$SAMPLER_PID" ]]; then
+        # `|| true` because halsampler may have already exited (e.g. if
+        # the sampler component was unloaded by LinuxCNC shutdown before
+        # we get here). With set -e a failed kill would otherwise abort
+        # the trap and leave us with rc=1.
+        kill -TERM "$SAMPLER_PID" 2>/dev/null || true
+        _log "halsampler SIGTERM → pid=$SAMPLER_PID"
+        SAMPLER_PID=""
+    fi
+}
+
+# === TEMP PROC-STATUS PROBE === sample /proc/<gateway_pid>/status every 1s
+# and append a structured event to /tmp/lcnc-trace.log so the bundler can
+# correlate gateway memory / context-switch counts against [LAG] events.
+# Cheap (~50us per sample) and runs in a separate bash subshell so a hang
+# in the proc read can't block our trap path.
+PROC_STATUS_PID=""
+
+_start_proc_status_loop() {
+    local gw_pid="$1"
+    local mode="$2"
+    if [[ -z "$gw_pid" ]]; then return; fi
+    (
+        # Run until the gateway exits OR we get SIGTERM.
+        trap 'exit 0' TERM INT
+        while kill -0 "$gw_pid" 2>/dev/null; do
+            if [[ -r "/proc/$gw_pid/status" ]]; then
+                local rss="0" thr="0" vol="0" nvol="0"
+                while IFS= read -r line; do
+                    case "$line" in
+                        VmRSS:*)             rss=$(echo "$line"          | awk '{print $2}') ;;
+                        Threads:*)           thr=$(echo "$line"          | awk '{print $2}') ;;
+                        voluntary_ctxt*)     vol=$(echo "$line"          | awk '{print $2}') ;;
+                        nonvoluntary_ctxt*)  nvol=$(echo "$line"         | awk '{print $2}') ;;
+                    esac
+                done < "/proc/$gw_pid/status"
+                # NDJSON line — same schema as gateway/hal_reader emit.
+                # Atomic O_APPEND under PIPE_BUF (4 KB) so this can't tear.
+                local now_ns
+                now_ns=$(date +%s%N)
+                printf '{"t_wall_ns":%s,"t_mono_ms":0,"proc":"launcher","pid":%s,"tag":"proc.status","level":"info","gw_pid":%s,"vm_rss_kb":%s,"threads":%s,"voluntary_ctxt":%s,"nonvoluntary_ctxt":%s}\n' \
+                    "$now_ns" "$$" "$gw_pid" "$rss" "$thr" "$vol" "$nvol" \
+                    >> /tmp/lcnc-trace.log 2>/dev/null || true
+            fi
+            sleep 1
+        done
+    ) &
+    PROC_STATUS_PID=$!
+    _log "$mode proc.status loop started pid=$PROC_STATUS_PID (watching gw_pid=$gw_pid)"
+}
+
+_stop_proc_status_loop() {
+    if [[ -n "$PROC_STATUS_PID" ]]; then
+        kill -TERM "$PROC_STATUS_PID" 2>/dev/null || true
+        PROC_STATUS_PID=""
+    fi
+}
+
 # ── Dev mode: Vite hot-reload + gateway ──
 if [[ "$DEV" == "1" ]]; then
   echo "lcnc-suite: DEV mode — Vite on :$VITE_PORT, gateway on :$PORT"
@@ -221,6 +325,8 @@ if [[ "$DEV" == "1" ]]; then
     fi
     _log "DEV _term: waiting for gateway pid=$GATEWAY_PID (≤2s, then SIGKILL)"
     _wait_or_kill "$GATEWAY_PID" "DEV"
+    _stop_hal_sampler
+    _stop_proc_status_loop
     _log "DEV _term: gateway reaped, exit 0"
     exit 0
   }
@@ -245,6 +351,8 @@ if [[ "$DEV" == "1" ]]; then
   setsid python3 -m uvicorn gateway:app --host "$HOST" --port "$PORT" --app-dir "$GATEWAY_DIR" "${UVICORN_LOOP[@]}" "${UVICORN_COLOR[@]}" "${UVICORN_GRACEFUL[@]}" &
   GATEWAY_PID=$!
   _log "DEV gateway started pid=$GATEWAY_PID"
+  _start_hal_sampler "DEV"
+  _start_proc_status_loop "$GATEWAY_PID" "DEV"
   # `|| status=$?` keeps set -e from killing us when the gateway exits
   # non-zero (e.g. status=143 after SIGTERM). We need to propagate the
   # status to LinuxCNC's Cleanup via `exit "$status"` below.
@@ -309,6 +417,8 @@ _term() {
   fi
   _log "PROD _term: waiting for gateway pid=$GATEWAY_PID (≤2s, then SIGKILL)"
   _wait_or_kill "$GATEWAY_PID" "PROD"
+  _stop_hal_sampler
+  _stop_proc_status_loop
   _log "PROD _term: gateway reaped, exit 0"
   exit 0
 }
@@ -322,6 +432,8 @@ trap _term INT TERM
 setsid python3 -m uvicorn gateway:app --host "$HOST" --port "$PORT" --app-dir "$GATEWAY_DIR" "${UVICORN_LOOP[@]}" "${UVICORN_COLOR[@]}" "${UVICORN_GRACEFUL[@]}" &
 GATEWAY_PID=$!
 _log "PROD gateway started pid=$GATEWAY_PID"
+_start_hal_sampler "PROD"
+_start_proc_status_loop "$GATEWAY_PID" "PROD"
 # `|| status=$?` keeps set -e from killing us when the gateway exits
 # non-zero (e.g. status=143 after SIGTERM). We need to propagate the
 # status to LinuxCNC's Cleanup via `exit "$status"` below.

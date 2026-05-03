@@ -54,6 +54,127 @@ export const serverShuttingDown = ref(false);
 // so the operator sees "preview is stale" rather than viewing a possibly
 // outdated toolpath without warning.
 export const previewLoadError = ref<string | null>(null);
+// ---------- Browser → server telemetry batcher ----------
+// Posts NDJSON batches to POST /telemetry where the gateway forwards each
+// event to the suite-wide trace bus tagged `browser.<kind>`. Catches the
+// signals we can't see from the server side: tab visibility (the known
+// 12-tab-storm trigger), WS reconnect attempt cadence, send-buffer
+// pressure, JS errors. Batched to keep request rate low.
+const _telemetryQueue: Array<Record<string, any>> = [];
+const _TELEMETRY_MAX_QUEUE = 200;
+const _TELEMETRY_FLUSH_MS = 250;
+const _TELEMETRY_BATCH_MAX = 32;
+let _telemetryFlushScheduled = false;
+
+export function emitTelemetry(kind: string, fields: Record<string, any> = {}): void {
+  // performance.timing isn't valid for our wall-aligned ms but Date.now is;
+  // include both so the bundler can correlate against gateway events.
+  const evt = {
+    kind,
+    t_wall_ms: Date.now(),
+    t_perf_ms: Math.round(performance.now()),
+    ...fields,
+  };
+  _telemetryQueue.push(evt);
+  if (_telemetryQueue.length > _TELEMETRY_MAX_QUEUE) {
+    _telemetryQueue.splice(0, _telemetryQueue.length - _TELEMETRY_MAX_QUEUE);
+  }
+  if (!_telemetryFlushScheduled) {
+    _telemetryFlushScheduled = true;
+    setTimeout(_flushTelemetry, _TELEMETRY_FLUSH_MS);
+  } else if (_telemetryQueue.length >= _TELEMETRY_BATCH_MAX) {
+    // Hit the size threshold mid-window — flush early.
+    _flushTelemetry();
+  }
+}
+
+function _telemetryBody(events: Array<Record<string, any>>): string {
+  return events.map(e => JSON.stringify(e)).join("\n");
+}
+
+function _flushTelemetry(): void {
+  _telemetryFlushScheduled = false;
+  if (_telemetryQueue.length === 0) return;
+  // Take ownership of the current batch; new events queue up for next flush.
+  const batch = _telemetryQueue.splice(0, _telemetryQueue.length);
+  const body = _telemetryBody(batch);
+  // Use fetch keepalive so the request can complete after navigation in
+  // most modern browsers. sendBeacon is reserved for unload paths.
+  try {
+    fetch("/telemetry", {
+      method: "POST",
+      headers: { "content-type": "application/x-ndjson" },
+      body,
+      keepalive: true,
+    }).catch(() => { /* swallow — telemetry is best-effort */ });
+  } catch {
+    /* networking unavailable; drop silently */
+  }
+}
+
+function _flushTelemetryViaBeacon(): void {
+  if (_telemetryQueue.length === 0) return;
+  try {
+    const batch = _telemetryQueue.splice(0, _telemetryQueue.length);
+    const body = _telemetryBody(batch);
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: "application/x-ndjson" });
+      navigator.sendBeacon("/telemetry", blob);
+    } else {
+      // Last-ditch synchronous fetch (rarely needed; keepalive covers most).
+      fetch("/telemetry", { method: "POST", body, keepalive: true }).catch(() => {});
+    }
+  } catch { /* drop */ }
+}
+
+if (typeof window !== "undefined") {
+  // Flush on tab close / navigation. Both events fire across browsers;
+  // pagehide is the modern signal for bfcache, beforeunload for legacy.
+  window.addEventListener("pagehide", () => {
+    emitTelemetry("tab.pagehide", {});
+    _flushTelemetryViaBeacon();
+  });
+  window.addEventListener("beforeunload", () => {
+    emitTelemetry("tab.beforeunload", {});
+    _flushTelemetryViaBeacon();
+  });
+  // Tab visibility changes — the known storm trigger.
+  // Two effects:
+  //   1. Emit a telemetry event for the trace bus (off-band signal).
+  //   2. Send a `tab_visibility` WS command so the gateway can skip status
+  //      fan-out to this client while hidden — backgrounded tabs stop
+  //      draining the WS, fill the kernel TCP buffer, and stall the
+  //      gateway's asyncio loop. Suppressing fan-out at the source
+  //      eliminates the slow-consumer feedback loop.
+  document.addEventListener("visibilitychange", () => {
+    const hidden = document.hidden;
+    emitTelemetry("tab.visibility", {
+      visibilityState: document.visibilityState,
+      hidden,
+    });
+    if (ws?.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ cmd: "tab_visibility", hidden }));
+      } catch { /* WS may have closed mid-send; ignored */ }
+    }
+  });
+  // Global error reporters → trace bus.
+  window.addEventListener("error", (ev) => {
+    emitTelemetry("error.console", {
+      msg: String(ev.message ?? ""),
+      filename: String(ev.filename ?? ""),
+      lineno: Number(ev.lineno ?? 0),
+      colno: Number(ev.colno ?? 0),
+    });
+  });
+  window.addEventListener("unhandledrejection", (ev) => {
+    emitTelemetry("error.unhandled_rejection", {
+      reason: String((ev as PromiseRejectionEvent).reason ?? ""),
+    });
+  });
+}
+
+
 // Message history is intentionally per-tab (localStorage, not server-synced).
 // Rationale: different tabs/browsers represent different user sessions;
 // federating error/status messages across sessions would cause confusing
@@ -371,6 +492,9 @@ function _wsProbeFlush() {
 
 let _wsLastConnectAttemptAt = 0;
 let _wsAttemptCount = 0;
+let _wsLastCloseAt = 0;
+let _wsLastCloseCode = 0;
+let _wsBufferPressureTimer: ReturnType<typeof setInterval> | null = null;
 
 export function connectWs() {
   // Close previous connection if any (prevents leaks during HMR)
@@ -385,6 +509,11 @@ export function connectWs() {
   _wsAttemptCount++;
   _wsLastConnectAttemptAt = performance.now();
   _wsProbe(`connect attempt #${_wsAttemptCount} → ${wsUrl}`);
+  emitTelemetry("ws.connect.attempt", {
+    attempt: _wsAttemptCount,
+    last_close_code: _wsLastCloseCode,
+    gap_ms: _wsLastCloseAt ? Math.round(performance.now() - _wsLastCloseAt) : 0,
+  });
   ws = new WebSocket(wsUrl);
   // Required so msgpack frames arrive as ArrayBuffer, not Blob (Blob decode
   // is async and would need an extra await). JSON text frames are unaffected.
@@ -409,9 +538,30 @@ export function connectWs() {
     clearTimeout(_connectTimer);
     const dt = Math.round(performance.now() - _wsLastConnectAttemptAt);
     _wsProbe(`open after ${dt}ms (attempt #${_wsAttemptCount})`);
+    emitTelemetry("ws.open", { dt_ms: dt, attempt: _wsAttemptCount });
     _wsAttemptCount = 0;
     connected.value = true;
     serverShuttingDown.value = false;
+    // Send initial tab visibility state to the gateway. Without this, a
+    // tab that connected while already hidden would receive full fan-out
+    // until the next visibilitychange event — which may never fire if the
+    // user opens 12 tabs at once and only the front one becomes visible.
+    if (ws) {
+      try {
+        ws.send(JSON.stringify({ cmd: "tab_visibility", hidden: document.hidden }));
+      } catch { /* ignored */ }
+    }
+    // Buffer-pressure sampler: peek at ws.bufferedAmount once a second
+    // while connected. Non-zero means the kernel/socket isn't draining
+    // our writes — the symmetric problem to gateway-side TCP back-pressure.
+    if (_wsBufferPressureTimer !== null) clearInterval(_wsBufferPressureTimer);
+    _wsBufferPressureTimer = setInterval(() => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const buf = ws.bufferedAmount;
+      if (buf > 0) {
+        emitTelemetry("ws.send_buffer_pressure", { buffered_bytes: buf });
+      }
+    }, 1000);
     _hbWorker = new Worker(new URL("./heartbeatWorker.ts", import.meta.url), { type: "module" });
     _hbWorker.onmessage = () => {
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -430,6 +580,7 @@ export function connectWs() {
   ws.onerror = (e) => {
     const dtAttempt = Math.round(performance.now() - _wsLastConnectAttemptAt);
     _wsProbe(`error event after ${dtAttempt}ms type=${(e as Event).type ?? "?"}`);
+    emitTelemetry("ws.error", { dt_ms: dtAttempt, type: (e as Event).type ?? "?" });
   };
 
   ws.onclose = (ev) => {
@@ -438,6 +589,18 @@ export function connectWs() {
     _wsProbe(
       `close code=${ev.code} reason=${JSON.stringify(ev.reason ?? "")} clean=${ev.wasClean} sinceAttempt=${dtAttempt}ms`
     );
+    _wsLastCloseAt = performance.now();
+    _wsLastCloseCode = ev.code;
+    emitTelemetry("ws.close", {
+      code: ev.code,
+      reason: String(ev.reason ?? ""),
+      clean: ev.wasClean,
+      since_attempt_ms: dtAttempt,
+    });
+    if (_wsBufferPressureTimer !== null) {
+      clearInterval(_wsBufferPressureTimer);
+      _wsBufferPressureTimer = null;
+    }
     connected.value = false;
     armed.value = false;     // new connection starts disarmed
     latency.value = null;

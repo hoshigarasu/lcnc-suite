@@ -40,7 +40,7 @@ const hasComp = computed(() => props.eoffsetZ != null && props.eoffsetZ !== 0);
 
 // ─── Cell editing ────────────────────────────────────────────
 function startEditCell(wcs: string, axis: string, current: number) {
-  if (!can.value.zero) return;
+  if (!can.value.ready) return;
   // Read-only when source data is null/missing — see fmtOffset() in format.ts.
   // Editing a "—" cell with a synthesized 0 would silently replace missing
   // data with a real value the user didn't intend.
@@ -69,7 +69,7 @@ function clearAll() {
     <div class="header row-controls">
       <span class="sub">Work Coordinate Offsets</span>
       <div class="actions row-tight">
-        <Gate gate="idle">
+        <Gate gate="ready">
           <div class="row-tight">
             <MachineBtn type="manage" :disabled="!selectedWcs" @click="clearSelected">
               Clear {{ selectedWcs ?? '–' }}
@@ -98,7 +98,7 @@ function clearAll() {
             <td v-for="axis in offsetColumns" :key="axis"
                 :class="{
                   warn: axis === 'r' && row[axis] !== 0,
-                  editableCell: can.zero && Number.isFinite(Number(row[axis]))
+                  editableCell: can.ready && Number.isFinite(Number(row[axis]))
                 }"
                 @dblclick.stop="startEditCell(row.name as string, axis, Number(row[axis]))">
               <span class="cellValue">{{ fmtOffset(Number(row[axis])) }}</span>

@@ -238,10 +238,19 @@ fieldset:disabled textarea {
 }
 /* Legend children are exempt from fieldset:disabled per HTML spec —
    restore opacity so Arm/E-Stop are never visually dimmed.
-   Only matches controls inside an enabled inner Gate (gate="always"),
-   so Machine On (inside disabled <Gate gate="safety">) stays dimmed. */
+   Two anchor patterns:
+     1. Controls inside an enabled inner Gate (gate="always") — original
+        SafetyStrip layout pre-2026-05.
+     2. Controls inside a plain layout div (.btnGate) — current SafetyStrip
+        layout after the cosmetic-Gate cleanup.
+   Both produce the same operator semantics: Arm/E-Stop look fully
+   enabled while disarmed. Machine On (still inside <Gate gate="safety">,
+   which IS a fieldset that becomes :disabled when disarmed) correctly
+   stays dimmed. */
 fieldset:disabled > legend fieldset:not([disabled]) button,
-fieldset:disabled > legend fieldset:not([disabled]) input {
+fieldset:disabled > legend fieldset:not([disabled]) input,
+fieldset:disabled > legend .btnGate > button,
+fieldset:disabled > legend .btnGate > input {
   opacity: 1 !important;
   cursor: pointer;
 }

@@ -690,20 +690,20 @@ function setPathAlwaysOnTop(on: boolean) {
   if (feedLine) {
     const m = feedLine.material as THREE.LineBasicMaterial;
     m.depthTest = dt;
-    m.depthWrite = dt;
+    m.depthWrite = false;
     m.needsUpdate = true;
   }
   if (rapidLine) {
     const m = rapidLine.material as THREE.LineDashedMaterial;
     m.depthTest = dt;
-    m.depthWrite = dt;
+    m.depthWrite = false;
     m.needsUpdate = true;
   }
   for (const ol of [feedOverflow, rapidOverflow]) {
     if (ol) {
       const m = ol.material as THREE.LineDashedMaterial;
       m.depthTest = dt;
-      m.depthWrite = dt;
+      m.depthWrite = false;
       m.needsUpdate = true;
     }
   }
@@ -846,11 +846,11 @@ function makeLine(points: number[][], colorHex: number | string, dashed = false,
       opacity,
     });
     mat.depthTest = !pathAlwaysOnTop;
-    mat.depthWrite = !pathAlwaysOnTop && opacity >= 1;
+    mat.depthWrite = false;
   } else {
     mat = new THREE.LineBasicMaterial({ color: colorHex, transparent: opacity < 1, opacity });
     mat.depthTest = !pathAlwaysOnTop;
-    mat.depthWrite = !pathAlwaysOnTop;
+    mat.depthWrite = false;
   }
 
   const line = new THREE.Line(geom, mat);
@@ -874,7 +874,7 @@ function makeOverflowLine(srcLine: THREE.Line): THREE.Line | null {
     transparent: true,
     opacity: 0.9,
     depthTest: !pathAlwaysOnTop,
-    depthWrite: !pathAlwaysOnTop,
+    depthWrite: false,
     clipIntersection: true,
     clippingPlanes: boundsClipPlanes,
   });
@@ -966,7 +966,7 @@ function ensureCoreGroups(init: ViewerInit) {
   });
 
   backplotLine = new THREE.Line(backplotGeom, mat);
-  backplotLine.renderOrder = 10;
+  backplotLine.renderOrder = 11;
   backplotLine.frustumCulled = false;   // ✅ prevents disappearing when origin is off-screen
   _workGrp!.add(backplotLine);
 
@@ -1478,7 +1478,7 @@ function applyGcode(g: ViewerGcode) {
     hlMat.depthTest = !pathAlwaysOnTop;
     hlMat.depthWrite = false;
     highlightLine = new THREE.Line(hlGeom, hlMat);
-    highlightLine.renderOrder = 11;
+    highlightLine.renderOrder = 12;
     highlightLine.frustumCulled = false;
     workRotGroup!.add(highlightLine);
 

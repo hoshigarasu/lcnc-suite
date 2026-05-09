@@ -301,7 +301,7 @@ let trackingMode: "none" | "tool" | "wcs" = "none";
 // joint motion via applyState signature diff, layer toggle, theme change, etc.).
 // animate() skips renderer.render() (and the prep work that feeds it — clipping
 // plane transforms, billboard quaternion updates) when no flag set. Tween in
-// flight and tracking mode force every frame.
+// flight and a non-zero tracking delta force a frame.
 let _needsRender = true;
 function requestRender() { _needsRender = true; }
 let _lastStateSig = "";
@@ -1627,8 +1627,8 @@ function animate() {
   }
 
   // Camera tracking — move both target and camera to maintain viewing angle.
-  // While tracking is active every frame is rendered; the tracking calculation
-  // mutates camera state so flag a render explicitly.
+  // Only flags a render if the tracked point actually moved this tick;
+  // otherwise tracking-mode would force every frame even at machine idle.
   if (trackingMode !== "none" && controls && camera) {
     const target = new THREE.Vector3();
     if (trackingMode === "tool" && toolMarker) {
@@ -1637,15 +1637,17 @@ function animate() {
       workOrigin.getWorldPosition(target);
     }
     const delta = target.sub(controls.target);
-    controls.target.add(delta);
-    camera.position.add(delta);
-    _needsRender = true;
+    if (delta.lengthSq() > 1e-12) {
+      controls.target.add(delta);
+      camera.position.add(delta);
+      _needsRender = true;
+    }
   }
 
-  // Render-on-demand gate. Tween in flight (`_tweenRaf`) and active tracking
-  // mode force a render every frame; otherwise we wait for an explicit
-  // requestRender() (controls 'change', state diff, layer toggle, etc.).
-  if (!_needsRender && !_tweenRaf && trackingMode === "none") return;
+  // Render-on-demand gate. Skip the prep-and-render block unless something
+  // explicitly requested a render (state diff, controls 'change', layer
+  // toggle, tracking delta, …) or a tween is in flight.
+  if (!_needsRender && !_tweenRaf) return;
 
   // Update overflow clipping planes to track _workGrp world transform
   // (only runs when we're actually rendering — C4 lazy clip planes).

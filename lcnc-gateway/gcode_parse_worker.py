@@ -36,6 +36,7 @@ import tempfile
 import time
 
 import msgspec
+import numpy as np
 import linuxcnc
 import gcode
 
@@ -45,6 +46,64 @@ from gcode_canon import PreviewCanon, apply_var_patches
 
 
 _EMPTY = {"feed": [], "feed_lines": [], "rapid": [], "stats": None}
+
+# RDP decimation tolerance in machine units (mm or in — caller passes the
+# scaled epsilon). 0.005 mm is sub-pixel at typical viewport zoom (~0.2
+# mm/pixel) and well below the chord error CAM posts emit (typically
+# 0.01-0.1 mm). Keeps visual parity while collapsing collinear runs.
+_RDP_EPS_MM = 0.005
+
+
+def _rdp_keep(points, anchors, eps_sq):
+    """Iterative RDP that preserves a set of anchor indices.
+
+    points  -- np.ndarray of shape (N, 3), float64
+    anchors -- iterable of indices that must be kept (line-number transitions)
+    eps_sq  -- squared chord tolerance
+
+    Returns: sorted list of kept indices.
+    """
+    n = len(points)
+    if n <= 2:
+        return list(range(n))
+    keep = np.zeros(n, dtype=bool)
+    keep[0] = True
+    keep[-1] = True
+    for a in anchors:
+        if 0 <= a < n:
+            keep[a] = True
+    anchor_idx = sorted(np.flatnonzero(keep).tolist())
+    for lo, hi in zip(anchor_idx, anchor_idx[1:]):
+        if hi - lo < 2:
+            continue
+        # Iterative RDP between anchors using an explicit stack — Python's
+        # default recursion limit (1000) would blow on long anchored spans.
+        stack = [(lo, hi)]
+        while stack:
+            i0, i1 = stack.pop()
+            if i1 - i0 < 2:
+                continue
+            p0 = points[i0]
+            p1 = points[i1]
+            seg = p1 - p0
+            seg_len_sq = float(np.dot(seg, seg))
+            interior = points[i0 + 1:i1]
+            rel = interior - p0
+            if seg_len_sq > 0.0:
+                t = (rel @ seg) / seg_len_sq
+                np.clip(t, 0.0, 1.0, out=t)
+                proj = p0 + t[:, None] * seg
+                diff = interior - proj
+            else:
+                diff = rel
+            dist_sq = (diff * diff).sum(axis=1)
+            max_idx = int(np.argmax(dist_sq))
+            if float(dist_sq[max_idx]) > eps_sq:
+                pivot = i0 + 1 + max_idx
+                keep[pivot] = True
+                stack.append((i0, pivot))
+                stack.append((pivot, i1))
+    return np.flatnonzero(keep).tolist()
 
 # g5x_index → RS274 WCS word. Interpreter starts in G54 unless the initcode
 # selects another; param 5220 on disk is stale until LinuxCNC shutdown, so
@@ -191,6 +250,35 @@ def parse(ctx: dict) -> dict:
     arc_dist_scaled = canon.arc_dist * unit_scale
     linear_dist = total_feed_dist - arc_dist_scaled
     linear_moves = len(canon.feed) - canon.arc_moves
+
+    # A2: lossless RDP decimation on the rendering polylines. Stats above
+    # use the full canon.feed / canon.rapid counts so they remain accurate.
+    # eps is in display units (mm or inches) — the polylines are already
+    # converted by the unit_scale multiplication above.
+    eps = _RDP_EPS_MM if machine_units == "mm" else _RDP_EPS_MM / 25.4
+    eps_sq = eps * eps
+    pre_feed = len(feed)
+    pre_rapid = len(rapid)
+    if len(feed) > 2:
+        # Anchor every index where the source line number changes — that
+        # preserves at least one rendered point per source line so the
+        # WebUI's run-from-line highlight mapping stays intact.
+        anchors = [0]
+        for i in range(1, len(feed_lines)):
+            if feed_lines[i] != feed_lines[i - 1]:
+                anchors.append(i)
+        keep = _rdp_keep(np.asarray(feed, dtype=np.float64), anchors, eps_sq)
+        if len(keep) < len(feed):
+            feed = [feed[i] for i in keep]
+            feed_lines = [feed_lines[i] for i in keep]
+    if len(rapid) > 2:
+        keep = _rdp_keep(np.asarray(rapid, dtype=np.float64), [0, len(rapid) - 1], eps_sq)
+        if len(keep) < len(rapid):
+            rapid = [rapid[i] for i in keep]
+    print(
+        f"rdp feed {pre_feed}->{len(feed)} rapid {pre_rapid}->{len(rapid)} eps={eps:.5f}",
+        file=sys.stderr, flush=True,
+    )
 
     try:
         file_size = os.path.getsize(filename)

@@ -6,8 +6,19 @@ can import the same class without dragging gateway state in. Gateway uses
 apply_var_patches() when building the context handed to the worker.
 """
 
+import math
 from typing import Dict, List
 from rs274.interpret import Translated, ArcsToSegmentsMixin, StatMixin
+
+
+# Adaptive arc tessellation (A1). Chord tolerance in canon units (inches —
+# LinuxCNC internal). 0.001 in ≈ 0.025 mm — sub-pixel at typical viewports.
+# Bounds prevent both pathological coarsness on tiny arcs and runaway segment
+# counts on huge-radius arcs where the controller would still emit a smooth
+# enough preview at 64 segments per full circle.
+_ARC_EPS = 0.001
+_ARC_MIN_SEGS = 8
+_ARC_MAX_SEGS = 64
 
 
 class PreviewCanon(Translated, ArcsToSegmentsMixin, StatMixin):
@@ -31,7 +42,7 @@ class PreviewCanon(Translated, ArcsToSegmentsMixin, StatMixin):
         self.uo = self.vo = self.wo = 0.0
         self.g5x_index = 1
         self.plane = 1
-        self.arcdivision = 64
+        self.arcdivision = _ARC_MAX_SEGS
 
     def next_line(self, st):
         self.state = st
@@ -101,6 +112,29 @@ class PreviewCanon(Translated, ArcsToSegmentsMixin, StatMixin):
             self.arc_moves += 1
             lo = l
         self.lo = lo
+
+    def arc_feed(self, x1, y1, cx, cy, rot, z1, a, b, c, u, v, w):
+        # Pick a per-arc segment count that keeps chord error below _ARC_EPS.
+        # Active plane decides which two coordinates form the arc circle:
+        # plane 1 = XY, 2 = XZ, 3 = YZ. cx/cy are in those active-plane axes.
+        if self.plane == 1:
+            r_dx, r_dy = self.lo[0] - cx, self.lo[1] - cy
+        elif self.plane == 2:
+            r_dx, r_dy = self.lo[0] - cx, self.lo[2] - cy
+        else:
+            r_dx, r_dy = self.lo[1] - cx, self.lo[2] - cy
+        radius = math.hypot(r_dx, r_dy)
+        if radius > _ARC_EPS:
+            ratio = max(-1.0, 1.0 - _ARC_EPS / radius)
+            seg_angle = 2.0 * math.acos(ratio)
+            if seg_angle > 0.0:
+                n = int(math.ceil(2.0 * math.pi / seg_angle))
+                self.arcdivision = max(_ARC_MIN_SEGS, min(_ARC_MAX_SEGS, n))
+            else:
+                self.arcdivision = _ARC_MAX_SEGS
+        else:
+            self.arcdivision = _ARC_MIN_SEGS
+        super().arc_feed(x1, y1, cx, cy, rot, z1, a, b, c, u, v, w)
 
 
 def apply_var_patches(path: str, patches: Dict[str, str]) -> None:

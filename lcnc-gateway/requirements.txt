@@ -1,8 +1,10 @@
 # lcnc-suite gateway runtime dependencies
 #
-# linuxcnc / hal / gcode / gcode_canon / rs274 are provided by the system
-# LinuxCNC install and reached via --system-site-packages in the venv —
-# they must NOT be listed here.
+# linuxcnc / hal / gcode / gcode_canon / rs274 / numpy are provided by the
+# system LinuxCNC install and reached via --system-site-packages in the
+# venv — they must NOT be listed here. Listing numpy invites a venv-local
+# 2.x install that shadows the system 1.x and breaks system scipy's C ABI
+# (see GitHub issue #12).
 #
 # Floor-pinned (>=) until a fresh-machine end-to-end smoke test fixes
 # known-good versions. See GitHub issue #10.
@@ -13,9 +15,8 @@ uvicorn>=0.29
 websockets>=12
 python-multipart>=0.0.9       # FastAPI file uploads (STL upload)
 
-# Serialization / numerics
+# Serialization
 msgspec>=0.18
-numpy>=1.24
 
 # CLI
 click>=8.1

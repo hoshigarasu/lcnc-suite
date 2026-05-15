@@ -280,6 +280,24 @@ ok "Node.js dependencies installed"
 
 cd "$TARGET_DIR"
 
+# --- Symlinks ---
+# Put the launcher and the three HAL helpers on PATH so halcmd / haltcl /
+# LinuxCNC's DISPLAY launcher all resolve them via execvp, independent of
+# clone location and TWOPASS mode. Removes the need for $(HOME)/$::env(HOME)
+# substitution gymnastics in HAL files.
+info "Installing symlinks to ~/.local/bin..."
+mkdir -p "$HOME/.local/bin"
+ln -sf "$TARGET_DIR/lcnc-suite"                                   "$HOME/.local/bin/lcnc-suite"
+ln -sf "$TARGET_DIR/lcnc-gateway/hal_watchdog.py"                 "$HOME/.local/bin/hal_watchdog.py"
+ln -sf "$TARGET_DIR/lcnc-gateway/hal_reader.py"                   "$HOME/.local/bin/hal_reader.py"
+ln -sf "$TARGET_DIR/subroutines/surfacemap/compensation.py"       "$HOME/.local/bin/compensation.py"
+ok "Symlinks installed (lcnc-suite, hal_watchdog.py, hal_reader.py, compensation.py)"
+
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) warn '~/.local/bin is not on PATH — add `export PATH="$HOME/.local/bin:$PATH"` to your shell rc' ;;
+esac
+
 # ============================================================
 # Step 4: Done
 # ============================================================
@@ -295,22 +313,18 @@ echo -e "
     1. Build the frontend:
        cd $TARGET_DIR/lcnc-webui && npm run build
 
-    2. Symlink launcher to PATH:
-       mkdir -p ~/.local/bin
-       ln -sf $TARGET_DIR/lcnc-suite ~/.local/bin/lcnc-suite
-
-    3. Add to your INI [DISPLAY] section:
+    2. Add to your INI [DISPLAY] section:
        DISPLAY = lcnc-suite
        WEBUI_HOST = 0.0.0.0
        WEBUI_PORT = 8000
        WEBUI_BROWSER = 1
        WEBUI_DEV = 0
 
-    4. Add HAL safety chain (copy + add to INI [HAL]):
+    3. Add HAL safety chain (copy + add to INI [HAL]):
        cp $TARGET_DIR/examples/sim_config/hallib/lcnc_webui.hal /your/config/hallib/
        # Add to INI: HALFILE = hallib/lcnc_webui.hal
 
-    5. Start:
+    4. Start:
        linuxcnc your_machine.ini
 
   ${BOLD}See README.md for full configuration details.${NC}

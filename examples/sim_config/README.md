@@ -12,7 +12,7 @@ Edit `lcnc_suite_sim.ini`:
 - Set `SUBROUTINE_PATH` to your lcnc-suite clone location (LinuxCNC's INI parser expands `~`, so `~/lcnc-suite/...` is fine if you cloned there).
 
 Edit `hallib/lcnc_webui.hal`:
-- Replace `~/lcnc-suite/` with your absolute clone path in every `loadusr` line — halcmd does **not** expand `~`.
+- The HAL invokes the three helper scripts (`hal_watchdog.py`, `hal_reader.py`, `compensation.py`) by bare name. `install.sh` symlinks them into `~/.local/bin/` so `loadusr`/`execvp` finds them via PATH — no `$HOME`-substitution syntax is needed and the file is portable across clone locations and TWOPASS modes. If `~/.local/bin` is not on your PATH, add it to your shell rc.
 - Surface compensation is enabled by default and requires `python3-scipy` (auto-installed by `install.sh`). Comment out the `loadusr ... compensation.py` line and the `net eoffset-*` / `net compensation-*` block at the bottom of the file if you don't need it.
 - Adjust the `unlinkp iocontrol.0.emc-enable-in` line if your config uses a different e-stop signal name.
 

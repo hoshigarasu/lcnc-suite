@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Origin: https://github.com/scottalford75/LinuxCNC-3D-Printing
 # Fork:   https://github.com/bildobodo/surfacemap_usertab
 """Copyright (C) 2020 Scott Alford, scottalford75@gmail.com

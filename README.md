@@ -316,21 +316,18 @@ cd ..
 
 ### Configure LinuxCNC
 
-After installing (either option), configure your machine:
-
-#### 1. Symlink launcher to PATH
-
-LinuxCNC does not expand `~` in DISPLAY paths — the launcher must be on PATH.
+After installing (either option), configure your machine. `install.sh`
+already symlinks the launcher and the three HAL helpers (`hal_watchdog.py`,
+`hal_reader.py`, `compensation.py`) into `~/.local/bin/` so that LinuxCNC's
+DISPLAY launcher and halcmd/haltcl find them via PATH — no path
+substitution in HAL files. Make sure `~/.local/bin` is on your `$PATH`
+(most shells include it by default; if not, add `export PATH="$HOME/.local/bin:$PATH"` to your shell rc).
 
 ```bash
-mkdir -p ~/.local/bin
-ln -sf "$(pwd)/lcnc-suite" ~/.local/bin/lcnc-suite
-
-# Verify:
 which lcnc-suite    # should print ~/.local/bin/lcnc-suite
 ```
 
-#### 2. INI `[DISPLAY]` section
+#### 1. INI `[DISPLAY]` section
 
 Add these to your machine's INI file:
 
@@ -342,13 +339,19 @@ WEBUI_PORT = 8000
 WEBUI_BROWSER = 1
 WEBUI_DEV = 0
 
-# Gateway performance flags
-WEBUI_STATUS_DELTA        = 1       # recommended ON for 1–5 clients, OFF for 6+
-WEBUI_ADAPTIVE_POLL       = 1       # recommended ON for SBCs, optional on workstations
+# Gateway performance flags.
+# Comments must be on their own line: LinuxCNC's strict INI consumers
+# (motion / inihal / iniAxis) reject trailing `# …` text after a value.
+
+# recommended ON for 1–5 clients, OFF for 6+
+WEBUI_STATUS_DELTA        = 1
+# recommended ON for SBCs, optional on workstations
+WEBUI_ADAPTIVE_POLL       = 1
 WEBUI_IDLE_POLL_HZ        = 5
 WEBUI_UVLOOP              = 0
 WEBUI_WIRE_FORMAT         = msgpack
-WEBUI_WS_INIT_CONCURRENCY = 20      # lower (e.g. 2) for multi-tab cold-start CPU smoothing
+# lower (e.g. 2) for multi-tab cold-start CPU smoothing
+WEBUI_WS_INIT_CONCURRENCY = 20
 ```
 
 | Variable | Default | Description |
@@ -375,7 +378,7 @@ WEBUI_WS_INIT_CONCURRENCY = 20      # lower (e.g. 2) for multi-tab cold-start CP
 
 Environment variables `LCNC_WEBUI_HOST`, `LCNC_WEBUI_PORT`, `LCNC_WEBUI_BROWSER`, `LCNC_WEBUI_DEV` override INI values. `WEBUI_*` flags can also be set as environment variables (same name) and take precedence over the INI. Camera variables: `LCNC_CAMERA_SOURCE`, `LCNC_CAMERA_RESOLUTION`, `LCNC_CAMERA_FPS`.
 
-#### 3. HAL safety chain
+#### 2. HAL safety chain
 
 The gateway uses a HAL watchdog component for the e-stop safety chain. Copy the example HAL file to your machine config and add it to your INI:
 

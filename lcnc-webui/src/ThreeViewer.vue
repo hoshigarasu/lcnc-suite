@@ -284,6 +284,7 @@ let surfaceGroup: THREE.Group | null = null;
 
 // Map g-code line number → { start, end } point-index range in feed arrays
 let feedLineMap: Map<number, { start: number; end: number }> = new Map();
+let currentPosDot: THREE.Group | null = null;
 
 // Pending layer visibility: stores calls made before scene objects exist
 let pendingLayers: Map<Layer, boolean> | null = new Map();
@@ -303,6 +304,8 @@ let trackingMode: "none" | "tool" | "wcs" = "none";
 // plane transforms, billboard quaternion updates) when no flag set. Tween in
 // flight and a non-zero tracking delta force a frame.
 let _needsRender = true;
+let _lastTrackedPos: THREE.Vector3 | null = null;
+let _lastTrackingMode = "";
 function requestRender() { _needsRender = true; }
 let _lastStateSig = "";
 
@@ -680,6 +683,7 @@ function setLayerVisible(layer: Layer, on: boolean) {
       break;
     case "tool":
       if (toolMarker) toolMarker.visible = on;
+      if (currentPosDot) currentPosDot.visible = on;
       break;
     case "workzero":
       if (workAxes) workAxes.visible = on;
@@ -975,6 +979,32 @@ function ensureCoreGroups(init: ViewerInit) {
   workAxes.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(), _al, 0x4488ff, _ah, _aw));
 
   workRotGroup.add(workAxes);
+
+  // ---- Current position crosshair ----
+  {
+    const _cg = new THREE.Group();
+    const _r = 4 * _unitScale;
+    const _sphere = new THREE.Mesh(
+      new THREE.SphereGeometry(_r, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0x00ff88, depthTest: false, depthWrite: false })
+    );
+    _sphere.renderOrder = 20;
+    _cg.add(_sphere);
+    const _cs = _r * 5;
+    const _crossGeom = new THREE.BufferGeometry();
+    _crossGeom.setAttribute('position', new THREE.Float32BufferAttribute([
+      -_cs, 0, 0,  _cs, 0, 0,
+       0, -_cs, 0,  0, _cs, 0,
+       0, 0, -_cs,  0, 0, _cs,
+    ], 3));
+    const _cross = new THREE.LineSegments(_crossGeom,
+      new THREE.LineBasicMaterial({ color: 0x00ff88, depthTest: false, depthWrite: false })
+    );
+    _cross.renderOrder = 20;
+    _cg.add(_cross);
+    workRotGroup.add(_cg);
+    currentPosDot = _cg;
+  }
 
   // ---- Backplot line (tool history in WORK coordinates) ----
 {
@@ -1335,6 +1365,12 @@ function applyState(init: ViewerInit, st: ViewerState) {
     pushBackplotPoint([xl.x, xl.y, xl.z]);
   }
 
+  // ---- Current position dot ----
+  if (currentPosDot && st.work_pos) {
+    const _wp = st.work_pos as unknown as number[];
+    currentPosDot.position.set(_wp[0] ?? 0, _wp[1] ?? 0, _wp[2] ?? 0);
+  }
+
   // ---- Highlight current motion line in toolpath ----
   // motion_line can be ~1 line ahead during G64 blending; try previous line first
   if (highlightLine && curLine != null) {
@@ -1357,6 +1393,7 @@ function applyState(init: ViewerInit, st: ViewerState) {
   const sig = JSON.stringify([
     st.joint_pos,
     st.machine_pos,
+    st.work_pos,
     st.g5x_offset,
     st.g92_offset,
     st.tool_offset,
@@ -1637,24 +1674,34 @@ function animate() {
   // Camera tracking — move both target and camera to maintain viewing angle.
   // Only flags a render if the tracked point actually moved this tick;
   // otherwise tracking-mode would force every frame even at machine idle.
+  if (trackingMode !== _lastTrackingMode) {
+    _lastTrackedPos = null;
+    _lastTrackingMode = trackingMode;
+  }
   if (trackingMode !== "none" && controls && camera) {
-    const target = new THREE.Vector3();
+    const _tp = new THREE.Vector3();
     if (trackingMode === "tool" && toolMarker) {
-      toolMarker.getWorldPosition(target);
+      toolMarker.getWorldPosition(_tp);
     } else if (trackingMode === "wcs" && workOrigin) {
-      workOrigin.getWorldPosition(target);
+      workOrigin.getWorldPosition(_tp);
     }
-    const delta = target.sub(controls.target);
-    if (delta.lengthSq() > 1e-12) {
-      controls.target.add(delta);
-      camera.position.add(delta);
-      _needsRender = true;
+    if (_lastTrackedPos === null) {
+      _lastTrackedPos = _tp.clone();
+    } else {
+      const _td = _tp.clone().sub(_lastTrackedPos);
+      _lastTrackedPos.copy(_tp);
+      if (_td.lengthSq() > 1e-12) {
+        controls.target.add(_td);
+        camera.position.add(_td);
+        _needsRender = true;
+      }
     }
   }
 
   // Render-on-demand gate. Skip the prep-and-render block unless something
   // explicitly requested a render (state diff, controls 'change', layer
   // toggle, tracking delta, …) or a tween is in flight.
+  if (!_tweenRaf) controls?.update();
   if (!_needsRender && !_tweenRaf) return;
 
   // Update overflow clipping planes to track _workGrp world transform
@@ -1688,7 +1735,6 @@ function animate() {
   // component of the rotation before the azimuth finishes — visible at top/
   // bottom transitions. The tween writes camera.position/quaternion directly
   // each frame; controls.update() runs once at tween completion to re-sync.
-  if (!_tweenRaf) controls?.update();
   renderer?.render(scene!, camera!);
 
   // Orientation gizmo — always ortho, render into bottom-right viewport

@@ -537,6 +537,8 @@ async function saveEdit() {
 <style scoped>
 .container {
   height: 100%;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .header {
